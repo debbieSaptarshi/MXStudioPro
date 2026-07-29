@@ -1947,9 +1947,11 @@ public final class StudioSessionController {
             } else {
                 loopLengthSamples = 1
             }
-            // Ignore tiny backward jitter; require a real wrap (at least ~half a loop or 1k samples).
+            // Ignore tiny backward jitter. Use a small sample floor so short loops
+            // (e.g. ~0.25 beat) still reschedule — a half-loop threshold missed those.
             let jump = lastObservedSample - readout.sample
-            if jump >= max(1_000, loopLengthSamples / 2) {
+            let wrapFloor = Int64(max(64, min(256, loopLengthSamples / 8)))
+            if jump >= wrapFloor {
                 // Punch-out at loop end: commit the take instead of wrapping while recording.
                 if isRecording {
                     lastObservedSample = readout.sample
