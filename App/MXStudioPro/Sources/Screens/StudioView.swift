@@ -25,6 +25,11 @@ public struct StudioView: View {
 
     private let trackColumnWidth: CGFloat = 135
     private let beatsVisible: Double = 8
+    /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
+    private let trackLaneHeight: CGFloat = 60
+    /// Figma Bottom Actions “Studio Details” row is 70pt.
+    private let detailsStripHeight: CGFloat = 70
+    private let rulerHeight: CGFloat = 24
 
     public init(
         session: StudioSessionController,
@@ -189,21 +194,28 @@ public struct StudioView: View {
         return types
     }()
 
-    /// Arrangement + transport chrome for Figma `Studio - After Record Audio or Vocal` (95:85026).
+    /// Arrangement + transport chrome for Figma `Studio - Guitar` (`95:85203`) / After Record.
     private var afterRecordStudio: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 studioHeader
                 arrangement
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .layoutPriority(1)
                 studioDetailsStrip
+                    .frame(height: detailsStripHeight)
+                    .fixedSize(horizontal: false, vertical: true)
                 if session.showsPianoKeyboard {
                     PianoKeyboardView(
                         onNoteOn: { session.noteOn($0) },
                         onNoteOff: { session.noteOff($0) }
                     )
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 actionBoard
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             if let message = session.trackLimitMessage {
                 trackLimitBanner(message)
@@ -244,9 +256,24 @@ public struct StudioView: View {
     private var studioHeader: some View {
         HStack {
             HStack(spacing: 2) {
-                studioIconButton(asset: "studio_back", systemFallback: "rectangle.portrait.and.arrow.right") {
-                    onClose()
+                // Asset `studio_back` is a share glyph — use SF Symbol to match Figma back chevron.
+                Button(action: onClose) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(MXColor.white)
+                        .frame(width: 20, height: 20)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close studio")
                 studioIconButton(asset: "studio_tuner_a", systemFallback: "tuningfork") {
                     showTunerSheet = true
                 }
@@ -262,8 +289,7 @@ public struct StudioView: View {
             HStack(spacing: 2) {
                 Button { showCollabSheet = true } label: {
                     HStack(spacing: 6) {
-                        studioGlyph("studio_plus", systemFallback: "plus", size: 20)
-                        Text("Collab")
+                        Text("+ Collab")
                             .font(MXFont.mediumButton())
                             .foregroundStyle(MXColor.white)
                     }
@@ -327,7 +353,7 @@ public struct StudioView: View {
             beatNet
                 .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(MXColor.surface)
     }
 
@@ -338,8 +364,7 @@ public struct StudioView: View {
                 .foregroundStyle(MXColor.grey)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 4)
-                .padding(.top, 4)
-                .frame(height: 20)
+                .frame(height: rulerHeight)
 
             ForEach(session.project.tracks) { track in
                 StudioTrackHeader(
@@ -354,23 +379,30 @@ public struct StudioView: View {
                     onSolo: { session.toggleSolo(trackID: track.id) },
                     onSetActiveTake: { session.setActiveTake(clipID: $0) }
                 )
+                .frame(height: trackLaneHeight)
+                .clipped()
             }
 
             Button {
                 showAddTrackSheet = true
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(session.canAddTrack ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .strokeBorder(
-                                session.canAddTrack ? MXColor.layer2 : MXColor.layer2.opacity(0.4),
-                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                            )
-                    )
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("ADD TRACK")
+                        .font(MXFont.caption())
+                        .fontWeight(.semibold)
+                }
+                .foregroundStyle(session.canAddTrack ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(
+                            session.canAddTrack ? MXColor.layer2 : MXColor.layer2.opacity(0.4),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        )
+                )
             }
             .buttonStyle(.plain)
             .disabled(!session.canAddTrack)
@@ -381,6 +413,7 @@ public struct StudioView: View {
             Spacer(minLength: 0)
         }
         .padding(.trailing, 4)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(MXColor.surface)
     }
 
@@ -495,26 +528,22 @@ public struct StudioView: View {
             ZStack(alignment: .topLeading) {
                 MXColor.surface
 
-                // Ruler
+                // Ruler (fixed band — do not let Spacers stretch the beat column)
                 HStack(spacing: 0) {
                     ForEach(0..<Int(beatsVisible), id: \.self) { beat in
                         let isBar = beat % session.project.timeSignatureNumerator == 0
-                        VStack(spacing: 0) {
-                            Text(isBar ? "\(beat / session.project.timeSignatureNumerator + 1)" : "1")
-                                .font(isBar ? MXFont.body3() : MXFont.caption())
-                                .foregroundStyle(isBar ? MXColor.lightGrey : MXColor.grey)
-                                .frame(height: 24, alignment: .bottom)
-                            Spacer(minLength: 0)
-                        }
-                        .frame(width: pixelsPerBeat, alignment: .leading)
-                        .overlay(alignment: .leading) {
-                            Rectangle()
-                                .fill(isBar ? MXColor.layer2 : MXColor.layer2.opacity(0.45))
-                                .frame(width: 1)
-                        }
+                        Text(isBar ? "\(beat / session.project.timeSignatureNumerator + 1)" : "1")
+                            .font(isBar ? MXFont.body3() : MXFont.caption())
+                            .foregroundStyle(isBar ? MXColor.lightGrey : MXColor.grey)
+                            .frame(width: pixelsPerBeat, height: rulerHeight, alignment: .bottomLeading)
+                            .overlay(alignment: .leading) {
+                                Rectangle()
+                                    .fill(isBar ? MXColor.layer2 : MXColor.layer2.opacity(0.45))
+                                    .frame(width: 1)
+                            }
                     }
                 }
-                .frame(height: geo.size.height)
+                .frame(height: rulerHeight)
 
                 // Vertical grid lines through lanes
                 ForEach(0..<Int(beatsVisible), id: \.self) { beat in
@@ -522,16 +551,16 @@ public struct StudioView: View {
                         .fill(beat % session.project.timeSignatureNumerator == 0
                               ? MXColor.layer2
                               : MXColor.layer2.opacity(0.35))
-                        .frame(width: 1, height: geo.size.height - 24)
-                        .offset(x: CGFloat(beat) * pixelsPerBeat, y: 24)
+                        .frame(width: 1, height: max(0, geo.size.height - rulerHeight))
+                        .offset(x: CGFloat(beat) * pixelsPerBeat, y: rulerHeight)
                 }
 
                 // Track lanes + clips / placeholder waveform
                 VStack(spacing: 4) {
-                    Color.clear.frame(height: 24)
+                    Color.clear.frame(height: rulerHeight)
                     ForEach(Array(session.project.tracks.enumerated()), id: \.element.id) { index, track in
                         trackLane(track: track, width: width, pixelsPerBeat: pixelsPerBeat, isPrimary: index == 0)
-                            .frame(height: 60)
+                            .frame(height: trackLaneHeight)
                     }
                     Spacer(minLength: 0)
                 }
@@ -548,16 +577,16 @@ public struct StudioView: View {
                         .overlay(alignment: .trailing) {
                             Rectangle().fill(MXColor.accent.opacity(0.7)).frame(width: 2)
                         }
-                        .frame(width: loopW, height: geo.size.height - 24)
-                        .offset(x: loopX, y: 24)
+                        .frame(width: loopW, height: max(0, geo.size.height - rulerHeight))
+                        .offset(x: loopX, y: rulerHeight)
                         .allowsHitTesting(false)
                 }
 
                 // Playhead (non-interactive so it never steals clip/lane hits)
                 Rectangle()
                     .fill(MXColor.white)
-                    .frame(width: 1.5, height: geo.size.height - 8)
-                    .offset(x: playheadX(pixelsPerBeat: pixelsPerBeat), y: 16)
+                    .frame(width: 1.5, height: max(0, geo.size.height - 8))
+                    .offset(x: playheadX(pixelsPerBeat: pixelsPerBeat), y: 8)
                     .allowsHitTesting(false)
             }
         }
@@ -617,7 +646,7 @@ public struct StudioView: View {
         CGFloat(session.playheadBeat.truncatingRemainder(dividingBy: beatsVisible)) * pixelsPerBeat
     }
 
-    // MARK: - Details strip (95:85071)
+    // MARK: - Details strip (Figma Bottom Actions / Studio Details — 70pt)
 
     private var studioDetailsStrip: some View {
         HStack(spacing: 0) {
@@ -638,11 +667,10 @@ public struct StudioView: View {
                         .foregroundStyle(MXColor.grey)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             detailDivider
             VStack(spacing: 4) {
-                HStack {
+                HStack(spacing: 8) {
                     Button { session.nudgeBPM(-1) } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 10, weight: .bold))
@@ -666,7 +694,6 @@ public struct StudioView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .frame(width: 125)
 
                 Button { showBPMSheet = true } label: {
                     HStack(spacing: 2) {
@@ -680,9 +707,10 @@ public struct StudioView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.vertical, 16)
             .frame(width: 125)
+            .frame(maxHeight: .infinity)
         }
+        .frame(height: detailsStripHeight)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .top) {
             Rectangle().fill(MXColor.layer2).frame(height: 1)
@@ -701,17 +729,20 @@ public struct StudioView: View {
                 .font(MXFont.caption())
                 .foregroundStyle(MXColor.grey)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var detailDivider: some View {
-        Rectangle().fill(MXColor.layer2).frame(width: 1)
+        Rectangle()
+            .fill(MXColor.layer2)
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
     }
 
     // MARK: - Action board (95:85072)
 
     private var actionBoard: some View {
+        // Figma Action Board Studio: Undo / Redo / To-start · Record · Play / Metro / Mixer
         HStack {
             HStack(spacing: 2) {
                 studioIconButton(asset: "studio_undo", systemFallback: "arrow.uturn.backward") {
@@ -724,9 +755,6 @@ public struct StudioView: View {
                     studioIconButton(asset: "studio_trash", systemFallback: "trash") {
                         session.deleteSelectedClip()
                     }
-                    studioIconButton(asset: "studio_fx", systemFallback: "slider.horizontal.2.square.on.square") {
-                        showClipInspector = true
-                    }
                 }
 
                 studioIconButton(asset: "studio_redo", systemFallback: "arrow.uturn.forward") {
@@ -734,59 +762,6 @@ public struct StudioView: View {
                 }
                 .disabled(!session.canRedo)
                 .opacity(session.canRedo ? 1 : 0.35)
-
-                // Loop toggle — long-press sets region to selection / current bar
-                Button {
-                    if session.project.loopEnabled {
-                        session.setLoopEnabled(false)
-                    } else {
-                        session.setLoopToSelectionOrBar()
-                    }
-                } label: {
-                    Image(systemName: "repeat")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(session.project.loopEnabled ? MXColor.accent : MXColor.white)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(MXColor.layer2)
-                        )
-                        .overlay {
-                            if session.project.loopEnabled {
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.35).onEnded { _ in
-                        session.setLoopToSelectionOrBar()
-                    }
-                )
-                .accessibilityLabel(session.project.loopEnabled ? "Disable loop" : "Enable loop")
-
-                // Snap to 16th-note grid
-                Button {
-                    session.isSnapEnabled.toggle()
-                } label: {
-                    Image(systemName: "magnet")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(MXColor.layer2)
-                        )
-                        .overlay {
-                            if session.isSnapEnabled {
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(session.isSnapEnabled ? "Disable snap to grid" : "Enable snap to grid")
 
                 studioIconButton(asset: "studio_to_start", systemFallback: "chevron.backward.2") {
                     session.stop()
@@ -1239,7 +1214,7 @@ public struct StudioView: View {
         .background(MXColor.surface)
     }
 
-    /// Studio settings — latency calibration (GarageBand-style loopback).
+    /// Studio settings — arrangement toggles + latency calibration.
     private var studioSettingsSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Studio Settings")
@@ -1247,6 +1222,59 @@ public struct StudioView: View {
                 .foregroundStyle(MXColor.white)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
+
+            VStack(spacing: 0) {
+                settingsToggleRow(
+                    title: "Snap to grid",
+                    subtitle: "Move & trim to 16th notes",
+                    isOn: session.isSnapEnabled
+                ) {
+                    session.isSnapEnabled.toggle()
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
+                    title: "Loop region",
+                    subtitle: session.project.loopEnabled
+                        ? "Looping current region"
+                        : "Long-press sets region to selection / bar",
+                    isOn: session.project.loopEnabled
+                ) {
+                    if session.project.loopEnabled {
+                        session.setLoopEnabled(false)
+                    } else {
+                        session.setLoopToSelectionOrBar()
+                    }
+                }
+                if session.selectedClipID != nil {
+                    Divider().overlay(MXColor.layer2)
+                    Button {
+                        showSettingsSheet = false
+                        showClipInspector = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Clip fade & gain")
+                                    .font(MXFont.mediumButton())
+                                    .foregroundStyle(MXColor.white)
+                                Text("Edit selected clip")
+                                    .font(MXFont.caption())
+                                    .foregroundStyle(MXColor.grey)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(MXColor.grey)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Input latency")
@@ -1347,6 +1375,34 @@ public struct StudioView: View {
         }
         .padding(24)
         .background(MXColor.surface)
+    }
+
+    private func settingsToggleRow(
+        title: String,
+        subtitle: String,
+        isOn: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                    Text(subtitle)
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(isOn ? MXColor.accent : MXColor.grey)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
     }
 
     private var mixerSheet: some View {
@@ -1927,74 +1983,71 @@ private struct StudioTrackHeader: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(categoryTint)
                     .frame(width: 3)
-                    .padding(.vertical, 2)
+                    .frame(maxHeight: .infinity)
+                    .padding(.vertical, 4)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 3) {
                         Image(systemName: categoryIcon)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(isArmed ? MXColor.red : categoryTint)
-                        Text(track.name)
+                        Text(track.name.uppercased())
                             .font(MXFont.studioTrackName())
                             .foregroundStyle(MXColor.white)
                             .lineLimit(1)
-                        Spacer(minLength: 0)
+                            .minimumScaleFactor(0.7)
+                        Spacer(minLength: 2)
                         if isArmed {
                             Text("R")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundStyle(MXColor.white)
-                                .frame(width: 14, height: 14)
+                                .frame(width: 12, height: 12)
                                 .background(Circle().fill(MXColor.red))
                         }
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(MXColor.grey)
-                    }
-
-                    if takeCount > 1 {
-                        Menu {
-                            ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
-                                Button {
-                                    onSetActiveTake(take.id)
-                                } label: {
-                                    if take.isActive {
-                                        Label(take.name, systemImage: "checkmark")
-                                    } else {
-                                        Text(take.name)
+                        if takeCount > 1 {
+                            Menu {
+                                ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
+                                    Button {
+                                        onSetActiveTake(take.id)
+                                    } label: {
+                                        if take.isActive {
+                                            Label(take.name, systemImage: "checkmark")
+                                        } else {
+                                            Text(take.name)
+                                        }
                                     }
                                 }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(MXColor.grey)
                             }
-                        } label: {
-                            Text("Takes (\(takeCount))")
-                                .font(MXFont.caption())
-                                .foregroundStyle(MXColor.accent)
-                                .lineLimit(1)
                         }
-                        .menuStyle(.borderlessButton)
                     }
 
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(MXColor.black).frame(height: 6)
+                            Capsule().fill(MXColor.black).frame(height: 5)
                             Capsule()
                                 .fill(categoryTint)
-                                .frame(width: geo.size.width * CGFloat(track.volume), height: 6)
+                                .frame(width: geo.size.width * CGFloat(track.volume), height: 5)
                         }
                     }
-                    .frame(height: 6)
-                    .padding(.vertical, takeCount > 1 ? 2 : 7)
+                    .frame(height: 5)
                 }
 
-                VStack(spacing: 4) {
+                VStack(spacing: 3) {
                     muteSoloButton("M", active: track.isMuted, action: onMute)
                     muteSoloButton("S", active: track.isSolo, action: onSolo)
                 }
             }
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(MXColor.layer2)

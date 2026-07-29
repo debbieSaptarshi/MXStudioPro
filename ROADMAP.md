@@ -42,17 +42,27 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **28** | Vocal capture polish — de-esser, live gate, pre-roll | **Done (MVP)** ✅ |
 | **29** | Quiet-room checklist; loop schedule clamp; punch comps lite | **Done (MVP)** ✅ |
 | **30** | Mixer channel strips; insert chain UI; bounce FX parity | **Done (MVP)** ✅ |
+| **31** | Studio shell ↔ Figma layout parity | **Done (MVP)** ✅ Guitar Studio proportions |
+| **32** | Guitar Studio Section (Figma) | **Next** |
+| **33** | Piano Studio Section (Figma) | Planned |
+| **34** | Drum & Others Studio Section (Figma) | Planned |
+| **35** | Quick Landscape Studio Section (Figma) | Planned |
 
 ### Figma anchors (shipped / in use)
 
 | Screen | Node | Role in product |
 |--------|------|-----------------|
-| Create Mix hub | `96:72447` / guest hub | Entry; only **Vocals/Audio** live |
+| Create Mix hub | `96:72447` / guest hub | Entry; Vocals / Guitar / VI / AI live |
 | Record Vocal or Audio with Mic | [`95:83675`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-83675) | Record mode |
-| Studio – After Record | [`95:85026`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85026) | Arrangement after take |
-| Create / AI board | [`218:73287`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=218-73287) | Deferred to Months 5+ |
+| Studio – After Record (Vocal) | [`95:85026`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85026) | Arrangement after take |
+| Studio – Guitar | [`95:85203`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85203) | Guitar Studio shell |
+| Studio – MIDI / VI | [`95:85253`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85253) | Piano Studio shell |
+| Drum Midi | [`95:88141`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88141) | Drum pad / parts studio |
+| Recording landscape | [`95:81418`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-81418) | Quick Landscape record |
+| Studio landscape | [`97:113250`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=97-113250) | Quick Landscape arrange |
+| Create / AI board | [`218:73287`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=218-73287) | AI compose |
 
-Exact pixel parity is **not** required; working audio + clear navigation is.
+Exact pixel parity is **not** required; working audio + clear navigation is. Use the section frames below as the north-star layout for each Studio mode.
 
 ---
 
@@ -222,6 +232,90 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
 **Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; bounce Distortion approximation; playback strip meters.
+
+---
+
+## Month 9 — Instrument Studio sections *(Weeks 31–35)* **Next**
+
+Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared chrome (header, 60pt lanes, 70pt details, action board) stays one `StudioView`; each section adds mode-specific UI + audio behavior.
+
+**Week 31 (done):** Shell layout parity — timeline fills, details/action board pinned, track headers 60pt, `+ ADD TRACK`, Figma transport cluster. Reference: [`Studio - Guitar`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85203).
+
+### Week 32 — Guitar Studio Section **Next**
+
+**Figma cluster (≈ y=8476)**
+| Frame | Node | Intent |
+|-------|------|--------|
+| Studio – Guitar | [`95:85203`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85203) | Multi-track arrange with guitar + vocal lanes |
+| Click on Guitar | [`95:88337`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88337) | Track focus / options |
+| Select Guitar Effect | [`95:89964`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-89964) | Pedalboard / FX pick |
+
+**Done when (BandLab / GarageBand guitar path)**
+- [ ] Create → Guitar opens shell matching Figma proportions (already close after W31)
+- [ ] Pedalboard sheet matches Select Guitar Effect flow (Dist / Delay / Rev order + presets)
+- [ ] Input monitor defaults on with headphones tip; DI / mic policy clear
+- [ ] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
+- [ ] Demo: record guitar take over a second track → hear FX → bounce
+
+### Week 33 — Piano Studio Section
+
+**Figma cluster (≈ y=9854)**
+| Frame | Node | Intent |
+|-------|------|--------|
+| Studio – MIDI / VI | [`95:85253`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85253) | Arrange + VI track |
+| Piano Midi | [`95:86149`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-86149) | Piano FX / MIDI edit surface |
+| Virtual Piano | [`95:87783`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-87783) | Full keyboard play surface |
+| Virtual Piano v2 | [`95:88011`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88011) | Alternate keyboard / octave UI |
+
+**Done when (GarageBand Keyboard / BandLab Keys)**
+- [ ] On-screen keyboard matches Virtual Piano layout (octaves, hold, velocity lite)
+- [ ] Optional MIDI note clips / piano-roll lite (even single-lane draw is enough for MVP)
+- [ ] Piano FX sheet from Piano Midi frame; instrument preset switch (synth bank)
+- [ ] Record button disabled for MIDI-armed track; play keys → audible; export includes rendered audio or stub capture
+- [ ] Demo: Create → VI → play progression → Open FX → bounce with keys bed
+
+### Week 34 — Drum & Others Studio Section
+
+**Figma cluster (≈ y=11232)**
+| Frame | Node | Intent |
+|-------|------|--------|
+| Drum Midi | [`95:88141`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88141) | Drum pads + part lanes |
+| Studio – Hide Tracks | [`95:85310`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85310) | Collapsed track headers for more net |
+| (Create hub) Drum / Bass / Sampler tiles | Create Mix | Entry points for “Others” |
+
+**Done when (BandLab Drum Machine / GarageBand Drums)**
+- [ ] Create → Drum (enable tile) opens drum pad surface + timeline
+- [ ] Pad hits trigger drum kit / synth percussion; pattern or one-shot clips on timeline
+- [ ] Drum parts column (kick/snare/hat lanes) or simplified pad → clip workflow
+- [ ] Hide Tracks mode collapses headers to icon rail (Figma `95:85310`) for denser arrange
+- [ ] Bass / Sampler remain “Others”: either lite presets or keep disabled with clear labels
+- [ ] Demo: lay 4-bar beat → layer vocal/guitar → bounce
+
+### Week 35 — Quick Landscape Studio Section
+
+**Figma cluster (≈ y=12610)**
+| Frame | Node | Intent |
+|-------|------|--------|
+| Recording landscape | [`95:81418`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-81418) | Landscape record / capture |
+| Studio landscape | [`97:113250`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=97-113250) | Landscape arrange (812×375) |
+| Virtual Piano (landscape) | [`97:137230`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=97-137230) | Landscape keys |
+| Quick Recording (portrait) | [`96:58733`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=96-58733) | Minimal capture entry |
+
+**Done when (GarageBand Quick / BandLab quick capture)**
+- [ ] Support landscape orientation for Studio (+ optional lock for record)
+- [ ] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
+- [ ] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
+- [ ] Landscape Virtual Piano usable for VI projects
+- [ ] Demo: rotate phone → arrange 4+ tracks comfortably → rotate back → export
+
+**Month 9 gate:** Guitar / Piano / Drum / Landscape each have a Figma-faithful entry path and a 60-second demo that produces audible audio in Studio.
+
+### Implementation notes (shared)
+
+1. Prefer **one Studio shell** with `StudioPreset` / track `category` driving overlays (pedalboard, keyboard, drum pads, landscape `ViewThatFits` / size-class layouts).
+2. Ship **vertical slice per week** — UI + audio path — not all Figma variants in one PR.
+3. Reference apps: BandLab (pads + multi-track), GarageBand (keyboard, guitar amps, Quick), Logic (hide tracks density).
+4. Defer: full amp sims, pro piano roll, step sequencer, AUv3 hosting depth.
 
 ### Closed beta checklist
 
