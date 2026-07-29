@@ -45,6 +45,7 @@ public enum StudioBounceExporter {
         var endBeat: Double = 0
         var jobs: [(clip: MXClip, track: MXSessionTrack, url: URL)] = []
         var skippedMissing = 0
+        var fxTailSeconds: Double = 0.25
         for track in project.tracks {
             if track.isMuted { continue }
             if anySolo && !track.isSolo { continue }
@@ -58,6 +59,7 @@ public enum StudioBounceExporter {
                 }
                 jobs.append((clip, track, url))
                 endBeat = max(endBeat, clip.startBeat + clip.lengthBeats)
+                fxTailSeconds = max(fxTailSeconds, mixClipFXTailSeconds(track: track))
             }
         }
         guard !jobs.isEmpty, endBeat > 0 else {
@@ -67,7 +69,7 @@ public enum StudioBounceExporter {
             throw BounceError.noAudio
         }
 
-        let totalSeconds = endBeat * 60.0 / bpm + 0.25
+        let totalSeconds = endBeat * 60.0 / bpm + fxTailSeconds
         let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
         var left = [Float](repeating: 0, count: frameCount)
         var right = [Float](repeating: 0, count: frameCount)
@@ -212,13 +214,24 @@ public enum StudioBounceExporter {
             : nil
         reverb?.wetDryMix = track.reverbMix
 
-        for i in 0..<outFrames {
-            let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
+        // Run silence through delay/reverb after the dry clip so wet tails are not chopped.
+        let tailFrames = Int((mixClipFXTailSeconds(track: track) * sampleRate).rounded())
+        let processFrames = outFrames + (delayOn || reverbOn ? tailFrames : 0)
+
+        for i in 0..<processFrames {
             var mono: Float
-            if channels >= 2 {
-                mono = 0.5 * (data[0][srcIndex] + data[1][srcIndex])
+            if i < outFrames {
+                let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
+                if channels >= 2 {
+                    mono = 0.5 * (data[0][srcIndex] + data[1][srcIndex])
+                } else {
+                    mono = data[0][srcIndex]
+                }
+                // Fade the dry input so insert FX (esp. reverb/delay) can ring out naturally.
+                let t = Double(i) / max(sampleRate, 1)
+                mono *= clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)
             } else {
-                mono = data[0][srcIndex]
+                mono = 0
             }
             if hpfOn {
                 mono = hpf.process(mono)
@@ -242,13 +255,25 @@ public enum StudioBounceExporter {
             if let reverb {
                 mono = reverb.process(mono)
             }
-            let t = Double(i) / max(sampleRate, 1)
-            let envelope = clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
-            left[di] += mono * leftGain * envelope
-            right[di] += mono * rightGain * envelope
+            left[di] += mono * leftGain
+            right[di] += mono * rightGain
         }
+    }
+
+    /// Extra seconds of silence to render through delay/reverb after clip audio ends.
+    static func mixClipFXTailSeconds(track: MXSessionTrack) -> Double {
+        var tail: Double = 0.25
+        if track.delayMix >= 0.5 {
+            // Primary echo + a couple of feedback repeats.
+            tail = max(tail, Double(track.delayTime) * 3 + 0.15)
+        }
+        if track.reverbMix > 0.5 {
+            // Schroeder combs ~1s RT60 (medium) / shorter for Reels small room.
+            tail = max(tail, track.reelsVocalEnabled ? 0.85 : 1.35)
+        }
+        return tail
     }
 
     /// Soft-knee downward expander: below `threshold`, gain falls as (abs/threshold)².
@@ -280,7 +305,8 @@ public enum StudioBounceExporter {
             gain = 1
         } else {
             let over = max(0, x - thresholdLinear)
-            let hardGain = (thresholdLinear + over / max(ratio, 1)) / x
+            // Compressors only attenuate — clamp so the soft knee never boosts below threshold.
+            let hardGain = min(1, (thresholdLinear + over / max(ratio, 1)) / x)
             if x >= upper {
                 gain = hardGain
             } else {
