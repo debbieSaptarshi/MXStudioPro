@@ -1408,6 +1408,8 @@ public final class StudioSessionController {
 
     private func scheduleClipPlayers(fromSample sample: Int64) {
         guard let transport else { return }
+        // Stop every player first so deactivated takes do not keep sounding.
+        stopClipPlayers()
         let anySolo = project.tracks.contains(where: \.isSolo)
 
         for track in project.tracks {
@@ -1421,7 +1423,6 @@ public final class StudioSessionController {
                       let url = audioURL(for: clip),
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
-                player.stop()
                 player.volume = track.volume * clip.gain
                 player.pan = track.pan
 
