@@ -1,6 +1,6 @@
 # MXStudio Pro — Product Roadmap
 
-**Last updated:** 30 Jul 2026  
+**Last updated:** 29 Jul 2026  
 **North star (first 8 weeks):**  
 Add track → Record audio → Clip on timeline → Alter → Add another track → Mix → Export  
 
@@ -38,6 +38,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **24** | Hardening | **Done (MVP)** ✅ Studio retry, clip/bounce guards, launch args verified |
 | **25** | Beta readiness / TestFlight prep | **Done (MVP)** ✅ closed-beta checklist, build verified; TestFlight upload is operator step |
 | **26** | Closed beta gate | **Done (MVP)** ✅ local Create → Publish → Remix stable; Month 6 gate passed |
+| **27** | Arrangement polish — loop, fades, redo, Reels LUFS | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -76,7 +77,7 @@ Exact pixel parity is **not** required; working audio + clear navigation is.
 **Arrangement**
 - [x] Select clip: trim, move, delete (split optional/basic)
 - [x] Undo for clip edits (command stack lite)
-- [ ] Loop region (optional)
+- [x] Loop region (optional) — Week 27: transport loop + Studio repeat control
 
 **Phone-vocal quality (Reels-ready basics)**
 - [x] Input level meter on record screen (peak; clip warning at ~−1 dBFS)
@@ -104,7 +105,7 @@ Exact pixel parity is **not** required; working audio + clear navigation is.
 ### Week 8 — Transform lite + Export
 - [x] Peak normalize on bounce (~−1 dBFS; LUFS deferred)
 - [x] Bounce → share sheet (WAV + M4A)
-- [ ] Loudness option aimed at Reels/TikTok (−14 / −16 LUFS target) — deferred (no LUFS meter yet)
+- [x] Loudness option aimed at Reels/TikTok (−14 LUFS target) — Week 27 MVP (`MXLoudness` + export toggle)
 - [x] Back from Studio: save; list under My Mix (local)
 
 **Exit:** Full DAW loop on device &lt; 5 minutes. ✅
@@ -169,6 +170,21 @@ Export/publish UX, collab lite, profile/notifications, hardening, TestFlight pre
 
 **Gate:** Closed beta with Create → Publish → Remix stable. ✅ **Passed (local MVP)** — ready for operator TestFlight upload when Apple credentials are available.
 
+---
+
+## Month 7 — Arrangement + export polish *(Weeks 27+)* ✅
+
+Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
+
+| Item | Status |
+|------|--------|
+| **Redo** stack (pair with existing undo) | ✅ `StudioEditStack` dual stack; action-board redo wired |
+| **Loop region** | ✅ Project loop fields → `MXTransport.LoopRegion`; wrap reschedules clips; Studio repeat control |
+| **Clip fade in/out + gain** | ✅ `MXClip` fields; live + bounce envelopes; clip inspector sheet |
+| **Export loudness for Reels (−14 LUFS)** | ✅ `MXLoudness` in MXAudioDSP; Export sheet toggle vs peak normalize |
+
+**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, master limiter, latency calibration UX, snap-grid toggle.
+
 ### Closed beta checklist
 
 Run on a physical device or simulator before handing to testers. All paths are local MVP; cloud/backend gaps are expected (see Known MVP limits).
@@ -208,7 +224,7 @@ Run on a physical device or simulator before handing to testers. All paths are l
 | Social | Local `Documents/Social` spine — no remote feed |
 | Collab | Invite + notifications are local stubs — no real-time sync |
 | AI | Stub WAV generation — not connected to a model API |
-| Export | Peak normalize only — no LUFS targeting yet |
+| Export | Peak normalize **or** Reels −14 LUFS MVP (`MXLoudness`) — not a certified meter |
 | Discover | Demo cards + templates — not a live catalog |
 | Notifications | Persisted locally; badge clears per-item or “Mark all read” |
 
@@ -217,6 +233,18 @@ Run on a physical device or simulator before handing to testers. All paths are l
 ## Audio feature backlog (prioritized)
 
 Use this as the menu when a week has spare capacity. **Bold** items are near-term.
+
+### Arrangement
+- **Trim / move / delete**
+- Fade in/out, clip gain ✅ Week 27
+- Snap to grid, loop region ✅ loop Week 27 (snap remains hard-coded 16ths)
+- Undo/redo ✅ Week 27
+
+### Mix / FX
+- Full mixer view
+- Insert chain UI
+- Shared reverb send
+- Master limiter on bounce
 
 ### Capture
 - **Input meter + clip warning**
@@ -232,20 +260,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - Noise gate / light denoise
 - De-esser
 - Mono record default for vocals
-- **Export loudness for Reels**
+- **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
 - Quiet-room checklist (onboarding)
-
-### Arrangement
-- **Trim / move / delete**
-- Fade in/out, clip gain
-- Snap to grid, loop region
-- Undo/redo
-
-### Mix / FX
-- Full mixer view
-- Insert chain UI
-- Shared reverb send
-- Master limiter on bounce
 
 ### Later “wow”
 - Pitch correction, time stretch, harmonies
@@ -311,6 +327,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
       → W13–16 FX + guitar/MIDI               ← done
         → W17–20 AI + Discover                ← done
           → W21–26 TestFlight beta            ← done (local closed-beta ready)
+            → W27 Arrangement + Reels LUFS    ← done (MVP)
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -327,6 +344,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 13–16 | Guitar/MIDI DAW |
 | 17–20 | AI + Discover |
 | 21–26 | TestFlight beta *(local closed-beta ready)* |
+| 27+ | Arrangement loop / fades / redo + Reels LUFS *(done MVP)* |
 
 ---
 

@@ -1,12 +1,21 @@
 import AVFoundation
 import Foundation
+import MXStudioEngine
 
-/// Offline mix bounce for Week 8 — mixes project clips to stereo WAV + M4A.
+/// Offline mix bounce for Week 8+ — mixes project clips to stereo WAV + M4A.
 public enum StudioBounceExporter {
+    public enum LoudnessMode: String, Sendable, CaseIterable {
+        /// Peak normalize to ~−1 dBFS (original Week 8 behavior).
+        case peakNormalize
+        /// Target ~−14 LUFS for Reels / TikTok, then peak-cap.
+        case reelsLUFS
+    }
+
     public struct Result: Sendable {
         public var wavURL: URL
         public var m4aURL: URL
         public var durationSeconds: Double
+        public var loudnessMode: LoudnessMode
     }
 
     public enum BounceError: Error, LocalizedError {
@@ -25,7 +34,8 @@ public enum StudioBounceExporter {
         project: MXProject,
         audioDirectory: URL,
         outputDirectory: URL,
-        normalize: Bool = true
+        normalize: Bool = true,
+        loudnessMode: LoudnessMode = .peakNormalize
     ) throws -> Result {
         let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
         let bpm = max(project.bpm, 1)
@@ -72,8 +82,18 @@ public enum StudioBounceExporter {
             )
         }
 
+        let appliedMode: LoudnessMode
         if normalize {
-            peakNormalize(left: &left, right: &right, targetPeak: 0.89)
+            switch loudnessMode {
+            case .peakNormalize:
+                peakNormalize(left: &left, right: &right, targetPeak: 0.89)
+                appliedMode = .peakNormalize
+            case .reelsLUFS:
+                MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                appliedMode = .reelsLUFS
+            }
+        } else {
+            appliedMode = loudnessMode
         }
 
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -85,7 +105,12 @@ public enum StudioBounceExporter {
         try writeWAV(left: left, right: right, sampleRate: sampleRate, to: wavURL)
         try writeM4A(left: left, right: right, sampleRate: sampleRate, to: m4aURL)
 
-        return Result(wavURL: wavURL, m4aURL: m4aURL, durationSeconds: totalSeconds)
+        return Result(
+            wavURL: wavURL,
+            m4aURL: m4aURL,
+            durationSeconds: totalSeconds,
+            loudnessMode: appliedMode
+        )
     }
 
     // MARK: - Mix
@@ -117,12 +142,13 @@ public enum StudioBounceExporter {
         guard framesToRead > 0, let data = buffer.floatChannelData else { return }
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
-        let gain = track.volume
+        let gain = track.volume * clip.gain
         let pan = track.pan
         let leftGain = gain * min(1, max(0, 1 - pan))
         let rightGain = gain * min(1, max(0, 1 + pan))
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
+        let audibleDuration = Double(outFrames) / max(sampleRate, 1)
 
         for i in 0..<outFrames {
             let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
@@ -132,10 +158,12 @@ public enum StudioBounceExporter {
             } else {
                 mono = data[0][srcIndex]
             }
+            let t = Double(i) / max(sampleRate, 1)
+            let envelope = clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
-            left[di] += mono * leftGain
-            right[di] += mono * rightGain
+            left[di] += mono * leftGain * envelope
+            right[di] += mono * rightGain * envelope
         }
     }
 

@@ -14,6 +14,8 @@ struct StudioExportSheet: View {
     @State private var publishedPost: MXSocialStore.Post?
     @State private var showShare = false
     @State private var shareURLs: [URL] = []
+    /// Reels / TikTok loudness (~−14 LUFS) vs peak normalize (~−1 dBFS).
+    @State private var useReelsLoudness = true
 
     private enum Phase: Equatable {
         case options
@@ -115,6 +117,25 @@ struct StudioExportSheet: View {
                     .foregroundStyle(MXColor.grey)
             }
             .padding(.top, 8)
+
+            Toggle(isOn: $useReelsLoudness) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Reels loudness (−14 LUFS)")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                    Text(useReelsLoudness
+                         ? "Target social platforms; peak-capped after."
+                         : "Peak normalize to ~−1 dBFS instead.")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .tint(MXColor.accent)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
 
             VStack(spacing: 10) {
                 exportOption(
@@ -383,10 +404,12 @@ struct StudioExportSheet: View {
     private func shareFiles() async {
         phase = .working("Bouncing mix…")
         do {
-            let result = try await session.bounceMix(normalize: true)
+            let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
+            let result = try await session.bounceMix(normalize: true, loudnessMode: mode)
             lastBounce = result
             shareURLs = [result.wavURL, result.m4aURL]
-            phase = .shareSuccess(format: "WAV + M4A")
+            let format = mode == .reelsLUFS ? "WAV + M4A · −14 LUFS" : "WAV + M4A · peak"
+            phase = .shareSuccess(format: format)
         } catch {
             phase = .error(message: error.localizedDescription, retry: .share)
         }
@@ -403,7 +426,8 @@ struct StudioExportSheet: View {
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalCaption = trimmedCaption.isEmpty ? session.project.name : trimmedCaption
         do {
-            let result = try await session.bounceMix(normalize: true)
+            let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
+            let result = try await session.bounceMix(normalize: true, loudnessMode: mode)
             lastBounce = result
             let post = try MXSocialStore.shared.publish(
                 project: session.project,
