@@ -1,6 +1,6 @@
 # MXStudio Pro — Product Roadmap
 
-**Last updated:** 29 Jul 2026  
+**Last updated:** 30 Jul 2026  
 **North star (first 8 weeks):**  
 Add track → Record audio → Clip on timeline → Alter → Add another track → Mix → Export  
 
@@ -39,6 +39,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **25** | Beta readiness / TestFlight prep | **Done (MVP)** ✅ closed-beta checklist, build verified; TestFlight upload is operator step |
 | **26** | Closed beta gate | **Done (MVP)** ✅ local Create → Publish → Remix stable; Month 6 gate passed |
 | **27** | Arrangement polish — loop, fades, redo, Reels LUFS | **Done (MVP)** ✅ |
+| **28** | Vocal capture polish — de-esser, live gate, pre-roll | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -172,7 +173,7 @@ Export/publish UX, collab lite, profile/notifications, hardening, TestFlight pre
 
 ---
 
-## Month 7 — Arrangement + export polish *(Weeks 27+)* ✅
+## Month 7 — Arrangement + export polish *(Weeks 27–28)* ✅
 
 Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 
@@ -186,11 +187,13 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
 | **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
 | **Latency calibration UX** | ✅ Studio gear → settings sheet; `MXLatencyCalibrator` measure/apply; UserDefaults persist |
-| **Noise gate (vocal, bounce)** | ✅ `noiseGateEnabled` / `noiseGateThreshold` on track; soft-knee in `mixClip`; FX sheet toggle |
+| **Noise gate (vocal, bounce + live)** | ✅ Bounce soft-knee; Week 28 live playback expander + monitor gate |
 | **Punch-in / punch-out (MVP)** | ✅ Record while playing keeps playhead; clip placed at punch-in beat; loop wrap punches out |
 | **Multiple takes lite (MVP)** | ✅ `MXClip.takeIndex` + `isActive`; overlapping takes deactivate; Takes (N) picker; playback/bounce skip inactive |
+| **De-esser (vocal)** | ✅ Week 28 live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount |
+| **Pre-roll buffer** | ✅ Week 28 ring while record-armed; Settings 0–500 ms; clip start shifts / trims at 0 |
 
-**Still backlog (next):** de-esser; live (monitor) noise-gate path.
+**Still backlog (next):** quiet-room checklist; playlist lanes / crossfade comps; full mixer depth.
 
 **Takes / punch MVP limits:** no playlist lanes, no crossfade comps, no take folder UI — one active take per overlapping region.
 
@@ -259,15 +262,15 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - **Input meter + clip warning**
 - **Monitor policy (speaker vs headphones)**
 - Punch-in / punch-out ✅ Week 27+ MVP (playhead punch-in; loop-end punch-out; no playlist lanes)
-- Multiple takes + take picker ✅ Week 27+ MVP (`takeIndex` / `isActive`; no crossfade comps)
-- Pre-roll buffer
+- Multiple takes + take picker ✅ Week 27+ MVP (`takeIndex` / `isActive`; no playlist crossfade comps)
+- Pre-roll buffer ✅ Week 28 (`MXRecorder` ring while armed; Studio Settings 0–500 ms)
 - Latency calibration UX ✅ Week 27+ (Studio settings sheet → `MXLatencyCalibrator`; UserDefaults)
 
 ### Phone-vocal / Reels quality
 - **HPF on take**
 - **Reels Vocal preset chain**
-- Noise gate / light denoise ✅ Week 27+ bounce soft-knee (`noiseGateEnabled`); **live AVAudioUnit path still backlog**
-- De-esser
+- Noise gate / light denoise ✅ Week 27 bounce + Week 28 live/monitor expander (`syncMonitorNoiseGate`)
+- De-esser ✅ Week 28 (live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount)
 - Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
 - Quiet-room checklist (onboarding)
