@@ -1004,6 +1004,18 @@ public final class StudioSessionController {
         persistSoon()
     }
 
+    public func setNoiseGateEnabled(_ enabled: Bool, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        project.tracks[index].noiseGateEnabled = enabled
+        persistSoon()
+    }
+
+    public func setNoiseGateThreshold(_ threshold: Float, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        project.tracks[index].noiseGateThreshold = min(max(threshold, 0), 0.2)
+        persistSoon()
+    }
+
     // MARK: - Latency calibration
 
     /// Applied round-trip latency in milliseconds (persisted via `MXLatencyCalibrator`).

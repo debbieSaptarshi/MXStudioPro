@@ -238,6 +238,10 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var delayTime: Float
     /// Distortion wet mix 0…100.
     public var distortionMix: Float
+    /// Bounce-path noise gate (vocal). Off by default — live monitoring is ungated (MVP).
+    public var noiseGateEnabled: Bool
+    /// Linear amplitude threshold (0…0.2). Samples below are attenuated with a soft knee.
+    public var noiseGateThreshold: Float
 
     public init(
         id: UUID = UUID(),
@@ -256,7 +260,9 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         eqMidGain: Float = 0,
         delayMix: Float = 0,
         delayTime: Float = 0.25,
-        distortionMix: Float = 0
+        distortionMix: Float = 0,
+        noiseGateEnabled: Bool = false,
+        noiseGateThreshold: Float = 0.02
     ) {
         self.id = id
         self.name = name
@@ -275,6 +281,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.delayMix = min(max(delayMix, 0), 100)
         self.delayTime = min(max(delayTime, 0.01), 1)
         self.distortionMix = min(max(distortionMix, 0), 100)
+        self.noiseGateEnabled = noiseGateEnabled
+        self.noiseGateThreshold = min(max(noiseGateThreshold, 0), 0.2)
     }
 
     public init(from decoder: Decoder) throws {
@@ -297,11 +305,14 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         delayMix = min(max(try c.decodeIfPresent(Float.self, forKey: .delayMix) ?? 0, 0), 100)
         delayTime = min(max(try c.decodeIfPresent(Float.self, forKey: .delayTime) ?? 0.25, 0.01), 1)
         distortionMix = min(max(try c.decodeIfPresent(Float.self, forKey: .distortionMix) ?? 0, 0), 100)
+        noiseGateEnabled = try c.decodeIfPresent(Bool.self, forKey: .noiseGateEnabled) ?? false
+        noiseGateThreshold = min(max(try c.decodeIfPresent(Float.self, forKey: .noiseGateThreshold) ?? 0.02, 0), 0.2)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
+        case noiseGateEnabled, noiseGateThreshold
     }
 }
 

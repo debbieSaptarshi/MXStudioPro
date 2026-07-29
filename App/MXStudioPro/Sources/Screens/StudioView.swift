@@ -1389,6 +1389,37 @@ public struct StudioView: View {
                 labelWidth: 56
             )
 
+            if track.category == .vocal {
+                Toggle(isOn: Binding(
+                    get: { track.noiseGateEnabled },
+                    set: { session.setNoiseGateEnabled($0, trackID: track.id) }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Noise Gate")
+                            .font(MXFont.caption())
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MXColor.white)
+                        Text("Export only — quiets room noise between phrases")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                    }
+                }
+                .tint(MXColor.accent)
+
+                if track.noiseGateEnabled {
+                    mixerSliderRow(
+                        label: "Thresh",
+                        valueLabel: String(format: "%.3f", track.noiseGateThreshold),
+                        value: Binding(
+                            get: { Double(track.noiseGateThreshold) },
+                            set: { session.setNoiseGateThreshold(Float($0), trackID: track.id) }
+                        ),
+                        range: 0...0.2,
+                        labelWidth: 56
+                    )
+                }
+            }
+
             if !isGuitar {
                 Button {
                     session.toggleReelsVocal(trackID: track.id)

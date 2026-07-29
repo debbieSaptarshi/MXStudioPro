@@ -155,14 +155,19 @@ public enum StudioBounceExporter {
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
+        let gateOn = track.noiseGateEnabled
+        let gateThreshold = min(max(track.noiseGateThreshold, 0), 0.2)
 
         for i in 0..<outFrames {
             let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
-            let mono: Float
+            var mono: Float
             if channels >= 2 {
                 mono = 0.5 * (data[0][srcIndex] + data[1][srcIndex])
             } else {
                 mono = data[0][srcIndex]
+            }
+            if gateOn {
+                mono = applyNoiseGate(mono, threshold: gateThreshold)
             }
             let t = Double(i) / max(sampleRate, 1)
             let envelope = clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)
@@ -171,6 +176,17 @@ public enum StudioBounceExporter {
             left[di] += mono * leftGain * envelope
             right[di] += mono * rightGain * envelope
         }
+    }
+
+    /// Soft-knee downward expander: below `threshold`, gain falls as (abs/threshold)².
+    /// At/above threshold the sample passes unchanged. Bounce-only MVP (no live AVAudioUnit).
+    static func applyNoiseGate(_ sample: Float, threshold: Float) -> Float {
+        let thresh = max(threshold, 1e-6)
+        let magnitude = abs(sample)
+        guard magnitude < thresh else { return sample }
+        let ratio = magnitude / thresh
+        // Soft knee: quadratic taper toward silence (strong attenuation, not hard mute).
+        return sample * ratio * ratio
     }
 
     static func peakNormalize(left: inout [Float], right: inout [Float], targetPeak: Float = 0.89) {

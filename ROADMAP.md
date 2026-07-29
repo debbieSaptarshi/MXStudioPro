@@ -186,8 +186,9 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
 | **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
 | **Latency calibration UX** | ✅ Studio gear → settings sheet; `MXLatencyCalibrator` measure/apply; UserDefaults persist |
+| **Noise gate (vocal, bounce)** | ✅ `noiseGateEnabled` / `noiseGateThreshold` on track; soft-knee in `mixClip`; FX sheet toggle |
 
-**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser.
+**Still backlog (next):** punch-in/out, multiple takes, de-esser; live (monitor) noise-gate path.
 
 ### Closed beta checklist
 
@@ -261,7 +262,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Phone-vocal / Reels quality
 - **HPF on take**
 - **Reels Vocal preset chain**
-- Noise gate / light denoise
+- Noise gate / light denoise ✅ Week 27+ bounce soft-knee (`noiseGateEnabled`); **live AVAudioUnit path still backlog**
 - De-esser
 - Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
