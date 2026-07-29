@@ -42,7 +42,14 @@ public struct StudioView: View {
                 studioStartFailureView(message: message)
             } else if session.isRecordMode {
                 // Figma 95:83675 — Record Vocal or Audio with Mic
-                RecordVocalView(session: session, onClose: { session.exitRecordMode() })
+                RecordVocalView(
+                    session: session,
+                    onClose: { session.exitRecordMode() },
+                    onOpenFX: {
+                        selectedTrackID = session.project.armedTrack?.id ?? selectedTrackID
+                        showFXSheet = true
+                    }
+                )
             } else {
                 // Figma 95:85026 — Studio - After Record Audio or Vocal
                 afterRecordStudio
@@ -1351,10 +1358,10 @@ public struct StudioView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
 
-            ScrollView {
-                VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
                     ForEach(session.project.tracks) { track in
-                        mixerTrackRow(track)
+                        mixerChannelStrip(track)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1407,10 +1414,17 @@ public struct StudioView: View {
     private func fxTrackRow(_ track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar || session.preset == .guitar
         return VStack(alignment: .leading, spacing: 8) {
-            Text(track.name)
-                .font(MXFont.mediumButton())
-                .foregroundStyle(MXColor.white)
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(mixerCategoryTint(track.category))
+                    .frame(width: 3, height: 16)
+                Text(track.name)
+                    .font(MXFont.mediumButton())
+                    .foregroundStyle(MXColor.white)
+                    .lineLimit(1)
+            }
+
+            insertChainBar(for: track)
 
             if !isGuitar {
                 mixerSliderRow(
@@ -1564,14 +1578,25 @@ public struct StudioView: View {
         )
     }
 
-    private func mixerTrackRow(_ track: MXSessionTrack) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+    /// BandLab / GarageBand-style channel strip for the mixer sheet.
+    private func mixerChannelStrip(_ track: MXSessionTrack) -> some View {
+        let tint = mixerCategoryTint(track.category)
+        return VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(tint)
+                    .frame(width: 3, height: 28)
                 Text(track.name)
-                    .font(MXFont.mediumButton())
+                    .font(MXFont.caption())
+                    .fontWeight(.semibold)
                     .foregroundStyle(MXColor.white)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 32, alignment: .top)
+
+            HStack(spacing: 6) {
                 mixerMuteSoloButton("M", active: track.isMuted) {
                     session.toggleMute(trackID: track.id)
                 }
@@ -1580,59 +1605,91 @@ public struct StudioView: View {
                 }
             }
 
-            mixerSliderRow(
-                label: "Vol",
-                valueLabel: String(format: "%.0f%%", track.volume * 100),
-                value: Binding(
-                    get: { Double(track.volume) },
-                    set: { session.setTrackVolume(Float($0), trackID: track.id) }
-                ),
-                range: 0...1
-            )
+            VStack(spacing: 4) {
+                Text(String(format: "%.0f", track.volume * 100))
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.lightGrey)
+                    .monospacedDigit()
+                MixerVerticalFader(
+                    value: Binding(
+                        get: { Double(track.volume) },
+                        set: { session.setTrackVolume(Float($0), trackID: track.id) }
+                    ),
+                    tint: tint
+                )
+                Text("Vol")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
 
-            mixerSliderRow(
-                label: "Pan",
-                valueLabel: panLabel(track.pan),
-                value: Binding(
-                    get: { Double(track.pan) },
-                    set: { session.setTrackPan(Float($0), trackID: track.id) }
-                ),
-                range: -1...1
-            )
+            VStack(spacing: 4) {
+                PanKnob(
+                    value: Binding(
+                        get: { track.pan },
+                        set: { session.setTrackPan($0, trackID: track.id) }
+                    ),
+                    size: 28
+                )
+                Text(panLabel(track.pan))
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .monospacedDigit()
+            }
 
-            mixerSliderRow(
-                label: "Rev",
-                valueLabel: String(format: "%.0f", track.reverbMix),
-                value: Binding(
-                    get: { Double(track.reverbMix) },
-                    set: { session.setTrackReverbMix(Float($0), trackID: track.id) }
-                ),
-                range: 0...100
-            )
+            // Insert reverb for audio; MIDI keeps a separate aux Send below.
+            VStack(spacing: 2) {
+                Text("Rev")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                Slider(
+                    value: Binding(
+                        get: { Double(track.reverbMix) },
+                        set: { session.setTrackReverbMix(Float($0), trackID: track.id) }
+                    ),
+                    in: 0...100
+                )
+                .tint(MXColor.accent)
+                .controlSize(.mini)
+                Text(String(format: "%.0f", track.reverbMix))
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.lightGrey)
+                    .monospacedDigit()
+            }
 
-            mixerSliderRow(
-                label: "Send",
-                valueLabel: String(format: "%.0f", track.reverbSend),
-                value: Binding(
-                    get: { Double(track.reverbSend) },
-                    set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
-                ),
-                range: 0...100
-            )
+            if track.kind == .midi {
+                VStack(spacing: 2) {
+                    Text("Send")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                    Slider(
+                        value: Binding(
+                            get: { Double(track.reverbSend) },
+                            set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
+                        ),
+                        in: 0...100
+                    )
+                    .tint(MXColor.teal)
+                    .controlSize(.mini)
+                    Text(String(format: "%.0f", track.reverbSend))
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .monospacedDigit()
+                }
+            }
 
-            if track.category != .guitar && track.kind != .midi {
+            if track.category == .vocal {
                 Button {
                     session.toggleReelsVocal(trackID: track.id)
                 } label: {
-                    Text("Reels Vocal")
+                    Text("Reels")
                         .font(MXFont.caption())
                         .fontWeight(.semibold)
                         .foregroundStyle(track.reelsVocalEnabled ? MXColor.black : MXColor.lightGrey)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(track.reelsVocalEnabled ? MXColor.accent : MXColor.layer2)
+                                .fill(track.reelsVocalEnabled ? MXColor.accent : MXColor.black)
                         )
                         .overlay {
                             if !track.reelsVocalEnabled {
@@ -1644,11 +1701,61 @@ public struct StudioView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
+        .padding(10)
+        .frame(width: 96)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(MXColor.layer2)
         )
+    }
+
+    /// Fixed live-order insert chips (visual; no drag-reorder).
+    private func insertChainBar(for track: MXSessionTrack) -> some View {
+        let stages: [(label: String, active: Bool)] = [
+            ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
+            ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
+            ("Dly", track.delayMix > 0.5),
+            ("Dist", track.distortionMix > 0.5),
+            ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
+            ("Rev", track.reverbMix > 0.5),
+        ]
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
+                    if index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(MXColor.grey.opacity(0.7))
+                    }
+                    Text(stage.label)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(stage.active ? MXColor.black : MXColor.grey)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(stage.active ? MXColor.accent : MXColor.black)
+                        )
+                        .overlay {
+                            if !stage.active {
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                            }
+                        }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Insert chain")
+    }
+
+    private func mixerCategoryTint(_ category: MXSessionTrack.Category) -> Color {
+        switch category {
+        case .vocal: return MXColor.accent
+        case .guitar: return MXColor.teal
+        case .keys: return MXColor.orange
+        case .imported: return MXColor.red
+        }
     }
 
     private func mixerSliderRow(
@@ -1724,6 +1831,65 @@ public struct StudioView: View {
                 .font(.system(size: size * 0.72, weight: .semibold))
                 .foregroundStyle(MXColor.white)
                 .frame(width: size, height: size)
+        }
+    }
+}
+
+// MARK: - Mixer vertical fader
+
+/// Tall volume fader for mixer channel strips (drag up/down).
+private struct MixerVerticalFader: View {
+    @Binding var value: Double
+    var tint: Color
+    var height: CGFloat = 140
+
+    var body: some View {
+        GeometryReader { geo in
+            let trackWidth: CGFloat = 4
+            let thumbSize: CGFloat = 16
+            let travel = max(geo.size.height - thumbSize, 1)
+            let y = travel * (1 - value)
+
+            ZStack(alignment: .top) {
+                Capsule(style: .continuous)
+                    .fill(MXColor.black)
+                    .frame(width: trackWidth, height: geo.size.height)
+                    .frame(maxWidth: .infinity)
+
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.85))
+                    .frame(width: trackWidth, height: max(geo.size.height - y - thumbSize / 2, trackWidth))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(tint.opacity(0.35))
+                    )
+                    .frame(width: 22, height: thumbSize)
+                    .offset(y: y)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        let loc = gesture.location.y - thumbSize / 2
+                        let next = 1 - Double(loc / travel)
+                        value = min(max(next, 0), 1)
+                    }
+            )
+        }
+        .frame(width: 28, height: height)
+        .accessibilityLabel("Volume")
+        .accessibilityValue(Text(String(format: "%.0f percent", value * 100)))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: value = min(value + 0.05, 1)
+            case .decrement: value = max(value - 0.05, 0)
+            @unknown default: break
+            }
         }
     }
 }

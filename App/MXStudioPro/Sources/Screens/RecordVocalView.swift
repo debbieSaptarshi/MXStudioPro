@@ -4,6 +4,8 @@ import SwiftUI
 struct RecordVocalView: View {
     @Bindable var session: StudioSessionController
     var onClose: () -> Void
+    /// Opens the Studio Track FX / Pedalboard sheet (wired from `StudioView`).
+    var onOpenFX: (() -> Void)? = nil
 
     private var armedTrack: MXSessionTrack? {
         session.project.armedTrack ?? session.project.tracks.first
@@ -65,14 +67,20 @@ struct RecordVocalView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 2) {
-                Text("EQ")
-                    .font(MXFont.mediumButton())
-                    .foregroundStyle(MXColor.white)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(MXColor.layer2)
-                    )
+                Button {
+                    onOpenFX?()
+                } label: {
+                    Text("EQ")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Track FX")
 
                 metalIcon("square.and.arrow.up")
                 metalIcon("ellipsis")
@@ -673,10 +681,11 @@ private struct CaptureQualityToggleStyle: ToggleStyle {
     }
 }
 
-// MARK: - Pan knob
+// MARK: - Pan knob (shared with Studio mixer channel strips)
 
-private struct PanKnob: View {
+struct PanKnob: View {
     @Binding var value: Float
+    var size: CGFloat = 32
 
     var body: some View {
         ZStack {
@@ -688,11 +697,12 @@ private struct PanKnob: View {
                 .rotationEffect(.degrees(-90))
             Capsule()
                 .fill(MXColor.accent)
-                .frame(width: 2, height: 10)
-                .offset(y: -8)
+                .frame(width: 2, height: size * 0.31)
+                .offset(y: -size * 0.25)
                 .rotationEffect(.degrees(Double(value) * 120))
         }
-        .frame(width: 32, height: 32)
+        .frame(width: size, height: size)
+        .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { gesture in
@@ -700,5 +710,14 @@ private struct PanKnob: View {
                     value = min(max(value + delta * 0.08, -1), 1)
                 }
         )
+        .accessibilityLabel("Pan")
+        .accessibilityValue(panAccessibilityLabel)
+    }
+
+    private var panAccessibilityLabel: String {
+        if abs(value) < 0.02 { return "Center" }
+        return value < 0
+            ? String(format: "Left %.0f", abs(value) * 100)
+            : String(format: "Right %.0f", value * 100)
     }
 }
