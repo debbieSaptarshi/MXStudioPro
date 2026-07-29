@@ -12,6 +12,8 @@ public enum StudioPreset: String, Equatable, Sendable {
     case ai
     case live
     case template
+    /// Minimal capture entry (Week 35 Quick Recording) — vocal project auto-opens Record.
+    case quickRecord
 
     public var title: String {
         switch self {
@@ -26,6 +28,7 @@ public enum StudioPreset: String, Equatable, Sendable {
         case .ai: return "Create Music With AI"
         case .live: return "Live Performance"
         case .template: return "Template"
+        case .quickRecord: return "Quick Recording"
         }
     }
 }

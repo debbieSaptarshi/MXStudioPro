@@ -197,6 +197,13 @@ public final class StudioSessionController {
             project = existing
         } else if preset == .drums {
             project = (try? MXProjectStore.shared.createDrumsProject()) ?? .untitledDrums()
+        } else if preset == .quickRecord {
+            // Fresh vocal project each Quick Recording — GarageBand Quick / BandLab capture.
+            var quick = (try? MXProjectStore.shared.createVocalProject()) ?? .untitledVocal()
+            quick.name = "Quick Recording"
+            quick.presetRaw = StudioPreset.quickRecord.rawValue
+            try? MXProjectStore.shared.save(quick)
+            project = quick
         } else {
             project = MXProject(name: "Untitled \(preset.title)", tracks: [
                 MXSessionTrack(name: "Track 1", kind: .audio, isArmed: true)
@@ -285,6 +292,11 @@ public final class StudioSessionController {
             }
             playheadObserver = observer
             persistSoon()
+
+            // Quick Recording: land on Record Vocal chrome immediately (Figma 96:58733).
+            if preset == .quickRecord {
+                enterRecordMode()
+            }
         } catch {
             phase = .failed(error.localizedDescription)
         }

@@ -24,13 +24,20 @@ public struct StudioView: View {
     @State private var showClipInspector = false
     /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
     @State private var tracksCollapsed = false
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    private var trackColumnWidth: CGFloat { tracksCollapsed ? 44 : 135 }
+    /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
+    private var isLandscape: Bool { verticalSizeClass == .compact }
+
+    private var trackColumnWidth: CGFloat {
+        if tracksCollapsed || isLandscape { return 44 }
+        return 135
+    }
     private let beatsVisible: Double = 8
     /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
-    private let trackLaneHeight: CGFloat = 60
-    /// Figma Bottom Actions “Studio Details” row is 70pt.
-    private let detailsStripHeight: CGFloat = 70
+    private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
+    /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
+    private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
     private let rulerHeight: CGFloat = 24
 
     public init(
@@ -66,6 +73,13 @@ public struct StudioView: View {
         .onAppear {
             session.start()
             selectedTrackID = session.project.armedTrack?.id ?? session.project.tracks.first?.id
+            if isLandscape { tracksCollapsed = true }
+        }
+        .onChange(of: verticalSizeClass) { _, _ in
+            // Landscape defaults to Hide Tracks for denser Figma 812×375 arrange.
+            if isLandscape {
+                tracksCollapsed = true
+            }
         }
         .onChange(of: session.isRecordMode) { _, inRecord in
             // Leaving record mode lands on After Record Studio with the armed track selected.
