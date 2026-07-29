@@ -342,7 +342,8 @@ public struct StudioView: View {
                         session.armTrack(id: track.id)
                     },
                     onMute: { session.toggleMute(trackID: track.id) },
-                    onSolo: { session.toggleSolo(trackID: track.id) }
+                    onSolo: { session.toggleSolo(trackID: track.id) },
+                    onSetActiveTake: { session.setActiveTake(clipID: $0) }
                 )
             }
 
@@ -565,7 +566,8 @@ public struct StudioView: View {
                     onClearSelection: { session.selectClip(nil) }
                 ))
 
-            if track.clips.isEmpty {
+            let activeClips = track.clips.filter(\.isActive)
+            if activeClips.isEmpty {
                 if isPrimary {
                     Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
                         .font(MXFont.body3())
@@ -574,7 +576,7 @@ public struct StudioView: View {
                         .allowsHitTesting(false)
                 }
             } else {
-                ForEach(track.clips) { clip in
+                ForEach(activeClips) { clip in
                     InteractiveStudioClip(
                         clip: clip,
                         pixelsPerBeat: pixelsPerBeat,
@@ -987,6 +989,39 @@ public struct StudioView: View {
                 .padding(.top, 8)
 
             if let clip = selected {
+                if let track = session.project.tracks.first(where: { $0.id == clip.trackID }),
+                   track.clips.count > 1 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Takes")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                        ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
+                            Button {
+                                session.setActiveTake(clipID: take.id)
+                            } label: {
+                                HStack {
+                                    Text(take.name)
+                                        .font(MXFont.body3())
+                                        .foregroundStyle(MXColor.white)
+                                    Spacer()
+                                    if take.isActive {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(MXColor.accent)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(take.isActive ? MXColor.layer2 : MXColor.black.opacity(0.35))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Gain")
@@ -1624,6 +1659,7 @@ private struct StudioTrackHeader: View {
     var onSelect: () -> Void
     var onMute: () -> Void
     var onSolo: () -> Void
+    var onSetActiveTake: (UUID) -> Void
 
     private var categoryTint: Color {
         switch track.category {
@@ -1642,6 +1678,8 @@ private struct StudioTrackHeader: View {
         case .imported: return "waveform"
         }
     }
+
+    private var takeCount: Int { track.clips.count }
 
     var body: some View {
         Button(action: onSelect) {
@@ -1673,6 +1711,28 @@ private struct StudioTrackHeader: View {
                             .foregroundStyle(MXColor.grey)
                     }
 
+                    if takeCount > 1 {
+                        Menu {
+                            ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
+                                Button {
+                                    onSetActiveTake(take.id)
+                                } label: {
+                                    if take.isActive {
+                                        Label(take.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(take.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Text("Takes (\(takeCount))")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.accent)
+                                .lineLimit(1)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule().fill(MXColor.black).frame(height: 6)
@@ -1682,7 +1742,7 @@ private struct StudioTrackHeader: View {
                         }
                     }
                     .frame(height: 6)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, takeCount > 1 ? 2 : 7)
                 }
 
                 VStack(spacing: 4) {

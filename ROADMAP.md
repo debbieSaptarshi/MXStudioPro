@@ -187,8 +187,12 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
 | **Latency calibration UX** | ✅ Studio gear → settings sheet; `MXLatencyCalibrator` measure/apply; UserDefaults persist |
 | **Noise gate (vocal, bounce)** | ✅ `noiseGateEnabled` / `noiseGateThreshold` on track; soft-knee in `mixClip`; FX sheet toggle |
+| **Punch-in / punch-out (MVP)** | ✅ Record while playing keeps playhead; clip placed at punch-in beat; loop wrap punches out |
+| **Multiple takes lite (MVP)** | ✅ `MXClip.takeIndex` + `isActive`; overlapping takes deactivate; Takes (N) picker; playback/bounce skip inactive |
 
-**Still backlog (next):** punch-in/out, multiple takes, de-esser; live (monitor) noise-gate path.
+**Still backlog (next):** de-esser; live (monitor) noise-gate path.
+
+**Takes / punch MVP limits:** no playlist lanes, no crossfade comps, no take folder UI — one active take per overlapping region.
 
 ### Closed beta checklist
 
@@ -254,8 +258,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Capture
 - **Input meter + clip warning**
 - **Monitor policy (speaker vs headphones)**
-- Punch-in / punch-out
-- Multiple takes + take picker
+- Punch-in / punch-out ✅ Week 27+ MVP (playhead punch-in; loop-end punch-out; no playlist lanes)
+- Multiple takes + take picker ✅ Week 27+ MVP (`takeIndex` / `isActive`; no crossfade comps)
 - Pre-roll buffer
 - Latency calibration UX ✅ Week 27+ (Studio settings sheet → `MXLatencyCalibrator`; UserDefaults)
 

@@ -484,7 +484,9 @@ public final class StudioSessionController {
             let lengthBeats = max(0.25, endBeat - startBeat)
             let durationSeconds = Double(take.frameCount) / max(transport.sampleRate, 1)
 
-            let takeNumber = (project.tracks.first(where: { $0.id == trackID })?.clips.count ?? 0) + 1
+            let trackClips = project.tracks.first(where: { $0.id == trackID })?.clips ?? []
+            let nextTakeIndex = (trackClips.map(\.takeIndex).max() ?? -1) + 1
+            let takeNumber = nextTakeIndex + 1
             let clip = MXClip(
                 trackID: trackID,
                 name: "Take \(takeNumber)",
@@ -492,11 +494,19 @@ public final class StudioSessionController {
                 lengthBeats: lengthBeats,
                 audioFileName: take.url.lastPathComponent,
                 sourceOffsetSeconds: 0,
-                sourceDurationSeconds: durationSeconds
+                sourceDurationSeconds: durationSeconds,
+                takeIndex: nextTakeIndex,
+                isActive: true
             )
 
             pushUndoSnapshot()
             if let index = project.tracks.firstIndex(where: { $0.id == trackID }) {
+                // Deactivate overlapping takes on this track (comp-lane lite).
+                for i in project.tracks[index].clips.indices {
+                    if project.tracks[index].clips[i].overlaps(with: clip) {
+                        project.tracks[index].clips[i].isActive = false
+                    }
+                }
                 project.tracks[index].clips.append(clip)
             }
 
@@ -767,6 +777,33 @@ public final class StudioSessionController {
         project.tracks[loc.trackIndex].clips.remove(at: loc.clipIndex)
         if selectedClipID == id { selectedClipID = nil }
         persistSoon()
+    }
+
+    /// Activate one take on its track; overlapping siblings become inactive (comp-lane lite).
+    public func setActiveTake(clipID: UUID) {
+        guard let loc = locateClip(clipID) else { return }
+        let chosen = project.tracks[loc.trackIndex].clips[loc.clipIndex]
+        pushUndoSnapshot()
+        for i in project.tracks[loc.trackIndex].clips.indices {
+            var c = project.tracks[loc.trackIndex].clips[i]
+            if c.id == clipID {
+                c.isActive = true
+            } else if c.overlaps(with: chosen) {
+                c.isActive = false
+            }
+            project.tracks[loc.trackIndex].clips[i] = c
+        }
+        selectedClipID = clipID
+        persistNow()
+        if transport?.isPlaying == true, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    /// Clips on a track that participate in take picking (2+ clips).
+    public func takes(onTrackID trackID: UUID) -> [MXClip] {
+        guard let track = project.tracks.first(where: { $0.id == trackID }) else { return [] }
+        return track.clips.sorted { $0.takeIndex < $1.takeIndex }
     }
 
     public func moveSelectedClip(byBeats delta: Double) {
@@ -1378,6 +1415,7 @@ public final class StudioSessionController {
             if anySolo && !track.isSolo { continue }
 
             for clip in track.clips {
+                guard clip.isActive else { continue }
                 guard clipAudioIsPlayable(clip) else { continue }
                 guard let player = clipPlayers[clip.id],
                       let url = audioURL(for: clip),

@@ -48,6 +48,7 @@ public enum StudioBounceExporter {
             if track.isMuted { continue }
             if anySolo && !track.isSolo { continue }
             for clip in track.clips {
+                guard clip.isActive else { continue }
                 guard let name = clip.audioFileName else { continue }
                 let url = audioDirectory.appendingPathComponent(name)
                 guard FileManager.default.fileExists(atPath: url.path) else {

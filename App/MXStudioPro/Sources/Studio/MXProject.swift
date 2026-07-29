@@ -336,6 +336,10 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var fadeInSeconds: Double
     /// Fade-out length in seconds ending at the audible clip end.
     public var fadeOutSeconds: Double
+    /// Take lane index within the track (0-based). Older projects decode as 0.
+    public var takeIndex: Int
+    /// When false, clip is kept as an alternate take but skipped in playback/bounce.
+    public var isActive: Bool
 
     public init(
         id: UUID = UUID(),
@@ -348,7 +352,9 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         sourceDurationSeconds: Double? = nil,
         gain: Float = 1,
         fadeInSeconds: Double = 0,
-        fadeOutSeconds: Double = 0
+        fadeOutSeconds: Double = 0,
+        takeIndex: Int = 0,
+        isActive: Bool = true
     ) {
         self.id = id
         self.trackID = trackID
@@ -361,9 +367,11 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.gain = min(max(gain, 0.1), 4)
         self.fadeInSeconds = max(0, fadeInSeconds)
         self.fadeOutSeconds = max(0, fadeOutSeconds)
+        self.takeIndex = max(0, takeIndex)
+        self.isActive = isActive
     }
 
-    /// Back-compat with Week 4 projects that omit trim / fade fields.
+    /// Back-compat with Week 4 projects that omit trim / fade / take fields.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -377,12 +385,24 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         gain = min(max(try c.decodeIfPresent(Float.self, forKey: .gain) ?? 1, 0.1), 4)
         fadeInSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeInSeconds) ?? 0)
         fadeOutSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
+        takeIndex = max(0, try c.decodeIfPresent(Int.self, forKey: .takeIndex) ?? 0)
+        isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, trackID, name, startBeat, lengthBeats, audioFileName
         case sourceOffsetSeconds, sourceDurationSeconds
         case gain, fadeInSeconds, fadeOutSeconds
+        case takeIndex, isActive
+    }
+
+    /// True when this clip’s beat range overlaps `other` (exclusive ends).
+    public func overlaps(with other: MXClip) -> Bool {
+        let a0 = startBeat
+        let a1 = startBeat + lengthBeats
+        let b0 = other.startBeat
+        let b1 = other.startBeat + other.lengthBeats
+        return a0 < b1 && b0 < a1
     }
 
     /// Linear envelope at `t` seconds into the audible clip (`duration` = audible length).
