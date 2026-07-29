@@ -20,6 +20,7 @@ public struct StudioView: View {
     @State private var showExportSheet = false
     @State private var showTunerSheet = false
     @State private var showCollabSheet = false
+    @State private var showClipInspector = false
 
     private let trackColumnWidth: CGFloat = 135
     private let beatsVisible: Double = 8
@@ -152,6 +153,15 @@ public struct StudioView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showClipInspector) {
+            clipInspectorSheet
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+        }
+        .onChange(of: session.selectedClipID) { _, id in
+            if id == nil { showClipInspector = false }
         }
     }
 
@@ -507,6 +517,23 @@ public struct StudioView: View {
                     Spacer(minLength: 0)
                 }
 
+                // Loop region highlight (GarageBand / BandLab style)
+                if session.project.loopEnabled {
+                    let loopX = CGFloat(session.project.loopStartBeat) * pixelsPerBeat
+                    let loopW = CGFloat(max(0.25, session.project.loopEndBeat - session.project.loopStartBeat)) * pixelsPerBeat
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(MXColor.accent.opacity(0.12))
+                        .overlay(alignment: .leading) {
+                            Rectangle().fill(MXColor.accent.opacity(0.7)).frame(width: 2)
+                        }
+                        .overlay(alignment: .trailing) {
+                            Rectangle().fill(MXColor.accent.opacity(0.7)).frame(width: 2)
+                        }
+                        .frame(width: loopW, height: geo.size.height - 24)
+                        .offset(x: loopX, y: 24)
+                        .allowsHitTesting(false)
+                }
+
                 // Playhead (non-interactive so it never steals clip/lane hits)
                 Rectangle()
                     .fill(MXColor.white)
@@ -664,9 +691,48 @@ public struct StudioView: View {
                     studioIconButton(asset: "studio_trash", systemFallback: "trash") {
                         session.deleteSelectedClip()
                     }
+                    studioIconButton(asset: "studio_fx", systemFallback: "slider.horizontal.2.square.on.square") {
+                        showClipInspector = true
+                    }
                 }
 
-                studioIconButton(asset: "studio_redo", systemFallback: "arrow.uturn.forward") {}
+                studioIconButton(asset: "studio_redo", systemFallback: "arrow.uturn.forward") {
+                    session.redo()
+                }
+                .disabled(!session.canRedo)
+                .opacity(session.canRedo ? 1 : 0.35)
+
+                // Loop toggle — long-press sets region to selection / current bar
+                Button {
+                    if session.project.loopEnabled {
+                        session.setLoopEnabled(false)
+                    } else {
+                        session.setLoopToSelectionOrBar()
+                    }
+                } label: {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(session.project.loopEnabled ? MXColor.accent : MXColor.white)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            if session.project.loopEnabled {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                        session.setLoopToSelectionOrBar()
+                    }
+                )
+                .accessibilityLabel(session.project.loopEnabled ? "Disable loop" : "Enable loop")
+
                 studioIconButton(asset: "studio_to_start", systemFallback: "chevron.backward.2") {
                     session.stop()
                 }
@@ -875,6 +941,113 @@ public struct StudioView: View {
         .buttonStyle(.plain)
         .disabled(!session.canAddTrack)
         .opacity(session.canAddTrack ? 1 : 0.45)
+    }
+
+    /// Clip gain + fades inspector (Ableton / Logic / BandLab pattern).
+    private var clipInspectorSheet: some View {
+        let selected = session.selectedClipID.flatMap { id in
+            session.project.tracks.flatMap(\.clips).first(where: { $0.id == id })
+        }
+        return VStack(alignment: .leading, spacing: 18) {
+            Text(selected?.name ?? "Clip")
+                .font(MXFont.sectionTitle())
+                .foregroundStyle(MXColor.white)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
+
+            if let clip = selected {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Gain")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                        Spacer()
+                        Text(String(format: "%.0f%%", clip.gain * 100))
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.lightGrey)
+                            .monospacedDigit()
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(clip.gain) },
+                            set: { session.setClipGain(Float($0), clipID: clip.id) }
+                        ),
+                        in: 0.1...2.0,
+                        step: 0.05
+                    )
+                    .tint(MXColor.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Fade in")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                        Spacer()
+                        Text(String(format: "%.2fs", clip.fadeInSeconds))
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.lightGrey)
+                            .monospacedDigit()
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { clip.fadeInSeconds },
+                            set: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: nil, clipID: clip.id) }
+                        ),
+                        in: 0...2,
+                        step: 0.05
+                    )
+                    .tint(MXColor.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Fade out")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                        Spacer()
+                        Text(String(format: "%.2fs", clip.fadeOutSeconds))
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.lightGrey)
+                            .monospacedDigit()
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { clip.fadeOutSeconds },
+                            set: { session.setClipFades(fadeInSeconds: nil, fadeOutSeconds: $0, clipID: clip.id) }
+                        ),
+                        in: 0...2,
+                        step: 0.05
+                    )
+                    .tint(MXColor.accent)
+                }
+
+                Button {
+                    session.setLoopRegion(startBeat: clip.startBeat, endBeat: clip.startBeat + clip.lengthBeats)
+                    session.setLoopEnabled(true)
+                    showClipInspector = false
+                } label: {
+                    Label("Loop this clip", systemImage: "repeat")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("Select a clip on the timeline.")
+                    .font(MXFont.body2())
+                    .foregroundStyle(MXColor.grey)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .background(MXColor.surface.ignoresSafeArea())
     }
 
     private var bpmSheet: some View {

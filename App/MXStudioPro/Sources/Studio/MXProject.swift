@@ -75,6 +75,10 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
     public var presetRaw: String
     /// Local collab invites (Week 22) — no sync backend yet.
     public var collaborators: [MXCollaborator]
+    /// Arrangement loop region (GarageBand / BandLab style).
+    public var loopEnabled: Bool
+    public var loopStartBeat: Double
+    public var loopEndBeat: Double
 
     public init(
         id: UUID = UUID(),
@@ -87,7 +91,10 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         sampleRate: Double = 48_000,
         tracks: [MXSessionTrack] = [],
         preset: StudioPreset = .vocal,
-        collaborators: [MXCollaborator] = []
+        collaborators: [MXCollaborator] = [],
+        loopEnabled: Bool = false,
+        loopStartBeat: Double = 0,
+        loopEndBeat: Double = 8
     ) {
         self.id = id
         self.name = name
@@ -100,6 +107,9 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         self.tracks = tracks
         self.presetRaw = preset.rawValue
         self.collaborators = collaborators
+        self.loopEnabled = loopEnabled
+        self.loopStartBeat = max(0, loopStartBeat)
+        self.loopEndBeat = max(self.loopStartBeat + 0.25, loopEndBeat)
     }
 
     public init(from decoder: Decoder) throws {
@@ -115,12 +125,17 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         tracks = try c.decode([MXSessionTrack].self, forKey: .tracks)
         presetRaw = try c.decode(String.self, forKey: .presetRaw)
         collaborators = try c.decodeIfPresent([MXCollaborator].self, forKey: .collaborators) ?? []
+        loopEnabled = try c.decodeIfPresent(Bool.self, forKey: .loopEnabled) ?? false
+        loopStartBeat = max(0, try c.decodeIfPresent(Double.self, forKey: .loopStartBeat) ?? 0)
+        let end = try c.decodeIfPresent(Double.self, forKey: .loopEndBeat) ?? 8
+        loopEndBeat = max(loopStartBeat + 0.25, end)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, createdAt, modifiedAt, bpm
         case timeSignatureNumerator, timeSignatureDenominator, sampleRate
         case tracks, presetRaw, collaborators
+        case loopEnabled, loopStartBeat, loopEndBeat
     }
 
     public var preset: StudioPreset {
@@ -304,6 +319,12 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var sourceOffsetSeconds: Double
     /// Seconds of audio used from the file (right trim). `nil` = remainder of file.
     public var sourceDurationSeconds: Double?
+    /// Linear clip gain (0.1…4). 1 = unity. Multiplies track volume.
+    public var gain: Float
+    /// Fade-in length in seconds from the audible clip start.
+    public var fadeInSeconds: Double
+    /// Fade-out length in seconds ending at the audible clip end.
+    public var fadeOutSeconds: Double
 
     public init(
         id: UUID = UUID(),
@@ -313,7 +334,10 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         lengthBeats: Double,
         audioFileName: String? = nil,
         sourceOffsetSeconds: Double = 0,
-        sourceDurationSeconds: Double? = nil
+        sourceDurationSeconds: Double? = nil,
+        gain: Float = 1,
+        fadeInSeconds: Double = 0,
+        fadeOutSeconds: Double = 0
     ) {
         self.id = id
         self.trackID = trackID
@@ -323,9 +347,12 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.audioFileName = audioFileName
         self.sourceOffsetSeconds = max(0, sourceOffsetSeconds)
         self.sourceDurationSeconds = sourceDurationSeconds.map { max(0.05, $0) }
+        self.gain = min(max(gain, 0.1), 4)
+        self.fadeInSeconds = max(0, fadeInSeconds)
+        self.fadeOutSeconds = max(0, fadeOutSeconds)
     }
 
-    /// Back-compat with Week 4 projects that omit trim fields.
+    /// Back-compat with Week 4 projects that omit trim / fade fields.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -336,10 +363,33 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         audioFileName = try c.decodeIfPresent(String.self, forKey: .audioFileName)
         sourceOffsetSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .sourceOffsetSeconds) ?? 0)
         sourceDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .sourceDurationSeconds).map { max(0.05, $0) }
+        gain = min(max(try c.decodeIfPresent(Float.self, forKey: .gain) ?? 1, 0.1), 4)
+        fadeInSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeInSeconds) ?? 0)
+        fadeOutSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, trackID, name, startBeat, lengthBeats, audioFileName
         case sourceOffsetSeconds, sourceDurationSeconds
+        case gain, fadeInSeconds, fadeOutSeconds
+    }
+
+    /// Linear envelope at `t` seconds into the audible clip (`duration` = audible length).
+    /// When fade-in and fade-out overlap, both are applied and the quieter wins (`min`).
+    public func fadeEnvelope(atSeconds t: Double, durationSeconds duration: Double) -> Float {
+        guard duration > 1e-6 else { return 1 }
+        let fadeIn = min(max(0, fadeInSeconds), duration)
+        let fadeOut = min(max(0, fadeOutSeconds), duration)
+        var env: Float = 1
+        if fadeIn > 1e-6, t < fadeIn {
+            env = Float(max(0, min(1, t / fadeIn)))
+        }
+        if fadeOut > 1e-6 {
+            let outStart = duration - fadeOut
+            if t >= outStart {
+                env = min(env, Float(max(0, min(1, (duration - t) / fadeOut))))
+            }
+        }
+        return env
     }
 }

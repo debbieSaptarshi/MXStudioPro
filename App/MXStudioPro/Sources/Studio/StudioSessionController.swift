@@ -33,6 +33,7 @@ public final class StudioSessionController {
     public private(set) var showQuietRoomTip = false
     public private(set) var selectedClipID: UUID?
     public private(set) var canUndo = false
+    public private(set) var canRedo = false
     public private(set) var playheadBeat: Double = 0
     public private(set) var playheadLabel: String = "001 Bar / 1 Beat"
     public private(set) var playheadBar: Int = 1
@@ -110,6 +111,8 @@ public final class StudioSessionController {
     private var activeTakeURL: URL?
     private var editStack = StudioEditStack()
     private var clipWarningClearTask: Task<Void, Never>?
+    /// Last playhead sample from the observer — used to detect loop wraps.
+    private var lastObservedSample: Int64 = 0
     private static let quietRoomTipKey = "mxstudio.didShowQuietRoomTip"
     /// Linear amplitude ≈ −1 dBFS.
     private static let clipThreshold: Float = 0.891
@@ -201,6 +204,7 @@ public final class StudioSessionController {
             for track in project.tracks where track.kind == .midi {
                 attachMIDIInstrument(for: track.id, name: track.name)
             }
+            syncTransportLoop()
 
             let observer = MXPlayheadObserver(transport: transport)
             observer.start(preferredFPS: 30) { [weak self] readout in
@@ -259,6 +263,7 @@ public final class StudioSessionController {
         clipReverbs.removeAll()
         editStack.clear()
         canUndo = false
+        canRedo = false
         selectedClipID = nil
         peakHoldLevel = 0
         isInputClipping = false
@@ -674,11 +679,25 @@ public final class StudioSessionController {
     }
 
     public func undo() {
-        guard let previous = editStack.pop() else { return }
+        guard let previous = editStack.undo(current: project) else { return }
         let wasPlaying = transport?.isPlaying == true
         if wasPlaying { pausePlayback() }
         rebuildPlayers(for: previous)
+        syncTransportLoop()
         canUndo = editStack.canUndo
+        canRedo = editStack.canRedo
+        selectedClipID = nil
+        persistNow()
+    }
+
+    public func redo() {
+        guard let next = editStack.redo(current: project) else { return }
+        let wasPlaying = transport?.isPlaying == true
+        if wasPlaying { pausePlayback() }
+        rebuildPlayers(for: next)
+        syncTransportLoop()
+        canUndo = editStack.canUndo
+        canRedo = editStack.canRedo
         selectedClipID = nil
         persistNow()
     }
@@ -755,11 +774,115 @@ public final class StudioSessionController {
         clip.lengthBeats = newLength
         let startSec = transport.tempoMap.seconds(forBeat: clip.startBeat)
         let endSec = transport.tempoMap.seconds(forBeat: snappedEnd)
-        clip.sourceDurationSeconds = max(0.05, endSec - startSec)
+        let audible = max(0.05, endSec - startSec)
+        clip.sourceDurationSeconds = audible
+        clip.fadeInSeconds = min(clip.fadeInSeconds, audible)
+        clip.fadeOutSeconds = min(clip.fadeOutSeconds, audible)
         replaceClip(clip)
         persistSoon()
         if transport.isPlaying {
             scheduleClipPlayers(fromSample: transport.currentSample)
+        }
+    }
+
+    /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
+    public func setClipGain(_ gain: Float, clipID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        let clamped = min(max(gain, 0.1), 4)
+        guard abs(clamped - clip.gain) > 1e-4 else { return }
+        clip.gain = clamped
+        replaceClip(clip)
+        persistSoon()
+        if transport?.isPlaying == true, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        } else if let player = clipPlayers[clipID],
+                  let track = project.tracks.first(where: { $0.id == clip.trackID }) {
+            player.volume = track.volume * clip.gain
+        }
+    }
+
+    /// Fade-in / fade-out in seconds (Logic / Ableton style clip fades).
+    public func setClipFades(fadeInSeconds: Double?, fadeOutSeconds: Double?, clipID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        let audible: Double
+        if let duration = clip.sourceDurationSeconds {
+            audible = duration
+        } else if let transport {
+            audible = transport.tempoMap.seconds(forBeat: clip.startBeat + clip.lengthBeats)
+                - transport.tempoMap.seconds(forBeat: clip.startBeat)
+        } else {
+            audible = clip.lengthBeats * 60.0 / max(project.bpm, 1)
+        }
+        var changed = false
+        if let fadeIn = fadeInSeconds {
+            let next = min(max(0, fadeIn), max(0, audible))
+            if abs(next - clip.fadeInSeconds) > 1e-4 {
+                clip.fadeInSeconds = next
+                changed = true
+            }
+        }
+        if let fadeOut = fadeOutSeconds {
+            let next = min(max(0, fadeOut), max(0, audible))
+            if abs(next - clip.fadeOutSeconds) > 1e-4 {
+                clip.fadeOutSeconds = next
+                changed = true
+            }
+        }
+        guard changed else { return }
+        replaceClip(clip)
+        persistSoon()
+        if transport?.isPlaying == true, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    /// Toggle arrangement loop (engine `MXTransport.LoopRegion`).
+    public func setLoopEnabled(_ enabled: Bool) {
+        project.loopEnabled = enabled
+        if enabled, project.loopEndBeat <= project.loopStartBeat + 0.24 {
+            project.loopEndBeat = project.loopStartBeat + Double(project.timeSignatureNumerator) * 2
+        }
+        syncTransportLoop()
+        persistSoon()
+        if enabled, transport?.isPlaying == true, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    public func setLoopRegion(startBeat: Double, endBeat: Double) {
+        let start = max(0, (startBeat * 4).rounded() / 4)
+        let end = max(start + 0.25, (endBeat * 4).rounded() / 4)
+        project.loopStartBeat = start
+        project.loopEndBeat = end
+        syncTransportLoop()
+        persistSoon()
+        if project.loopEnabled, transport?.isPlaying == true, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    /// Set loop to the selected clip’s span, or one bar around the playhead.
+    public func setLoopToSelectionOrBar() {
+        if let id = selectedClipID, let clip = clip(id) {
+            setLoopRegion(startBeat: clip.startBeat, endBeat: clip.startBeat + clip.lengthBeats)
+        } else {
+            let bar = Double(project.timeSignatureNumerator)
+            let start = (playheadBeat / bar).rounded(.down) * bar
+            setLoopRegion(startBeat: start, endBeat: start + bar)
+        }
+        setLoopEnabled(true)
+    }
+
+    private func syncTransportLoop() {
+        guard let transport else { return }
+        if project.loopEnabled {
+            transport.loop = MXTransport.LoopRegion(
+                startBeat: project.loopStartBeat,
+                endBeat: project.loopEndBeat,
+                isEnabled: true
+            )
+        } else {
+            transport.loop = nil
         }
     }
 
@@ -1024,8 +1147,14 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// Bounce audible tracks to WAV + M4A (peak-normalized ~−1 dBFS).
-    public func bounceMix(normalize: Bool = true) async throws -> StudioBounceExporter.Result {
+    /// Bounce audible tracks to WAV + M4A.
+    /// - Parameters:
+    ///   - normalize: When true, applies `loudnessMode` after mixing.
+    ///   - loudnessMode: Peak normalize (~−1 dBFS) or Reels LUFS (~−14).
+    public func bounceMix(
+        normalize: Bool = true,
+        loudnessMode: StudioBounceExporter.LoudnessMode = .peakNormalize
+    ) async throws -> StudioBounceExporter.Result {
         guard !isExporting else {
             throw StudioBounceExporter.BounceError.writeFailed("Export already in progress")
         }
@@ -1037,13 +1166,15 @@ public final class StudioSessionController {
         let snapshot = project
         let audioDir = MXProjectStore.shared.audioDirectory(for: snapshot.id)
         let exportDir = MXProjectStore.shared.exportsDirectory(for: snapshot.id)
+        let mode = loudnessMode
 
         let result = try await Task.detached(priority: .userInitiated) {
             try StudioBounceExporter.bounce(
                 project: snapshot,
                 audioDirectory: audioDir,
                 outputDirectory: exportDir,
-                normalize: normalize
+                normalize: normalize,
+                loudnessMode: mode
             )
         }.value
 
@@ -1060,9 +1191,11 @@ public final class StudioSessionController {
 
     private func beginPlayback(fromSample sample: Int64, withCountIn: Bool) {
         guard let transport else { return }
+        syncTransportLoop()
         countInTask?.cancel()
         metronome?.prepareSchedule(fromSample: sample)
         metronome?.resetCursor(toSample: sample)
+        lastObservedSample = sample
 
         if withCountIn, countInBars > 0 {
             isCountingIn = true
@@ -1108,7 +1241,7 @@ public final class StudioSessionController {
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
                 player.stop()
-                player.volume = track.volume
+                player.volume = track.volume * clip.gain
                 player.pan = track.pan
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
@@ -1129,7 +1262,19 @@ public final class StudioSessionController {
                 )
                 guard frameCount > 0 else { continue }
 
-                if sample <= clipStart {
+                let needsFade = clip.fadeInSeconds > 1e-3 || clip.fadeOutSeconds > 1e-3
+                if needsFade {
+                    scheduleFadedSegment(
+                        player: player,
+                        file: file,
+                        clip: clip,
+                        fileStart: fileStart,
+                        frameCount: frameCount,
+                        clipStart: clipStart,
+                        fromSample: sample,
+                        transport: transport
+                    )
+                } else if sample <= clipStart {
                     let at = AVAudioTime(hostTime: transport.hostTime(forSample: clipStart))
                     player.scheduleSegment(
                         file,
@@ -1138,6 +1283,7 @@ public final class StudioSessionController {
                         at: at,
                         completionHandler: nil
                     )
+                    player.play()
                 } else {
                     let intoClip = sample - clipStart
                     let startFrame = fileStart + AVAudioFramePosition(intoClip)
@@ -1153,10 +1299,64 @@ public final class StudioSessionController {
                         at: at,
                         completionHandler: nil
                     )
+                    player.play()
                 }
-                player.play()
             }
         }
+    }
+
+    /// Bake clip fade envelope into a PCM buffer for live preview (Logic-style fades).
+    private func scheduleFadedSegment(
+        player: AVAudioPlayerNode,
+        file: AVAudioFile,
+        clip: MXClip,
+        fileStart: AVAudioFramePosition,
+        frameCount: AVAudioFrameCount,
+        clipStart: Int64,
+        fromSample sample: Int64,
+        transport: MXTransport
+    ) {
+        let format = file.processingFormat
+        guard let full = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        file.framePosition = fileStart
+        do {
+            try file.read(into: full, frameCount: frameCount)
+        } catch {
+            return
+        }
+        let read = Int(full.frameLength)
+        guard read > 0, let channels = full.floatChannelData else { return }
+        let channelCount = Int(format.channelCount)
+        let duration = Double(read) / max(transport.sampleRate, 1)
+
+        for ch in 0..<channelCount {
+            let data = channels[ch]
+            for i in 0..<read {
+                let env = clip.fadeEnvelope(atSeconds: Double(i) / max(transport.sampleRate, 1), durationSeconds: duration)
+                data[i] *= env
+            }
+        }
+
+        let intoClip = max(0, sample - clipStart)
+        if intoClip >= Int64(read) { return }
+        let remaining = AVAudioFrameCount(Int64(read) - intoClip)
+        let scheduleAt = sample <= clipStart ? clipStart : sample
+        let at = AVAudioTime(hostTime: transport.hostTime(forSample: scheduleAt))
+
+        if intoClip == 0 {
+            player.scheduleBuffer(full, at: at, options: [], completionHandler: nil)
+        } else if let slice = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: remaining) {
+            slice.frameLength = remaining
+            guard let dst = slice.floatChannelData else { return }
+            for ch in 0..<channelCount {
+                let src = channels[ch].advanced(by: Int(intoClip))
+                dst[ch].update(from: src, count: Int(remaining))
+            }
+            player.scheduleBuffer(slice, at: at, options: [], completionHandler: nil)
+        } else {
+            return
+        }
+        player.play()
     }
 
     private func stopClipPlayers() {
@@ -1380,7 +1580,7 @@ public final class StudioSessionController {
         for clip in track.clips {
             guard let player = clipPlayers[clip.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            player.volume = audible ? track.volume : 0
+            player.volume = audible ? track.volume * clip.gain : 0
             player.pan = track.pan
         }
         // Solo/mute changes should refresh all tracks' audible state
@@ -1388,7 +1588,7 @@ public final class StudioSessionController {
             for other in project.tracks where other.id != trackID {
                 let otherAudible = !other.isMuted && (!anySolo || other.isSolo)
                 for clip in other.clips {
-                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume : 0
+                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain : 0
                 }
             }
         }
@@ -1493,6 +1693,7 @@ public final class StudioSessionController {
     private func pushUndoSnapshot() {
         editStack.push(project)
         canUndo = editStack.canUndo
+        canRedo = editStack.canRedo
     }
 
     private func clip(_ id: UUID) -> MXClip? {
@@ -1551,6 +1752,29 @@ public final class StudioSessionController {
     }
 
     private func applyPlayhead(_ readout: MXPlayheadObserver.Readout) {
+        // Detect loop wrap: playhead jumped backward while playing with loop on.
+        if project.loopEnabled,
+           readout.state == .playing || readout.state == .recording,
+           lastObservedSample > 0,
+           readout.sample < lastObservedSample {
+            let loopLengthSamples: Int64
+            if let transport {
+                let start = transport.tempoMap.sample(forBeat: project.loopStartBeat, sampleRate: transport.sampleRate)
+                let end = transport.tempoMap.sample(forBeat: project.loopEndBeat, sampleRate: transport.sampleRate)
+                loopLengthSamples = max(1, end - start)
+            } else {
+                loopLengthSamples = 1
+            }
+            // Ignore tiny backward jitter; require a real wrap (at least ~half a loop or 1k samples).
+            let jump = lastObservedSample - readout.sample
+            if jump >= max(1_000, loopLengthSamples / 2) {
+                // Re-anchor host clock so scheduled hostTimes are in the future.
+                transport?.seek(toSample: readout.sample)
+                metronome?.resetCursor(toSample: readout.sample)
+                scheduleClipPlayers(fromSample: readout.sample)
+            }
+        }
+        lastObservedSample = readout.sample
         playheadBeat = readout.beat
         playheadLabel = readout.position.description
         playheadBar = readout.position.bar
