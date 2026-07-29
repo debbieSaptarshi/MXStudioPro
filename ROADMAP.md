@@ -79,13 +79,13 @@ Exact pixel parity is **not** required; working audio + clear navigation is.
 **Arrangement**
 - [x] Select clip: trim, move, delete (split optional/basic)
 - [x] Undo for clip edits (command stack lite)
-- [x] Loop region (optional) — Week 27: transport loop + Studio repeat control
+- [x] Loop region (optional) — Week 27: transport loop + Studio repeat control; Week 29: schedule clamp to loop end
 
 **Phone-vocal quality (Reels-ready basics)**
 - [x] Input level meter on record screen (peak; clip warning at ~−1 dBFS)
 - [x] Direct monitoring **off** by default on speaker; tip when headphones connected
 - [x] High-pass toggle on take or record chain (80–120 Hz)
-- [x] First-record “quiet room” tip (copy only)
+- [x] First-record “quiet room” tip → Week 29 interactive checklist
 
 **Exit:** Trim a take; meter shows clipping risk; play trimmed clip. ✅
 
@@ -354,7 +354,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
       → W13–16 FX + guitar/MIDI               ← done
         → W17–20 AI + Discover                ← done
           → W21–26 TestFlight beta            ← done (local closed-beta ready)
-            → W27 Arrangement + Reels LUFS    ← done (MVP)
+            → W27–28 Arrangement + vocal polish ← done
+              → W29 Checklist + loop clamp + comps ← done
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -371,7 +372,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 13–16 | Guitar/MIDI DAW |
 | 17–20 | AI + Discover |
 | 21–26 | TestFlight beta *(local closed-beta ready)* |
-| 27+ | Arrangement loop / fades / redo + Reels LUFS *(done MVP)* |
+| 27–28 | Arrangement + vocal capture polish |
+| 29 | Quiet-room checklist + loop clamp + punch comps |
 
 ---
 
