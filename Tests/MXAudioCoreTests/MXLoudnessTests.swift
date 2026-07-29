@@ -49,6 +49,17 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertEqual(right, [0.1, 0.1, 0.1])
     }
 
+    func testApplyMasterLimiterCapsTruePeak() {
+        var left: [Float] = [0.5, 1.2, -1.5, 0.99, 2.0]
+        var right: [Float] = [0.4, -1.1, 0.8, 1.4, -0.2]
+        MXLoudness.applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+        let peak = max(MXAudioAnalysis.peak(left), MXAudioAnalysis.peak(right))
+        XCTAssertLessThanOrEqual(peak, 0.99 + 1e-5)
+        // Quiet samples below the knee stay unchanged.
+        XCTAssertEqual(left[0], 0.5, accuracy: 1e-6)
+        XCTAssertEqual(right[0], 0.4, accuracy: 1e-6)
+    }
+
     // MARK: - Fixtures
 
     private func makeStereoTone(amplitude: Float, seconds: Double, hz: Float = 440) -> ([Float], [Float]) {

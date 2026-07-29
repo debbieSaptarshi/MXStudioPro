@@ -89,10 +89,16 @@ public enum StudioBounceExporter {
                 peakNormalize(left: &left, right: &right, targetPeak: 0.89)
                 appliedMode = .peakNormalize
             case .reelsLUFS:
+                // LUFS path applies the shared master limiter internally via maxPeak.
                 MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
                 appliedMode = .reelsLUFS
             }
+            // Peak path: safety brickwall after −1 dBFS normalize. LUFS already
+            // limited; second pass is a no-op when peak ≤ ceiling.
+            applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
         } else {
+            // Still protect overs when normalize is off.
+            applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
             appliedMode = loudnessMode
         }
 
@@ -179,6 +185,14 @@ public enum StudioBounceExporter {
             left[i] *= scale
             right[i] *= scale
         }
+    }
+
+    /// Soft master limiter / brickwall so true peak stays ≤ ~0.99 (−0.1 dBTP-ish).
+    /// Shared helper used after peak normalize and by the LUFS path (`MXLoudness`).
+    public static func applyMasterLimiter(left: inout [Float],
+                                          right: inout [Float],
+                                          ceiling: Float = 0.99) {
+        MXLoudness.applyMasterLimiter(left: &left, right: &right, ceiling: ceiling)
     }
 
     // MARK: - Writers

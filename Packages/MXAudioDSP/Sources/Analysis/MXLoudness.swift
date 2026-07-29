@@ -102,12 +102,48 @@ public enum MXLoudness {
                       right: &right)
         }
 
-        let peak = max(MXAudioAnalysis.peak(left), MXAudioAnalysis.peak(right))
-        guard peak > maxPeak, peak > 0 else { return }
+        applyMasterLimiter(left: &left, right: &right, ceiling: maxPeak)
+    }
 
-        // Soft peak cap: scale so max abs ≤ maxPeak (hard ceiling after LUFS gain).
-        let ceilingGain = maxPeak / peak
-        applyGain(ceilingGain, left: &left, right: &right)
+    /// Soft master limiter / brickwall safety so true peak stays ≤ `ceiling`
+    /// (~0.99 ≈ −0.1 dBTP). Shared by peak-normalize and LUFS bounce paths.
+    ///
+    /// Soft-knees samples above ~92% of the ceiling, then hard-clamps and
+    /// applies a final global scale if anything still exceeds the ceiling.
+    public static func applyMasterLimiter(left: inout [Float],
+                                          right: inout [Float],
+                                          ceiling: Float = 0.99) {
+        guard ceiling > 0, !left.isEmpty else { return }
+        let knee = ceiling * 0.92
+        let count = min(left.count, right.count)
+        for i in 0..<count {
+            left[i] = softLimitSample(left[i], knee: knee, ceiling: ceiling)
+            right[i] = softLimitSample(right[i], knee: knee, ceiling: ceiling)
+        }
+        if left.count > count {
+            for i in count..<left.count {
+                left[i] = softLimitSample(left[i], knee: knee, ceiling: ceiling)
+            }
+        } else if right.count > count {
+            for i in count..<right.count {
+                right[i] = softLimitSample(right[i], knee: knee, ceiling: ceiling)
+            }
+        }
+
+        let peak = max(MXAudioAnalysis.peak(left), MXAudioAnalysis.peak(right))
+        guard peak > ceiling else { return }
+        applyGain(ceiling / peak, left: &left, right: &right)
+    }
+
+    /// Soft-knee map toward `ceiling`, then hard clamp.
+    private static func softLimitSample(_ x: Float, knee: Float, ceiling: Float) -> Float {
+        let a = abs(x)
+        if a <= knee { return x }
+        let headroom = max(ceiling - knee, 1e-6)
+        let over = a - knee
+        let compressed = knee + headroom * (over / (over + headroom))
+        let limited = min(compressed, ceiling)
+        return x >= 0 ? limited : -limited
     }
 
     // MARK: - Internals

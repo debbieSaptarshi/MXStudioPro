@@ -182,8 +182,9 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Loop region** | ✅ Project loop fields → `MXTransport.LoopRegion`; wrap reschedules clips; Studio repeat control |
 | **Clip fade in/out + gain** | ✅ `MXClip` fields; live + bounce envelopes; clip inspector sheet |
 | **Export loudness for Reels (−14 LUFS)** | ✅ `MXLoudness` in MXAudioDSP; Export sheet toggle vs peak normalize |
+| **Master limiter on bounce** | ✅ Soft brickwall ≤ ~0.99 after peak/LUFS (`applyMasterLimiter`) |
 
-**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, master limiter, latency calibration UX, snap-grid toggle.
+**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, latency calibration UX.
 
 ### Closed beta checklist
 
@@ -244,7 +245,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - Full mixer view
 - Insert chain UI
 - Shared reverb send
-- Master limiter on bounce
+- Master limiter on bounce ✅ Week 27+ (`StudioBounceExporter.applyMasterLimiter`)
 
 ### Capture
 - **Input meter + clip warning**
