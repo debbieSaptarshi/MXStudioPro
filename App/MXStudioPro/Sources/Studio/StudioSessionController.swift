@@ -50,6 +50,7 @@ public final class StudioSessionController {
     public var isMonitoringEnabled: Bool = false {
         didSet {
             recorder?.isMonitoringEnabled = isMonitoringEnabled
+            syncMonitorNoiseGate()
         }
     }
 
@@ -63,6 +64,19 @@ public final class StudioSessionController {
     /// `AVAudioSession.setPreferredInputNumberOfChannels(1)` and downmixes the
     /// write tap when needed.
     public var preferMonoVocalRecord: Bool = true
+
+    /// Capture-before-Rec buffer in milliseconds (GarageBand-style pre-roll).
+    /// Filled while record mode is armed; prepended when Rec starts. 0 = off.
+    public var preRollMilliseconds: Double = 250 {
+        didSet {
+            let clamped = min(max(preRollMilliseconds, 0), 1_000)
+            if clamped != preRollMilliseconds {
+                preRollMilliseconds = clamped
+                return
+            }
+            recorder?.preRollMilliseconds = clamped
+        }
+    }
 
     public private(set) var lastSavedAt: Date?
     public private(set) var saveError: String?
@@ -208,6 +222,7 @@ public final class StudioSessionController {
 
             let calibrator = MXLatencyCalibrator(session: session, sampleRate: graph.sampleRate)
             let recorder = MXRecorder(graph: graph, transport: transport, calibrator: calibrator)
+            recorder.preRollMilliseconds = preRollMilliseconds
 
             try graph.start()
 
@@ -219,6 +234,7 @@ public final class StudioSessionController {
             self.recorder = recorder
             self.phase = .ready
             applyPreferredMonitoring()
+            syncMonitorNoiseGate()
             refreshRouteTip()
             maybeShowQuietRoomTip()
 
@@ -346,9 +362,12 @@ public final class StudioSessionController {
     public func enterRecordMode() {
         isRecordMode = true
         recordError = nil
-        // Arm live input for Monitor even before Rec starts.
+        // Arm live input for Monitor + pre-roll ring even before Rec starts.
+        recorder?.preRollMilliseconds = preRollMilliseconds
         recorder?.setLiveInputArmed(true)
         applyPreferredMonitoring()
+        syncMonitorNoiseGate()
+        startMeterPolling()
         refreshRouteTip()
     }
 
@@ -358,6 +377,8 @@ public final class StudioSessionController {
         }
         isRecordMode = false
         inputLevel = 0
+        meterTask?.cancel()
+        meterTask = nil
         recorder?.setLiveInputArmed(false)
         // Keep monitor preference for guitar sessions with headphones; otherwise off.
         if preset != .guitar {
@@ -473,16 +494,27 @@ public final class StudioSessionController {
             guard take.frameCount > 0, let trackID = project.armedTrack?.id ?? project.tracks.first?.id else {
                 try? FileManager.default.removeItem(at: take.url)
                 activeTakeURL = nil
+                isRecordMode = false
+                meterTask?.cancel()
+                meterTask = nil
+                recorder.setLiveInputArmed(false)
                 return
             }
 
-            // Place clip at punch-in (or cold-start) beat — never force to 0.
-            let startBeat = punchBeat
-                ?? transport.tempoMap.beat(forSample: punchSample, sampleRate: transport.sampleRate)
-            let endSample = punchSample + Int64(take.frameCount)
-            let endBeat = transport.tempoMap.beat(forSample: endSample, sampleRate: transport.sampleRate)
+            // Pre-roll frames were captured before Rec — shift clip earlier so timeline matches audio.
+            // If punch is near 0, trim excess pre-roll that would fall before the project start.
+            let preRollFrames = Int64(take.preRollFrames)
+            let excessPreRoll = max(0, preRollFrames - punchSample)
+            let usablePreRoll = preRollFrames - excessPreRoll
+            let audioStartSample = max(0, punchSample - usablePreRoll)
+            let sampleRate = max(transport.sampleRate, 1)
+            let sourceOffsetSeconds = Double(excessPreRoll) / sampleRate
+            let audibleFrames = max(0, Int64(take.frameCount) - excessPreRoll)
+            let startBeat = transport.tempoMap.beat(forSample: audioStartSample, sampleRate: sampleRate)
+            let endSample = audioStartSample + audibleFrames
+            let endBeat = transport.tempoMap.beat(forSample: endSample, sampleRate: sampleRate)
             let lengthBeats = max(0.25, endBeat - startBeat)
-            let durationSeconds = Double(take.frameCount) / max(transport.sampleRate, 1)
+            let durationSeconds = Double(audibleFrames) / sampleRate
 
             let trackClips = project.tracks.first(where: { $0.id == trackID })?.clips ?? []
             let nextTakeIndex = (trackClips.map(\.takeIndex).max() ?? -1) + 1
@@ -493,7 +525,7 @@ public final class StudioSessionController {
                 startBeat: startBeat,
                 lengthBeats: lengthBeats,
                 audioFileName: take.url.lastPathComponent,
-                sourceOffsetSeconds: 0,
+                sourceOffsetSeconds: sourceOffsetSeconds,
                 sourceDurationSeconds: durationSeconds,
                 takeIndex: nextTakeIndex,
                 isActive: true
@@ -517,6 +549,9 @@ public final class StudioSessionController {
             activeTakeURL = nil
             // Return to Figma 95:85026 — Studio After Record
             isRecordMode = false
+            meterTask?.cancel()
+            meterTask = nil
+            recorder.setLiveInputArmed(false)
             refreshPlayheadFromTransport()
             if peakHoldLevel >= Self.clipThreshold {
                 showClipWarning = true
@@ -530,6 +565,10 @@ public final class StudioSessionController {
             inputLevel = 0
             recordError = error.localizedDescription
             activeTakeURL = nil
+            isRecordMode = false
+            meterTask?.cancel()
+            meterTask = nil
+            recorder.setLiveInputArmed(false)
         }
     }
 
@@ -618,12 +657,14 @@ public final class StudioSessionController {
         for i in project.tracks.indices {
             project.tracks[i].isArmed = (project.tracks[i].id == id)
         }
+        syncMonitorNoiseGate()
         persistSoon()
     }
 
     func setTrackCategory(_ category: MXSessionTrack.Category, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].category = category
+        syncMonitorNoiseGate()
         persistSoon()
     }
 
@@ -1035,7 +1076,7 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// One-tap Reels Vocal: HPF + light comp + short room reverb.
+    /// One-tap Reels Vocal: HPF + light comp + short room reverb + light de-ess.
     public func toggleReelsVocal(trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         let enabled = !project.tracks[index].reelsVocalEnabled
@@ -1043,6 +1084,8 @@ public final class StudioSessionController {
         if enabled {
             isHighPassEnabled = true
             project.tracks[index].reverbMix = max(project.tracks[index].reverbMix, 22)
+            project.tracks[index].deEsserEnabled = true
+            project.tracks[index].deEsserAmount = max(project.tracks[index].deEsserAmount, 40)
         } else if project.tracks[index].reverbMix <= 25 {
             project.tracks[index].reverbMix = 0
         }
@@ -1078,12 +1121,30 @@ public final class StudioSessionController {
     public func setNoiseGateEnabled(_ enabled: Bool, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].noiseGateEnabled = enabled
+        applyTrackFX(trackID: trackID)
+        syncMonitorNoiseGate()
         persistSoon()
     }
 
     public func setNoiseGateThreshold(_ threshold: Float, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].noiseGateThreshold = min(max(threshold, 0), 0.2)
+        applyTrackFX(trackID: trackID)
+        syncMonitorNoiseGate()
+        persistSoon()
+    }
+
+    public func setDeEsserEnabled(_ enabled: Bool, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        project.tracks[index].deEsserEnabled = enabled
+        applyTrackFX(trackID: trackID)
+        persistSoon()
+    }
+
+    public func setDeEsserAmount(_ amount: Float, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        project.tracks[index].deEsserAmount = min(max(amount, 0), 100)
+        applyTrackFX(trackID: trackID)
         persistSoon()
     }
 
@@ -1580,7 +1641,8 @@ public final class StudioSessionController {
     private func attachPlayer(for clip: MXClip) {
         guard clipPlayers[clip.id] == nil, let graph else { return }
         let player = AVAudioPlayerNode()
-        let eq = AVAudioUnitEQ(numberOfBands: 2)
+        // 3 bands: HPF, mid parametric, de-esser peaking (~6.5 kHz).
+        let eq = AVAudioUnitEQ(numberOfBands: 3)
         let delay = AVAudioUnitDelay()
         let distortion = AVAudioUnitDistortion()
         let comp = Self.makeDynamicsProcessor()
@@ -1684,7 +1746,36 @@ public final class StudioSessionController {
             mid.gain = track?.eqMidGain ?? 0
             mid.bypass = abs(mid.gain) < 0.05
         }
+        if eq.bands.count > 2 {
+            // BandLab / Logic-style vocal de-ess: narrow peaking cut around sibilance.
+            let deEss = eq.bands[2]
+            deEss.filterType = .parametric
+            deEss.frequency = 6_500
+            deEss.bandwidth = 0.7
+            let amount = track?.deEsserAmount ?? 0
+            let enabled = track?.deEsserEnabled == true && amount > 0.5
+            deEss.gain = enabled ? -(amount / 100) * 12 : 0
+            deEss.bypass = !enabled
+        }
         eq.globalGain = 0
+    }
+
+    private func configureComp(_ comp: AVAudioUnitEffect, for clip: MXClip) {
+        let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
+        let reels = track?.reelsVocalEnabled == true
+        let gateOn = track?.noiseGateEnabled == true
+        let au = comp.audioUnit
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, -18, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 5, 0)
+        // Soft expander when gate is on — quiets room between phrases on live playback.
+        let linearThresh = max(track?.noiseGateThreshold ?? 0.02, 1e-6)
+        let expansionThreshDB = max(-60, min(-10, 20 * log10(linearThresh)))
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionRatio, kAudioUnitScope_Global, 0, gateOn ? 10 : 2, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionThreshold, kAudioUnitScope_Global, 0, gateOn ? expansionThreshDB : -40, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_AttackTime, kAudioUnitScope_Global, 0, 0.01, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ReleaseTime, kAudioUnitScope_Global, 0, gateOn ? 0.08 : 0.15, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_OverallGain, kAudioUnitScope_Global, 0, reels ? 2 : 0, 0)
+        comp.bypass = !(reels || gateOn)
     }
 
     private func configureDelay(_ delay: AVAudioUnitDelay, for clip: MXClip) {
@@ -1706,19 +1797,6 @@ public final class StudioSessionController {
             distortion.preGain = -6
         }
         distortion.wetDryMix = track?.distortionMix ?? 0
-    }
-
-    private func configureComp(_ comp: AVAudioUnitEffect, for clip: MXClip) {
-        let reels = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })?.reelsVocalEnabled == true
-        let au = comp.audioUnit
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, -18, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 5, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionRatio, kAudioUnitScope_Global, 0, 2, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionThreshold, kAudioUnitScope_Global, 0, -40, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_AttackTime, kAudioUnitScope_Global, 0, 0.01, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_ReleaseTime, kAudioUnitScope_Global, 0, 0.15, 0)
-        AudioUnitSetParameter(au, kDynamicsProcessorParam_OverallGain, kAudioUnitScope_Global, 0, reels ? 2 : 0, 0)
-        comp.bypass = !reels
     }
 
     private static func makeDynamicsProcessor() -> AVAudioUnitEffect {
@@ -1794,7 +1872,7 @@ public final class StudioSessionController {
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 await MainActor.run {
-                    guard let self, self.isRecording else { return }
+                    guard let self, self.isRecording || self.isRecordMode else { return }
                     let level = self.recorder?.inputLevel ?? 0
                     self.inputLevel = level
                     self.peakHoldLevel = max(self.peakHoldLevel * 0.995, level)
@@ -1808,6 +1886,15 @@ public final class StudioSessionController {
                 try? await Task.sleep(nanoseconds: 33_000_000)
             }
         }
+    }
+
+    /// Push armed-track noise gate settings onto the live monitor expander.
+    private func syncMonitorNoiseGate() {
+        guard let recorder else { return }
+        let track = armedTrack
+        let vocalGate = track?.category == .vocal && track?.noiseGateEnabled == true
+        recorder.monitorGateEnabled = vocalGate
+        recorder.monitorGateThreshold = track?.noiseGateThreshold ?? 0.02
     }
 
     private func scheduleClipWarningClear() {
@@ -1839,6 +1926,7 @@ public final class StudioSessionController {
         isMonitoringEnabled = false
         #endif
         recorder?.isMonitoringEnabled = isMonitoringEnabled
+        syncMonitorNoiseGate()
     }
 
     private static func currentRouteHasHeadphones() -> Bool {

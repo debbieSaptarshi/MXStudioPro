@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 import MXAudioDSP
@@ -15,6 +16,8 @@ public final class MXRecorder: @unchecked Sendable {
         public var frameCount: AVAudioFrameCount
         public var compensationFrames: Int
         public var wasInterrupted: Bool
+        /// Frames prepended from the pre-roll ring buffer (capture before Rec).
+        public var preRollFrames: AVAudioFrameCount
     }
 
     public enum RecorderError: Error, Equatable, LocalizedError {
@@ -41,11 +44,15 @@ public final class MXRecorder: @unchecked Sendable {
     private var currentURL: URL?
     private var startSample: Int64 = 0
     private var framesWritten: AVAudioFrameCount = 0
+    private var preRollFramesWritten: AVAudioFrameCount = 0
     private var interrupted = false
     private let lock = NSLock()
     /// When true, stereo (or multi-channel) tap buffers are downmixed to mono on write.
     private var writeMono = false
     private var monoWriteFormat: AVAudioFormat?
+    private var tapInstalled = false
+    /// True while `startRecording` drains/prepends pre-roll — tap skips writes.
+    private var isStartingTake = false
 
     /// Direct monitoring routes input to the output. Off by default because on
     /// a speaker route it feeds back (L-04 checks there is no howl).
@@ -53,10 +60,33 @@ public final class MXRecorder: @unchecked Sendable {
         didSet { updateMonitoring() }
     }
 
+    /// Soft expander on the monitor path (BandLab / GarageBand-style vocal gate).
+    public var monitorGateEnabled = false {
+        didSet { updateMonitoring() }
+    }
+
+    /// Linear amplitude threshold 0…0.2 for the monitor expander.
+    public var monitorGateThreshold: Float = 0.02 {
+        didSet { configureMonitorGate() }
+    }
+
+    /// Milliseconds of input kept in a ring buffer while armed (pre-roll).
+    /// 0 disables. Typical phone-vocal value: 250–500 ms.
+    public var preRollMilliseconds: Double = 250 {
+        didSet { resizePreRollBuffer() }
+    }
+
     private let monitorMixer = AVAudioMixerNode()
+    private var monitorGate: AVAudioUnitEffect?
     private var monitorAttached = false
     /// When true, Monitor may route input→master even before Rec (armed / record mode).
     private var liveInputArmed = false
+
+    // Pre-roll ring (mono float) filled while armed and not yet recording.
+    private var preRollCapacity = 0
+    private var preRollBuffer: [Float] = []
+    private var preRollWriteIndex = 0
+    private var preRollFilled = 0
 
     public private(set) var isRecording = false
     /// Peak input level 0…1, updated from the write tap for UI meters.
@@ -65,8 +95,13 @@ public final class MXRecorder: @unchecked Sendable {
     /// Arm live input for monitoring while in record mode (not only while writing a take).
     public func setLiveInputArmed(_ armed: Bool) {
         liveInputArmed = armed
-        if !armed && !isRecording {
+        if armed {
+            ensureInputTap()
+            updateMonitoring()
+        } else if !isRecording {
+            removeInputTap()
             detachMonitoring()
+            clearPreRoll()
         } else {
             updateMonitoring()
         }
@@ -76,6 +111,7 @@ public final class MXRecorder: @unchecked Sendable {
         self.graph = graph
         self.transport = transport
         self.calibrator = calibrator
+        resizePreRollBuffer()
 
         let previous = graph.session.onEvent
         graph.session.onEvent = { [weak self] event in
@@ -169,25 +205,39 @@ public final class MXRecorder: @unchecked Sendable {
             }
         }
 
+        // Pause shared-tap file/ring writes while we drain + prepend pre-roll so
+        // live buffers cannot interleave ahead of the capture-before-Rec audio.
         lock.lock()
-        file = audioFile
-        currentURL = url
-        startSample = transport.currentSample
-        framesWritten = 0
-        interrupted = false
-        isRecording = true
+        isStartingTake = true
         writeMono = useMono && format.channelCount > 1
         monoWriteFormat = writeMono ? fileFormat : nil
         lock.unlock()
 
-        // Prefer hardware format for the tap; `nil` lets AVAudioEngine pick when
-        // Simulator reports an empty input format.
-        let tapFormat = input.inputFormat(forBus: 0)
-        let installFormat: AVAudioFormat? =
-            (tapFormat.channelCount > 0 && tapFormat.sampleRate > 0) ? tapFormat : nil
-        input.installTap(onBus: 0, bufferSize: 2_048, format: installFormat) { [weak self] buffer, _ in
-            self?.write(buffer)
+        let preRoll = drainPreRoll()
+        let preRollCount = AVAudioFrameCount(preRoll.count)
+        var writtenPreRoll: AVAudioFrameCount = 0
+        if !preRoll.isEmpty {
+            do {
+                try writePreRollSamples(preRoll, to: audioFile, channels: Int(fileFormat.channelCount))
+                writtenPreRoll = preRollCount
+            } catch {
+                // Non-fatal — continue with live capture only.
+                writtenPreRoll = 0
+            }
         }
+
+        lock.lock()
+        file = audioFile
+        currentURL = url
+        startSample = transport.currentSample
+        framesWritten = writtenPreRoll
+        preRollFramesWritten = writtenPreRoll
+        interrupted = false
+        isRecording = true
+        isStartingTake = false
+        lock.unlock()
+
+        ensureInputTap()
         updateMonitoring()
     }
 
@@ -202,43 +252,155 @@ public final class MXRecorder: @unchecked Sendable {
                         startSample: startSample,
                         frameCount: framesWritten,
                         compensationFrames: calibrator.compensationFrames,
-                        wasInterrupted: interrupted)
+                        wasInterrupted: interrupted,
+                        preRollFrames: preRollFramesWritten)
         isRecording = false
         file = nil
         currentURL = nil
         writeMono = false
         monoWriteFormat = nil
+        preRollFramesWritten = 0
         lock.unlock()
 
-        graph.engine.inputNode.removeTap(onBus: 0)
-        detachMonitoring()
+        if liveInputArmed {
+            // Keep tap for meters / next pre-roll; drop only the write target.
+            clearPreRoll()
+            updateMonitoring()
+        } else {
+            removeInputTap()
+            detachMonitoring()
+        }
         return take
     }
 
     private func write(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
-        guard isRecording, let file else {
+        let starting = isStartingTake
+        let recording = isRecording
+        let file = self.file
+        let downmix = writeMono
+        let monoFormat = monoWriteFormat
+        let armed = liveInputArmed
+        lock.unlock()
+
+        let peak = Self.peakLevel(in: buffer)
+        lock.lock()
+        inputLevel = peak
+        lock.unlock()
+
+        // Drop buffers while pre-roll is being prepended to avoid file races.
+        if starting { return }
+
+        if recording, let file {
+            do {
+                if downmix, let monoFormat, let mono = Self.downmixToMono(buffer, format: monoFormat) {
+                    try file.write(from: mono)
+                } else {
+                    try file.write(from: buffer)
+                }
+                lock.lock()
+                framesWritten += buffer.frameLength
+                lock.unlock()
+            } catch {
+                handleInterruption()
+            }
+            return
+        }
+
+        // Armed but not recording — fill pre-roll ring for capture-before-Rec.
+        if armed {
+            pushPreRoll(from: buffer)
+        }
+    }
+
+    // MARK: - Pre-roll ring
+
+    private func resizePreRollBuffer() {
+        let sr = max(graph.sampleRate, 1)
+        let ms = max(0, preRollMilliseconds)
+        let capacity = Int((ms / 1_000.0) * sr)
+        lock.lock()
+        preRollCapacity = capacity
+        preRollBuffer = capacity > 0 ? [Float](repeating: 0, count: capacity) : []
+        preRollWriteIndex = 0
+        preRollFilled = 0
+        lock.unlock()
+    }
+
+    private func clearPreRoll() {
+        lock.lock()
+        preRollWriteIndex = 0
+        preRollFilled = 0
+        if !preRollBuffer.isEmpty {
+            for i in preRollBuffer.indices { preRollBuffer[i] = 0 }
+        }
+        lock.unlock()
+    }
+
+    private func pushPreRoll(from buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        let capacity = preRollCapacity
+        guard capacity > 0, !preRollBuffer.isEmpty else {
             lock.unlock()
             return
         }
-        let downmix = writeMono
-        let monoFormat = monoWriteFormat
-        lock.unlock()
-
-        do {
-            if downmix, let monoFormat, let mono = Self.downmixToMono(buffer, format: monoFormat) {
-                try file.write(from: mono)
-            } else {
-                try file.write(from: buffer)
-            }
-            let peak = Self.peakLevel(in: buffer)
-            lock.lock()
-            framesWritten += buffer.frameLength
-            inputLevel = peak
+        guard let channels = buffer.floatChannelData else {
             lock.unlock()
-        } catch {
-            handleInterruption()
+            return
         }
+        let frames = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        guard frames > 0 else {
+            lock.unlock()
+            return
+        }
+        for i in 0..<frames {
+            var sample: Float
+            if channelCount >= 2 {
+                sample = 0.5 * (channels[0][i] + channels[1][i])
+            } else {
+                sample = channels[0][i]
+            }
+            preRollBuffer[preRollWriteIndex] = sample
+            preRollWriteIndex = (preRollWriteIndex + 1) % capacity
+            if preRollFilled < capacity {
+                preRollFilled += 1
+            }
+        }
+        lock.unlock()
+    }
+
+    /// Returns chronological mono samples from the ring (oldest → newest).
+    private func drainPreRoll() -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let capacity = preRollCapacity
+        let filled = preRollFilled
+        guard capacity > 0, filled > 0, !preRollBuffer.isEmpty else { return [] }
+        var out = [Float](repeating: 0, count: filled)
+        let start = filled < capacity ? 0 : preRollWriteIndex
+        for i in 0..<filled {
+            out[i] = preRollBuffer[(start + i) % capacity]
+        }
+        preRollWriteIndex = 0
+        preRollFilled = 0
+        return out
+    }
+
+    private func writePreRollSamples(_ samples: [Float], to file: AVAudioFile, channels: Int) throws {
+        guard !samples.isEmpty else { return }
+        let format = file.processingFormat
+        let frameCount = AVAudioFrameCount(samples.count)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+        guard let dst = buffer.floatChannelData else { return }
+        let ch = max(1, min(channels, Int(format.channelCount)))
+        for c in 0..<ch {
+            samples.withUnsafeBufferPointer { src in
+                dst[c].update(from: src.baseAddress!, count: samples.count)
+            }
+        }
+        try file.write(from: buffer)
     }
 
     /// Average L/R (or first channel) into a mono float buffer for vocal takes.
@@ -292,7 +454,7 @@ public final class MXRecorder: @unchecked Sendable {
         monoWriteFormat = nil
         lock.unlock()
 
-        graph.engine.inputNode.removeTap(onBus: 0)
+        removeInputTap()
         detachMonitoring()
     }
 
@@ -312,7 +474,36 @@ public final class MXRecorder: @unchecked Sendable {
         return calibrator.compensate(samples, enabled: compensationEnabled)
     }
 
-    // MARK: - Monitoring
+    // MARK: - Input tap (shared for meters, pre-roll, and take write)
+
+    private func ensureInputTap() {
+        lock.lock()
+        let already = tapInstalled
+        lock.unlock()
+        guard !already else { return }
+
+        let input = graph.engine.inputNode
+        let tapFormat = input.inputFormat(forBus: 0)
+        let installFormat: AVAudioFormat? =
+            (tapFormat.channelCount > 0 && tapFormat.sampleRate > 0) ? tapFormat : nil
+        input.installTap(onBus: 0, bufferSize: 2_048, format: installFormat) { [weak self] buffer, _ in
+            self?.write(buffer)
+        }
+        lock.lock()
+        tapInstalled = true
+        lock.unlock()
+    }
+
+    private func removeInputTap() {
+        lock.lock()
+        let installed = tapInstalled
+        tapInstalled = false
+        lock.unlock()
+        guard installed else { return }
+        graph.engine.inputNode.removeTap(onBus: 0)
+    }
+
+    // MARK: - Monitoring (+ optional live noise gate)
 
     private func updateMonitoring() {
         // Allow Monitor in record mode before Rec (liveInputArmed), or while writing a take.
@@ -321,24 +512,64 @@ public final class MXRecorder: @unchecked Sendable {
             return
         }
         if isMonitoringEnabled {
-            guard !monitorAttached else { return }
+            if monitorAttached {
+                configureMonitorGate()
+                return
+            }
             let input = graph.engine.inputNode
             var format = input.inputFormat(forBus: 0)
             if format.channelCount == 0 || format.sampleRate <= 0 {
                 format = input.outputFormat(forBus: 0)
             }
             guard format.channelCount > 0, format.sampleRate > 0 else { return }
+
+            let gate = makeMonitorGate()
+            monitorGate = gate
+            graph.attachUtilityNode(gate)
             graph.attachUtilityNode(monitorMixer)
-            graph.connect(input, to: monitorMixer, format: format)
+            // input → gate → monitorMixer → master
+            graph.connect(input, to: gate, format: format)
+            graph.connect(gate, to: monitorMixer, format: format)
             graph.connect(monitorMixer, to: graph.masterBus, format: nil)
             monitorAttached = true
+            configureMonitorGate()
         } else {
             detachMonitoring()
         }
     }
 
+    private func makeMonitorGate() -> AVAudioUnitEffect {
+        let description = AudioComponentDescription(
+            componentType: kAudioUnitType_Effect,
+            componentSubType: kAudioUnitSubType_DynamicsProcessor,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        return AVAudioUnitEffect(audioComponentDescription: description)
+    }
+
+    private func configureMonitorGate() {
+        guard let gate = monitorGate else { return }
+        let au = gate.audioUnit
+        let linearThresh = max(min(monitorGateThreshold, 0.2), 1e-6)
+        let expansionThreshDB = max(-60, min(-10, 20 * log10(linearThresh)))
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, -18, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 5, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionRatio, kAudioUnitScope_Global, 0, 12, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionThreshold, kAudioUnitScope_Global, 0, expansionThreshDB, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_AttackTime, kAudioUnitScope_Global, 0, 0.005, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_ReleaseTime, kAudioUnitScope_Global, 0, 0.08, 0)
+        AudioUnitSetParameter(au, kDynamicsProcessorParam_OverallGain, kAudioUnitScope_Global, 0, 0, 0)
+        gate.bypass = !monitorGateEnabled
+    }
+
     private func detachMonitoring() {
         guard monitorAttached else { return }
+        if let gate = monitorGate {
+            graph.detachUtilityNode(gate)
+            monitorGate = nil
+        }
         graph.detachUtilityNode(monitorMixer)
         monitorAttached = false
     }

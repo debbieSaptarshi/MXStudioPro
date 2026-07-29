@@ -158,6 +158,17 @@ public enum StudioBounceExporter {
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
         let gateOn = track.noiseGateEnabled
         let gateThreshold = min(max(track.noiseGateThreshold, 0), 0.2)
+        let deEssOn = track.deEsserEnabled && track.deEsserAmount > 0.5
+        var deEssFilter = MXBiquad()
+        if deEssOn {
+            deEssFilter.configure(
+                kind: .peaking,
+                frequency: 6_500,
+                q: 1.4,
+                gainDB: -(track.deEsserAmount / 100) * 12,
+                sampleRate: sampleRate
+            )
+        }
 
         for i in 0..<outFrames {
             let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
@@ -169,6 +180,9 @@ public enum StudioBounceExporter {
             }
             if gateOn {
                 mono = applyNoiseGate(mono, threshold: gateThreshold)
+            }
+            if deEssOn {
+                mono = deEssFilter.process(mono)
             }
             let t = Double(i) / max(sampleRate, 1)
             let envelope = clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)

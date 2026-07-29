@@ -238,10 +238,14 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var delayTime: Float
     /// Distortion wet mix 0…100.
     public var distortionMix: Float
-    /// Bounce-path noise gate (vocal). Off by default — live monitoring is ungated (MVP).
+    /// Bounce-path noise gate (vocal). Live/monitor path is wired separately (Week 28).
     public var noiseGateEnabled: Bool
     /// Linear amplitude threshold (0…0.2). Samples below are attenuated with a soft knee.
     public var noiseGateThreshold: Float
+    /// Vocal de-esser — cuts harsh sibilance around ~6.5 kHz (live EQ + bounce).
+    public var deEsserEnabled: Bool
+    /// De-esser amount 0…100 (maps to ~0…−12 dB peaking cut).
+    public var deEsserAmount: Float
 
     public init(
         id: UUID = UUID(),
@@ -262,7 +266,9 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         delayTime: Float = 0.25,
         distortionMix: Float = 0,
         noiseGateEnabled: Bool = false,
-        noiseGateThreshold: Float = 0.02
+        noiseGateThreshold: Float = 0.02,
+        deEsserEnabled: Bool = false,
+        deEsserAmount: Float = 50
     ) {
         self.id = id
         self.name = name
@@ -283,6 +289,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.distortionMix = min(max(distortionMix, 0), 100)
         self.noiseGateEnabled = noiseGateEnabled
         self.noiseGateThreshold = min(max(noiseGateThreshold, 0), 0.2)
+        self.deEsserEnabled = deEsserEnabled
+        self.deEsserAmount = min(max(deEsserAmount, 0), 100)
     }
 
     public init(from decoder: Decoder) throws {
@@ -307,12 +315,14 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         distortionMix = min(max(try c.decodeIfPresent(Float.self, forKey: .distortionMix) ?? 0, 0), 100)
         noiseGateEnabled = try c.decodeIfPresent(Bool.self, forKey: .noiseGateEnabled) ?? false
         noiseGateThreshold = min(max(try c.decodeIfPresent(Float.self, forKey: .noiseGateThreshold) ?? 0.02, 0), 0.2)
+        deEsserEnabled = try c.decodeIfPresent(Bool.self, forKey: .deEsserEnabled) ?? false
+        deEsserAmount = min(max(try c.decodeIfPresent(Float.self, forKey: .deEsserAmount) ?? 50, 0), 100)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
-        case noiseGateEnabled, noiseGateThreshold
+        case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
     }
 }
 

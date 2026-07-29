@@ -101,10 +101,12 @@ public struct StudioView: View {
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showSettingsSheet) {
-            studioSettingsSheet
-                .presentationDetents([.height(340)])
-                .presentationDragIndicator(.visible)
-                .preferredColorScheme(.dark)
+            ScrollView {
+                studioSettingsSheet
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
         .fileImporter(
             isPresented: $showFileImporter,
@@ -1287,6 +1289,32 @@ public struct StudioView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Pre-roll buffer")
+                    .font(MXFont.mediumButton())
+                    .foregroundStyle(MXColor.white)
+                Text("Keeps the last moments of mic input so Rec doesn’t clip attacks")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.grey)
+                HStack {
+                    Text("\(Int(session.preRollMilliseconds)) ms")
+                        .font(MXFont.studioReadout())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .monospacedDigit()
+                    Spacer()
+                }
+                Slider(
+                    value: Binding(
+                        get: { session.preRollMilliseconds },
+                        set: { session.preRollMilliseconds = $0 }
+                    ),
+                    in: 0...500,
+                    step: 50
+                )
+                .tint(MXColor.accent)
+            }
+            .padding(.top, 8)
+
             Spacer(minLength: 0)
         }
         .padding(24)
@@ -1434,7 +1462,7 @@ public struct StudioView: View {
                             .font(MXFont.caption())
                             .fontWeight(.semibold)
                             .foregroundStyle(MXColor.white)
-                        Text("Export only — quiets room noise between phrases")
+                        Text("Live + export — quiets room noise between phrases")
                             .font(MXFont.caption())
                             .foregroundStyle(MXColor.grey)
                     }
@@ -1450,6 +1478,35 @@ public struct StudioView: View {
                             set: { session.setNoiseGateThreshold(Float($0), trackID: track.id) }
                         ),
                         range: 0...0.2,
+                        labelWidth: 56
+                    )
+                }
+
+                Toggle(isOn: Binding(
+                    get: { track.deEsserEnabled },
+                    set: { session.setDeEsserEnabled($0, trackID: track.id) }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("De-esser")
+                            .font(MXFont.caption())
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MXColor.white)
+                        Text("Tames harsh S sounds around 6.5 kHz")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                    }
+                }
+                .tint(MXColor.accent)
+
+                if track.deEsserEnabled {
+                    mixerSliderRow(
+                        label: "Amount",
+                        valueLabel: String(format: "%.0f", track.deEsserAmount),
+                        value: Binding(
+                            get: { Double(track.deEsserAmount) },
+                            set: { session.setDeEsserAmount(Float($0), trackID: track.id) }
+                        ),
+                        range: 0...100,
                         labelWidth: 56
                     )
                 }
