@@ -72,7 +72,7 @@ let package = Package(
 
         .testTarget(
             name: "MXAudioCoreTests",
-            dependencies: ["MXAudioCore", "MXAudioTestHarness"],
+            dependencies: ["MXAudioCore", "MXAudioDSP", "MXAudioTestHarness"],
             path: "Tests/MXAudioCoreTests",
             swiftSettings: swift5
         ),
