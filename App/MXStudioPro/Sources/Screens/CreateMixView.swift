@@ -31,17 +31,26 @@ private struct CreateMoreItem: Identifiable {
 public struct CreateMixView: View {
     public var isLoggedIn: Bool
     public var onOpenStudio: (StudioPreset) -> Void
+    public var onOpenStudioProject: (UUID) -> Void
+    public var onOpenAI: () -> Void
     public var onLogin: () -> Void
     public var onTutorials: () -> Void
+
+    @State private var showTemplates = false
+    @State private var templateError: String?
 
     public init(
         isLoggedIn: Bool = false,
         onOpenStudio: @escaping (StudioPreset) -> Void = { _ in },
+        onOpenStudioProject: @escaping (UUID) -> Void = { _ in },
+        onOpenAI: @escaping () -> Void = {},
         onLogin: @escaping () -> Void = {},
         onTutorials: @escaping () -> Void = {}
     ) {
         self.isLoggedIn = isLoggedIn
         self.onOpenStudio = onOpenStudio
+        self.onOpenStudioProject = onOpenStudioProject
+        self.onOpenAI = onOpenAI
         self.onLogin = onLogin
         self.onTutorials = onTutorials
     }
@@ -70,6 +79,25 @@ public struct CreateMixView: View {
                 MXLoginBanner(onLogin: onLogin)
                     .padding(.bottom, 4)
             }
+        }
+        .sheet(isPresented: $showTemplates) {
+            DemoTemplatesView(
+                onSelectTemplate: { template in
+                    showTemplates = false
+                    openTemplate(template)
+                },
+                onClose: { showTemplates = false }
+            )
+            .presentationDetents([.medium, .large])
+            .preferredColorScheme(.dark)
+        }
+        .alert("Template", isPresented: Binding(
+            get: { templateError != nil },
+            set: { if !$0 { templateError = nil } }
+        )) {
+            Button("OK", role: .cancel) { templateError = nil }
+        } message: {
+            Text(templateError ?? "")
         }
     }
 
@@ -129,14 +157,14 @@ public struct CreateMixView: View {
     private var loggedInCategories: [CreateCategory] {
         let pocket = "Record live with microphones in your pocket."
         return [
-            .init(title: "Create Music With AI", subtitle: "Record live with microphones.", systemImage: "sparkles", tint: MXColor.accent, style: .hero, preset: .ai, isEnabled: false),
+            .init(title: "Create Music With AI", subtitle: "Describe a vibe — get a track", systemImage: "sparkles", tint: MXColor.accent, style: .hero, preset: .ai, isEnabled: true),
             .init(title: "Vocals/Audio", subtitle: pocket, systemImage: "mic.fill", tint: MXColor.accent, style: .medium, preset: .vocal, isEnabled: true),
-            .init(title: "Guitar", subtitle: pocket, systemImage: "guitars.fill", tint: MXColor.teal, style: .medium, preset: .guitar, isEnabled: false),
+            .init(title: "Guitar", subtitle: "Record electric or acoustic with pedals", systemImage: "guitars.fill", tint: MXColor.teal, style: .medium, preset: .guitar, isEnabled: true),
             .init(title: "Bass", subtitle: pocket, systemImage: "music.note", tint: MXColor.purple, style: .medium, preset: .bass, isEnabled: false),
             .init(title: "Looper", subtitle: pocket, systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .medium, preset: .looper, isEnabled: false),
             .init(title: "Sampler", subtitle: pocket, systemImage: "guitars", tint: MXColor.pink, style: .medium, preset: .sampler, isEnabled: false),
             .init(title: "Import File", subtitle: pocket, systemImage: "square.and.arrow.up", tint: MXColor.red, style: .medium, preset: .importFile, isEnabled: false),
-            .init(title: "Virtual Instrument", subtitle: pocket, systemImage: "pianokeys", tint: MXColor.orange, style: .medium, preset: .midi, isEnabled: false),
+            .init(title: "Virtual Instrument", subtitle: "Play keys with a built-in piano/synth", systemImage: "pianokeys", tint: MXColor.orange, style: .medium, preset: .midi, isEnabled: true),
             .init(title: "Live Performance", subtitle: pocket, systemImage: "music.quarternote.3", tint: MXColor.white, style: .medium, preset: .live, isEnabled: false),
         ]
     }
@@ -225,14 +253,14 @@ public struct CreateMixView: View {
 
     private var guestCategories: [CreateCategory] {
         [
-            .init(title: "Create Music With AI", subtitle: "Record live with microphones.", systemImage: "sparkles", tint: MXColor.accent, style: .hero, preset: .ai, isEnabled: false),
+            .init(title: "Create Music With AI", subtitle: "Describe a vibe — get a track", systemImage: "sparkles", tint: MXColor.accent, style: .hero, preset: .ai, isEnabled: true),
             .init(title: "Vocals/Audio", subtitle: "Record live with microphones.", systemImage: "mic.fill", tint: MXColor.accent, style: .compact, preset: .vocal, isEnabled: true),
-            .init(title: "Guitar", subtitle: "Record with Guitar Amps electric vst", systemImage: "guitars.fill", tint: MXColor.teal, style: .compact, preset: .guitar, isEnabled: false),
+            .init(title: "Guitar", subtitle: "Record electric or acoustic with pedals", systemImage: "guitars.fill", tint: MXColor.teal, style: .compact, preset: .guitar, isEnabled: true),
             .init(title: "Bass", subtitle: "Record with Bass Amps electric vst", systemImage: "music.note", tint: MXColor.purple, style: .compact, preset: .bass, isEnabled: false),
             .init(title: "Looper", subtitle: "Create a loop with our disk jokey", systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .compact, preset: .looper, isEnabled: false),
             .init(title: "Sampler", subtitle: "Find your sample from open market", systemImage: "guitars", tint: MXColor.pink, style: .compact, preset: .sampler, isEnabled: false),
             .init(title: "Import File", subtitle: "Import your mixed file or mp3 file", systemImage: "square.and.arrow.up", tint: MXColor.red, style: .compact, preset: .importFile, isEnabled: false),
-            .init(title: "Virtual Instrument", subtitle: "Record live with virtual instrument or midi", systemImage: "pianokeys", tint: MXColor.orange, style: .compact, preset: .midi, isEnabled: false),
+            .init(title: "Virtual Instrument", subtitle: "Play keys with a built-in piano/synth", systemImage: "pianokeys", tint: MXColor.orange, style: .compact, preset: .midi, isEnabled: true),
             .init(title: "Live Performance", subtitle: "Set up for the live performance on virtual stage.", systemImage: "music.quarternote.3", tint: MXColor.white, style: .compact, preset: .live, isEnabled: false),
         ]
     }
@@ -292,20 +320,46 @@ public struct CreateMixView: View {
 
     private func open(_ category: CreateCategory) {
         guard category.isEnabled, let preset = category.preset else { return }
+        if preset == .ai {
+            onOpenAI()
+            return
+        }
         onOpenStudio(preset)
+    }
+
+    private func openMoreItem(_ item: CreateMoreItem) {
+        switch item.title {
+        case "Demo Templates":
+            showTemplates = true
+        case "Tutorials":
+            onTutorials()
+        default:
+            break
+        }
+    }
+
+    private func openTemplate(_ template: MXDemoTemplate) {
+        do {
+            let projectID = try MXDemoTemplates.createProject(from: template)
+            onOpenStudioProject(projectID)
+        } catch {
+            templateError = error.localizedDescription
+        }
     }
 
     // MARK: - More Project
 
     private var moreItems: [CreateMoreItem] {
+        let templateCount = MXDemoTemplates.all.count
         if isLoggedIn {
             return [
-                .init(title: "Demo Templates", subtitle: "2 demo templates", systemImage: "folder"),
-                .init(title: "My Templates", subtitle: "0 demo templates", systemImage: "folder"),
+                .init(title: "Demo Templates", subtitle: "\(templateCount) starter templates", systemImage: "folder"),
+                .init(title: "My Templates", subtitle: "0 saved templates", systemImage: "folder"),
                 .init(title: "Tutorials", subtitle: "Start your music study", systemImage: "lifepreserver"),
             ]
         }
         return [
+            .init(title: "Demo Templates", subtitle: "\(templateCount) starter templates", systemImage: "folder"),
             .init(title: "Tutorials", subtitle: "Start your music study", systemImage: "lifepreserver"),
         ]
     }
@@ -318,7 +372,7 @@ public struct CreateMixView: View {
 
             VStack(spacing: 8) {
                 ForEach(moreItems) { item in
-                    Button(action: onTutorials) {
+                    Button(action: { openMoreItem(item) }) {
                         HStack(spacing: 16) {
                             Image(systemName: item.systemImage)
                                 .font(.system(size: 16, weight: .medium))

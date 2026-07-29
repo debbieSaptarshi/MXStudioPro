@@ -19,6 +19,9 @@ public struct MXHeader: View {
     public var onClose: () -> Void
     public var onBell: () -> Void
     public var onProfile: () -> Void
+    public var onCollab: () -> Void
+    public var unreadNotificationCount: Int
+    public var collabCount: Int
 
     public init(
         kind: Kind = .home,
@@ -26,7 +29,10 @@ public struct MXHeader: View {
         subtitle: String = "Pop-Rock Indonesia",
         onClose: @escaping () -> Void = {},
         onBell: @escaping () -> Void = {},
-        onProfile: @escaping () -> Void = {}
+        onProfile: @escaping () -> Void = {},
+        onCollab: @escaping () -> Void = {},
+        unreadNotificationCount: Int = 0,
+        collabCount: Int = 0
     ) {
         self.kind = kind
         self.title = title
@@ -34,6 +40,9 @@ public struct MXHeader: View {
         self.onClose = onClose
         self.onBell = onBell
         self.onProfile = onProfile
+        self.onCollab = onCollab
+        self.unreadNotificationCount = unreadNotificationCount
+        self.collabCount = collabCount
     }
 
     public var body: some View {
@@ -102,7 +111,7 @@ public struct MXHeader: View {
         switch kind {
         case .home, .titleProfile:
             HStack(spacing: 4) {
-                iconChip(systemImage: "bell", action: onBell)
+                bellChip
                 profileTile
             }
         case .notLogin:
@@ -113,7 +122,7 @@ public struct MXHeader: View {
             iconChip(systemImage: "xmark", action: onClose)
         case .studio:
             HStack(spacing: 2) {
-                MXButton("Collab", systemImage: "plus", kind: .secondary, size: .medium, icon: .leading, action: {})
+                collabButton
                 iconFace(systemImage: "wand.and.stars")
                 iconFace(systemImage: "gearshape")
                 iconFace(systemImage: "square.and.arrow.up")
@@ -157,6 +166,44 @@ public struct MXHeader: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(MXColor.black)
         )
+    }
+
+    private var bellChip: some View {
+        Button(action: onBell) {
+            iconFace(systemImage: "bell")
+                .overlay(alignment: .topTrailing) {
+                    if unreadNotificationCount > 0 {
+                        Text("\(min(unreadNotificationCount, 99))")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.black)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(MXColor.accent))
+                            .offset(x: 4, y: -4)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(MXColor.black)
+        )
+    }
+
+    private var collabButton: some View {
+        MXButton("Collab", systemImage: "plus", kind: .secondary, size: .medium, icon: .leading, action: onCollab)
+            .overlay(alignment: .topTrailing) {
+                if collabCount > 0 {
+                    Text("\(collabCount)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(MXColor.black)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(MXColor.accent))
+                        .offset(x: 4, y: -4)
+                }
+            }
     }
 
     private func iconChip(systemImage: String, action: @escaping () -> Void) -> some View {

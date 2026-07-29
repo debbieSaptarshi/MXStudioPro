@@ -293,6 +293,64 @@ public final class MXGraph: @unchecked Sendable {
         }
     }
 
+    /// Connects `source → insert → master` with tracked attach (clip player → EQ).
+    public func connectSourceThroughInsertToMaster(source: AVAudioNode, insert: AVAudioNode) {
+        connectSourceThroughInsertsToMaster(source: source, inserts: [insert])
+    }
+
+    /// Connects `source → inserts[0] → … → inserts[n] → master` with tracked attach.
+    public func connectSourceThroughInsertsToMaster(source: AVAudioNode, inserts: [AVAudioNode]) {
+        graphMutation {
+            configureMasterIfNeeded()
+            attach(inserts + [source])
+            var chain: [AVAudioNode] = [source] + inserts
+            for (a, b) in zip(chain, chain.dropFirst()) {
+                engine.connect(a, to: b, format: processingFormat)
+            }
+            if let last = chain.last {
+                engine.connect(last, to: masterBus, format: processingFormat)
+            }
+        }
+    }
+
+    /// Tears down a chain built with `connectSourceThroughInsertToMaster`.
+    public func disconnectSourceThroughInsertFromMaster(source: AVAudioNode, insert: AVAudioNode) {
+        disconnectSourceThroughInsertsFromMaster(source: source, inserts: [insert])
+    }
+
+    /// Tears down a chain built with `connectSourceThroughInsertsToMaster`.
+    public func disconnectSourceThroughInsertsFromMaster(source: AVAudioNode, inserts: [AVAudioNode]) {
+        graphMutation {
+            engine.disconnectNodeOutput(source)
+            for node in inserts {
+                engine.disconnectNodeOutput(node)
+            }
+            disconnectAndDetach([source] + inserts)
+        }
+    }
+
+    /// Attach a utility node into the tracked set (e.g. monitor mixer) without connecting.
+    public func attachUtilityNode(_ node: AVAudioNode) {
+        graphMutation {
+            configureMasterIfNeeded()
+            attach([node])
+        }
+    }
+
+    /// Connect two already-attached nodes (or engine-owned nodes like `inputNode`).
+    public func connect(_ source: AVAudioNode, to destination: AVAudioNode, format: AVAudioFormat?) {
+        graphMutation {
+            engine.connect(source, to: destination, format: format)
+        }
+    }
+
+    /// Disconnect + detach a tracked utility node.
+    public func detachUtilityNode(_ node: AVAudioNode) {
+        graphMutation {
+            disconnectAndDetach([node])
+        }
+    }
+
     // MARK: - Master chain
 
     public func setMasterInserts(_ effects: [MXEffect]) {

@@ -30,6 +30,27 @@
 		C1A00101AAAA000100000021 /* MXProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000001F /* MXProject.swift */; };
 		C1A00101AAAA000100000022 /* MXProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000020 /* MXProjectStore.swift */; };
 		C1A00101AAAA000100000024 /* RecordVocalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000023 /* RecordVocalView.swift */; };
+		C1A00101AAAA000100000026 /* StudioEditStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000025 /* StudioEditStack.swift */; };
+		C1A00101AAAA000100000028 /* StudioBounceExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000027 /* StudioBounceExporter.swift */; };
+		C1A00101AAAA00010000002A /* MyMixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000029 /* MyMixView.swift */; };
+		C1A00101AAAA00010000002C /* MXAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000002B /* MXAuthSession.swift */; };
+		C1A00101AAAA00010000002E /* EmailSignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000002D /* EmailSignInView.swift */; };
+		C1A00101AAAA000100000030 /* MXSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000002F /* MXSocialStore.swift */; };
+		C1A00101AAAA000100000032 /* PianoKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000031 /* PianoKeyboardView.swift */; };
+		C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000035 /* MXAIComposeService.swift */; };
+		C1A00101AAAA000100000034 /* AIComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000036 /* AIComposeView.swift */; };
+		C1A00101AAAA000100000038 /* MXAIAudioStub.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000039 /* MXAIAudioStub.swift */; };
+		C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */; };
+		C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003D /* MXDemoTemplates.swift */; };
+		C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */; };
+		C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000041 /* DemoTemplatesView.swift */; };
+		C1A00101AAAA000100000042 /* LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000043 /* LearnView.swift */; };
+		C1A00101AAAA000100000044 /* TunerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000045 /* TunerView.swift */; };
+		C1A00101AAAA000100000046 /* MXTunerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000047 /* MXTunerEngine.swift */; };
+		C1A00101AAAA000100000050 /* StudioExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000051 /* StudioExportSheet.swift */; };
+		C1A00101AAAA000100000052 /* StudioCollabSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000053 /* StudioCollabSheet.swift */; };
+		C1A00101AAAA000100000054 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000055 /* NotificationsView.swift */; };
+		C1A00101AAAA000100000056 /* MXNotificationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000057 /* MXNotificationStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +77,27 @@
 		C1A00101AAAA00010000001F /* MXProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXProject.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000020 /* MXProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXProjectStore.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000023 /* RecordVocalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordVocalView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000025 /* StudioEditStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEditStack.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000027 /* StudioBounceExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioBounceExporter.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000029 /* MyMixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyMixView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000002B /* MXAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAuthSession.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000002D /* EmailSignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailSignInView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000002F /* MXSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXSocialStore.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000031 /* PianoKeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PianoKeyboardView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000035 /* MXAIComposeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIComposeService.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000036 /* AIComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIComposeView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000039 /* MXAIAudioStub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIAudioStub.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIStudioImporter.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000003D /* MXDemoTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDemoTemplates.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDiscoverStudioBridge.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000041 /* DemoTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTemplatesView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000043 /* LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000045 /* TunerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunerView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000047 /* MXTunerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXTunerEngine.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000051 /* StudioExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExportSheet.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000053 /* StudioCollabSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCollabSheet.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000055 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000057 /* MXNotificationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXNotificationStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 
@@ -83,13 +125,22 @@
 		1FE3B95D2E2DFF81B07DAC17 /* Screens */ = {
 			isa = PBXGroup;
 			children = (
+				C1A00101AAAA000100000036 /* AIComposeView.swift */,
 				8291CACB9330A7B0AE2964DC /* CreateMixView.swift */,
+				C1A00101AAAA000100000041 /* DemoTemplatesView.swift */,
 				C519DDF1C1C77E75CECE58A6 /* DiscoverMixesView.swift */,
+				C1A00101AAAA000100000043 /* LearnView.swift */,
 				F3FE142011C4F87DA67167FE /* NowPlayingView.swift */,
+				C1A00101AAAA00010000002D /* EmailSignInView.swift */,
+				C1A00101AAAA000100000029 /* MyMixView.swift */,
 				C1A00101AAAA000100000023 /* RecordVocalView.swift */,
 				C1A00101AAAA000100000018 /* SocialsView.swift */,
 				6016DB30B68F971DA3A3C5FB /* SplashView.swift */,
 				C1A00101AAAA00010000001A /* StudioView.swift */,
+				C1A00101AAAA000100000051 /* StudioExportSheet.swift */,
+				C1A00101AAAA000100000053 /* StudioCollabSheet.swift */,
+				C1A00101AAAA000100000055 /* NotificationsView.swift */,
+				C1A00101AAAA000100000045 /* TunerView.swift */,
 				48C355B0F8413D1E71FEF552 /* WelcomeView.swift */,
 			);
 			path = Screens;
@@ -112,20 +163,45 @@
 		30B6E7789DAC5AF734967205 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				C1A00101AAAA000100000037 /* AI */,
 				828CAD9FC6C98689D07CB51E /* App */,
 				3000F6909F44445EE409483E /* Components */,
 				1F9C5ECEB1BBB02765D9EF51 /* DesignSystem */,
 				1FE3B95D2E2DFF81B07DAC17 /* Screens */,
+				C1A00101AAAA000100000048 /* Tools */,
 				C1A00101AAAA00010000001D /* Studio */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		C1A00101AAAA000100000037 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				C1A00101AAAA000100000039 /* MXAIAudioStub.swift */,
+				C1A00101AAAA000100000035 /* MXAIComposeService.swift */,
+				C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
+		C1A00101AAAA000100000048 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				C1A00101AAAA000100000047 /* MXTunerEngine.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
 		C1A00101AAAA00010000001D /* Studio */ = {
 			isa = PBXGroup;
 			children = (
+				C1A00101AAAA000100000027 /* StudioBounceExporter.swift */,
+				C1A00101AAAA00010000003D /* MXDemoTemplates.swift */,
+				C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */,
 				C1A00101AAAA00010000001F /* MXProject.swift */,
 				C1A00101AAAA000100000020 /* MXProjectStore.swift */,
+				C1A00101AAAA000100000031 /* PianoKeyboardView.swift */,
+				C1A00101AAAA000100000025 /* StudioEditStack.swift */,
 				C1A00101AAAA000100000019 /* StudioSessionController.swift */,
 			);
 			path = Studio;
@@ -134,7 +210,10 @@
 		828CAD9FC6C98689D07CB51E /* App */ = {
 			isa = PBXGroup;
 			children = (
+				C1A00101AAAA00010000002B /* MXAuthSession.swift */,
 				7DBBE916452293EA2406BF32 /* MXStudioProApp.swift */,
+				C1A00101AAAA00010000002F /* MXSocialStore.swift */,
+				C1A00101AAAA000100000057 /* MXNotificationStore.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -250,8 +329,29 @@
 				41BC64A72E78B2763069A843 /* SplashView.swift in Sources */,
 				C1A00101AAAA000100000021 /* MXProject.swift in Sources */,
 				C1A00101AAAA000100000022 /* MXProjectStore.swift in Sources */,
+				C1A00101AAAA000100000026 /* StudioEditStack.swift in Sources */,
+				C1A00101AAAA000100000028 /* StudioBounceExporter.swift in Sources */,
+				C1A00101AAAA00010000002A /* MyMixView.swift in Sources */,
+				C1A00101AAAA00010000002C /* MXAuthSession.swift in Sources */,
+				C1A00101AAAA00010000002E /* EmailSignInView.swift in Sources */,
+				C1A00101AAAA000100000030 /* MXSocialStore.swift in Sources */,
+				C1A00101AAAA000100000032 /* PianoKeyboardView.swift in Sources */,
 				C1A00101AAAA000100000009 /* StudioSessionController.swift in Sources */,
 				C1A00101AAAA00010000000A /* StudioView.swift in Sources */,
+				C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */,
+				C1A00101AAAA000100000034 /* AIComposeView.swift in Sources */,
+				C1A00101AAAA000100000038 /* MXAIAudioStub.swift in Sources */,
+				C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */,
+				C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */,
+				C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */,
+				C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */,
+				C1A00101AAAA000100000042 /* LearnView.swift in Sources */,
+				C1A00101AAAA000100000044 /* TunerView.swift in Sources */,
+				C1A00101AAAA000100000046 /* MXTunerEngine.swift in Sources */,
+				C1A00101AAAA000100000050 /* StudioExportSheet.swift in Sources */,
+				C1A00101AAAA000100000052 /* StudioCollabSheet.swift in Sources */,
+				C1A00101AAAA000100000054 /* NotificationsView.swift in Sources */,
+				C1A00101AAAA000100000056 /* MXNotificationStore.swift in Sources */,
 				83D692361BE9D47056D2238F /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -17,11 +17,20 @@ public final class MXRecorder: @unchecked Sendable {
         public var wasInterrupted: Bool
     }
 
-    public enum RecorderError: Error, Equatable {
+    public enum RecorderError: Error, Equatable, LocalizedError {
         case alreadyRecording
         case notRecording
         case inputUnavailable
         case fileCreationFailed(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .alreadyRecording: return "Already recording."
+            case .notRecording: return "Not currently recording."
+            case .inputUnavailable: return "Microphone input is unavailable."
+            case .fileCreationFailed(let detail): return "Could not create take file: \(detail)"
+            }
+        }
     }
 
     private let graph: MXGraph
@@ -43,10 +52,22 @@ public final class MXRecorder: @unchecked Sendable {
 
     private let monitorMixer = AVAudioMixerNode()
     private var monitorAttached = false
+    /// When true, Monitor may route input→master even before Rec (armed / record mode).
+    private var liveInputArmed = false
 
     public private(set) var isRecording = false
     /// Peak input level 0…1, updated from the write tap for UI meters.
     public private(set) var inputLevel: Float = 0
+
+    /// Arm live input for monitoring while in record mode (not only while writing a take).
+    public func setLiveInputArmed(_ armed: Bool) {
+        liveInputArmed = armed
+        if !armed && !isRecording {
+            detachMonitoring()
+        } else {
+            updateMonitoring()
+        }
+    }
 
     public init(graph: MXGraph, transport: MXTransport, calibrator: MXLatencyCalibrator) {
         self.graph = graph
@@ -78,25 +99,48 @@ public final class MXRecorder: @unchecked Sendable {
         }
 
         let input = graph.engine.inputNode
-        let format = input.inputFormat(forBus: 0)
-        guard format.channelCount > 0, format.sampleRate > 0 else {
-            throw RecorderError.inputUnavailable
+        var format = input.inputFormat(forBus: 0)
+        if format.channelCount == 0 || format.sampleRate <= 0 {
+            // Simulator / cold route: touch the node and retry once.
+            _ = input.outputFormat(forBus: 0)
+            format = input.inputFormat(forBus: 0)
+        }
+        if format.channelCount == 0 || format.sampleRate <= 0 {
+            // Last resort: a mono float format at the graph rate so Simulator can still write takes.
+            guard let fallback = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: graph.sampleRate,
+                channels: 1,
+                interleaved: false
+            ) else {
+                throw RecorderError.inputUnavailable
+            }
+            format = fallback
         }
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-        ]
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
 
         let audioFile: AVAudioFile
         do {
-            audioFile = try AVAudioFile(forWriting: url, settings: settings)
+            audioFile = try AVAudioFile(forWriting: url, settings: format.settings)
         } catch {
-            throw RecorderError.fileCreationFailed(error.localizedDescription)
+            let fallbackSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: format.sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ]
+            do {
+                audioFile = try AVAudioFile(forWriting: url, settings: fallbackSettings)
+            } catch {
+                throw RecorderError.fileCreationFailed(error.localizedDescription)
+            }
         }
 
         lock.lock()
@@ -108,7 +152,12 @@ public final class MXRecorder: @unchecked Sendable {
         isRecording = true
         lock.unlock()
 
-        input.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
+        // Prefer hardware format for the tap; `nil` lets AVAudioEngine pick when
+        // Simulator reports an empty input format.
+        let tapFormat = input.inputFormat(forBus: 0)
+        let installFormat: AVAudioFormat? =
+            (tapFormat.channelCount > 0 && tapFormat.sampleRate > 0) ? tapFormat : nil
+        input.installTap(onBus: 0, bufferSize: 2_048, format: installFormat) { [weak self] buffer, _ in
             self?.write(buffer)
         }
         updateMonitoring()
@@ -206,28 +255,31 @@ public final class MXRecorder: @unchecked Sendable {
     // MARK: - Monitoring
 
     private func updateMonitoring() {
-        guard isRecording else { return }
+        // Allow Monitor in record mode before Rec (liveInputArmed), or while writing a take.
+        guard isRecording || liveInputArmed else {
+            detachMonitoring()
+            return
+        }
         if isMonitoringEnabled {
-            graph.graphMutation {
-                guard !monitorAttached else { return }
-                graph.engine.attach(monitorMixer)
-                let format = graph.engine.inputNode.inputFormat(forBus: 0)
-                graph.engine.connect(graph.engine.inputNode, to: monitorMixer, format: format)
-                graph.engine.connect(monitorMixer, to: graph.masterBus, format: nil)
-                monitorAttached = true
+            guard !monitorAttached else { return }
+            let input = graph.engine.inputNode
+            var format = input.inputFormat(forBus: 0)
+            if format.channelCount == 0 || format.sampleRate <= 0 {
+                format = input.outputFormat(forBus: 0)
             }
+            guard format.channelCount > 0, format.sampleRate > 0 else { return }
+            graph.attachUtilityNode(monitorMixer)
+            graph.connect(input, to: monitorMixer, format: format)
+            graph.connect(monitorMixer, to: graph.masterBus, format: nil)
+            monitorAttached = true
         } else {
             detachMonitoring()
         }
     }
 
     private func detachMonitoring() {
-        graph.graphMutation {
-            guard monitorAttached else { return }
-            graph.engine.disconnectNodeOutput(monitorMixer)
-            graph.engine.disconnectNodeInput(monitorMixer)
-            graph.engine.detach(monitorMixer)
-            monitorAttached = false
-        }
+        guard monitorAttached else { return }
+        graph.detachUtilityNode(monitorMixer)
+        monitorAttached = false
     }
 }

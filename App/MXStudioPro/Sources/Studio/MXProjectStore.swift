@@ -53,6 +53,20 @@ public final class MXProjectStore: @unchecked Sendable {
         return project
     }
 
+    public func createGuitarProject(bpm: Double = 120) throws -> MXProject {
+        var project = MXProject.untitledGuitar(bpm: bpm)
+        try save(project)
+        lastOpenedProjectID = project.id
+        return project
+    }
+
+    public func createMIDIProject(bpm: Double = 120) throws -> MXProject {
+        var project = MXProject.untitledMIDI(bpm: bpm)
+        try save(project)
+        lastOpenedProjectID = project.id
+        return project
+    }
+
     public func save(_ project: MXProject) throws {
         var mutable = project
         mutable.modifiedAt = .now
@@ -79,6 +93,30 @@ public final class MXProjectStore: @unchecked Sendable {
     public func loadLastOpened() -> MXProject? {
         guard let id = lastOpenedProjectID else { return nil }
         return try? load(id: id)
+    }
+
+    /// All local projects under Documents/Projects, newest first.
+    public func listProjects() -> [MXProject] {
+        guard let dirs = try? fileManager.contentsOfDirectory(
+            at: projectsRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var projects: [MXProject] = []
+        for dir in dirs {
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            let json = dir.appendingPathComponent("project.json")
+            guard let data = try? Data(contentsOf: json),
+                  let project = try? decoder.decode(MXProject.self, from: data) else { continue }
+            projects.append(project)
+        }
+        return projects.sorted { $0.modifiedAt > $1.modifiedAt }
+    }
+
+    public func exportsDirectory(for id: UUID) -> URL {
+        projectDirectory(for: id).appendingPathComponent("Exports", isDirectory: true)
     }
 
     /// Opens last project when present; otherwise creates a new vocals project.

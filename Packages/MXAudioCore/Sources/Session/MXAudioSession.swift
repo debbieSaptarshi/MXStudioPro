@@ -92,12 +92,17 @@ public final class MXAudioSession: @unchecked Sendable {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
-            var options: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker]
+            var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
             if self.configuration.allowsBluetooth {
+                // HFP for mic-capable BT; A2DP alone is output-only and can
+                // zero out the input format on some routes / Simulator.
+                if self.configuration.enablesInput {
+                    options.insert(.allowBluetooth)
+                }
                 options.insert(.allowBluetoothA2DP)
             }
             try session.setCategory(self.configuration.enablesInput ? .playAndRecord : .playback,
-                                    mode: .measurement,
+                                    mode: self.configuration.enablesInput ? .default : .measurement,
                                     options: options)
             try session.setPreferredSampleRate(self.configuration.sampleRate)
             try session.setPreferredIOBufferDuration(

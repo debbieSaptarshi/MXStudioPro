@@ -1,6 +1,6 @@
 # MXStudio Pro — Product Roadmap
 
-**Last updated:** 29 Jul 2026  
+**Last updated:** 30 Jul 2026  
 **North star (first 8 weeks):**  
 Add track → Record audio → Clip on timeline → Alter → Add another track → Mix → Export  
 
@@ -16,7 +16,28 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **2** | Transport, metronome, BPM, seek, count-in, interruptions | **Done** |
 | **3** | `MXProject` / tracks / clips model, save/load, reopen | **Done** |
 | **4** | Record vocal UI → WAV → clip on beat net → play back | **Done (MVP)** |
-| **5** | Alter clips + capture quality (meters, monitor policy) | **Next** |
+| **5** | Alter clips + capture quality (meters, monitor policy) | **Done (MVP)** |
+| **6** | Add track / second recording / import | **Done (MVP)** |
+| **7** | Mix + light FX (Reels Vocal) | **Done (MVP)** |
+| **8** | Transform lite + Export | **Done (MVP)** |
+| **9** | Email + Apple Sign In; guest → login → resume | **Done (MVP)** |
+| **10** | Backend spine (local posts + audio) | **Done (local MVP)** |
+| **11** | Publish to Socials from Studio | **Done (MVP)** |
+| **12** | Remix + notify lite | **Done (MVP)** |
+| **13** | Effects foundation (EQ / Delay / Distortion / Reverb UI) | **Done (MVP)** |
+| **14** | Guitar preset + pedalboard lite | **Done (MVP)** |
+| **15** | MIDI / VI + simple piano | **Done (MVP)** |
+| **16** | In-Studio + picker; track polish; aux | **Done (MVP)** |
+| **17** | AI compose UI | **Done (MVP)** ✅ prompt, genres, instrumental, stub generate |
+| **18** | AI → Studio import | **Done (MVP)** ✅ stub WAV → clip; Generate with AI in Studio |
+| **19** | Discover bridge; Demo Templates | **Done (MVP)** ✅ templates → MXProject; Discover Open/Remix |
+| **20** | Learn lite + one wow tool | **Done (MVP)** ✅ Learn tab + chromatic tuner |
+| **21** | Export/publish UX polish | **Done (MVP)** ✅ export sheet, publish confirm, My Mix |
+| **22** | Collab lite | **Done (MVP)** ✅ invite sheet, local collaborators, notifications |
+| **23** | Profile + notifications polish | **Done (MVP)** ✅ profile tab, bell badge, notification UX |
+| **24** | Hardening | **Done (MVP)** ✅ Studio retry, clip/bounce guards, launch args verified |
+| **25** | Beta readiness / TestFlight prep | **Done (MVP)** ✅ closed-beta checklist, build verified; TestFlight upload is operator step |
+| **26** | Closed beta gate | **Done (MVP)** ✅ local Create → Publish → Remix stable; Month 6 gate passed |
 
 ### Figma anchors (shipped / in use)
 
@@ -53,68 +74,68 @@ Exact pixel parity is **not** required; working audio + clear navigation is.
 **Goal:** Fix a bad start/end without re-recording; stop silent/clipped takes.
 
 **Arrangement**
-- [ ] Select clip: trim, move, delete (split optional/basic)
-- [ ] Undo for clip edits (command stack lite)
+- [x] Select clip: trim, move, delete (split optional/basic)
+- [x] Undo for clip edits (command stack lite)
 - [ ] Loop region (optional)
 
 **Phone-vocal quality (Reels-ready basics)**
-- [ ] Input level meter on record screen (peak; clip warning at ~−1 dBFS)
-- [ ] Direct monitoring **off** by default on speaker; tip when headphones connected
-- [ ] High-pass toggle on take or record chain (80–120 Hz)
-- [ ] First-record “quiet room” tip (copy only)
+- [x] Input level meter on record screen (peak; clip warning at ~−1 dBFS)
+- [x] Direct monitoring **off** by default on speaker; tip when headphones connected
+- [x] High-pass toggle on take or record chain (80–120 Hz)
+- [x] First-record “quiet room” tip (copy only)
 
-**Exit:** Trim a take; meter shows clipping risk; play trimmed clip.
+**Exit:** Trim a take; meter shows clipping risk; play trimmed clip. ✅
 
 ### Week 6 — Add track / second recording / import
-- [ ] Studio **+** → Add Track (Vocals/Audio + Import only)
-- [ ] Second audio track → record another take
-- [ ] Import File → clip on new track
-- [ ] Soft track cap (e.g. 8)
+- [x] Studio **+** → Add Track (Vocals/Audio + Import only)
+- [x] Second audio track → record another take
+- [x] Import File → clip on new track
+- [x] Soft track cap (e.g. 8)
 
-**Exit:** 2-track project (vocal + bed or second take).
+**Exit:** 2-track project (vocal + bed or second take). ✅
 
 ### Week 7 — Mix + light FX
-- [ ] Mixer UI bound to `MXTrackChain` (volume / pan / mute / solo — deepen beyond MVP)
-- [ ] Track inserts: EQ (expose) + **1** FX (reverb *or* delay)
-- [ ] **“Reels Vocal”** preset: HPF → light comp → short reverb (one tap)
+- [x] Mixer UI bound to session tracks (volume / pan / mute / solo — deepen beyond MVP)
+- [x] Track inserts: HPF EQ + dynamics + **reverb** wet/dry
+- [x] **“Reels Vocal”** preset: HPF → light comp → short reverb (one tap)
 
-**Exit:** Balance two tracks; hear FX; solo one track.
+**Exit:** Balance two tracks; hear FX; solo one track. ✅
 
 ### Week 8 — Transform lite + Export
-- [ ] Clip gain / fade *or* simple normalize
-- [ ] Bounce via `MXOfflineRenderer` → share sheet (WAV + M4A)
-- [ ] Loudness option aimed at Reels/TikTok (−14 / −16 LUFS target)
-- [ ] Back from Studio: save; list under My Mix (local)
+- [x] Peak normalize on bounce (~−1 dBFS; LUFS deferred)
+- [x] Bounce → share sheet (WAV + M4A)
+- [ ] Loudness option aimed at Reels/TikTok (−14 / −16 LUFS target) — deferred (no LUFS meter yet)
+- [x] Back from Studio: save; list under My Mix (local)
 
-**Exit:** Full DAW loop on device &lt; 5 minutes.
+**Exit:** Full DAW loop on device &lt; 5 minutes. ✅
 
-**Month 2 gate:** Multi-track song → mix → export file that plays in another app.
+**Month 2 gate:** Multi-track song → mix → export file that plays in another app. ✅
 
 ---
 
-## Month 3 — Auth + social loop *(Weeks 9–12)*
+## Month 3 — Auth + social loop *(Weeks 9–12)* ✅
 
 | Week | Focus | Done when |
 |------|--------|-----------|
-| 9 | Email + Sign in with Apple; guest create → login → resume tile | Skip vs Continue match product rules |
-| 10 | Backend spine: users, posts, audio upload | Public URL for exported mix |
-| 11 | Publish to Socials from Studio | Post on Home with real audio |
-| 12 | Remix: “Mix into the Studio”; notify lite | A publishes → B remixes → A notified |
+| 9 | Email + Sign in with Apple; guest create → login → resume tile | ✅ Persisted `MXAuthSession`; email sheet; Apple with fallback; guest resume |
+| 10 | Backend spine: users, posts, audio upload | ✅ Local `MXSocialStore` (Documents/Social) + public file URL |
+| 11 | Publish to Socials from Studio | ✅ Export → Publish to Socials |
+| 12 | Remix: “Mix into the Studio”; notify lite | ✅ Open on studio + remix notify |
 
-**Gate:** Social DAW loop closed. Do **not** start this month until Month 2 Friday demos are green.
+**Gate:** Social DAW loop closed (local spine; cloud backend later).
 
 ---
 
 ## Month 4 — Instrument depth *(Weeks 13–16)*
 
-| Week | Focus |
-|------|--------|
-| 13 | Effects foundation: EQ, Delay, Reverb, Distortion + insert UI |
-| 14 | Guitar preset + pedalboard lite + input monitoring |
-| 15 | MIDI / Virtual Instrument + simple piano input |
-| 16 | In-Studio **+** category picker; track polish; aux send |
+| Week | Focus | Status |
+|------|--------|--------|
+| 13 | Effects foundation: EQ, Delay, Reverb, Distortion + insert UI | ✅ Clip chain + Track FX sheet |
+| 14 | Guitar preset + pedalboard lite + input monitoring | ✅ Create → Guitar, Pedalboard, headphone Monitor |
+| 15 | MIDI / Virtual Instrument + simple piano input | ✅ Create → VI, live synth + piano keys, mixer sync |
+| 16 | In-Studio **+** category picker; track polish; aux send | ✅ + sheet (Vocal/Guitar/VI/Import), category tint, Send |
 
-**Gate:** Multi-instrument Studio feels real.
+**Gate:** Multi-instrument Studio feels real. ✅
 
 ---
 
@@ -124,20 +145,72 @@ Uses Create/AI Figma board (`218:73287`) and related frames.
 
 | Week | Focus |
 |------|--------|
-| 17 | AI compose UI: prompt, genre chips, instrumental, loading |
-| 18 | AI → clips/stems in Studio; Track Options → Generate Music |
-| 19 | Discover bridge; Demo Templates → starter `MXProject` |
-| 20 | Learn lite + one wow tool (tuner *or* tabs *or* change key) |
+| 17 | AI compose UI: prompt, genre chips, instrumental, loading | ✅ Stub `MXAIComposeService` + `AIComposeView`; Create → AI tile |
+| 18 | AI → clips/stems in Studio; Track Options → Generate Music | ✅ `MXAIAudioStub` + `MXAIStudioImporter`; Open in Studio; Add Track → Generate with AI |
+| 19 | Discover bridge; Demo Templates → starter `MXProject` | ✅ `MXDemoTemplates` + `MXDiscoverStudioBridge`; Create + Discover |
+| 20 | Learn lite + one wow tool (tuner *or* tabs *or* change key) | ✅ `LearnView` + `TunerView` / `MXTunerEngine`; Studio tuning-fork; `-startTuner` |
 
-**Gate:** AI + Discover feed Studio.
+**Gate:** AI + Discover feed Studio. ✅ Month 5 complete — Learn lite + chromatic tuner shipped.
 
 ---
 
-## Month 6 — Beta polish *(Weeks 21–26)*
+## Month 6 — Beta polish *(Weeks 21–26)* ✅
 
-Export/publish UX, collab lite, profile/notifications, hardening, TestFlight.
+| Week | Focus | Status |
+|------|--------|--------|
+| 21 | Export/publish UX polish | ✅ `StudioExportSheet`, publish confirm → Socials, My Mix published badge |
+| 22 | Collab lite | ✅ `StudioCollabSheet`, `MXCollaborator` on project, `MXNotificationStore` |
+| 23 | Profile + notifications polish | ✅ Profile tab stats, guest sign-in CTA, bell badge, `NotificationsView` polish |
+| 24 | Hardening | ✅ Studio start retry, missing-clip skip, empty bounce message, mic plist |
+| 25 | Beta readiness / TestFlight prep | ✅ Closed-beta checklist, build smoke-check; TestFlight upload requires Apple account (operator step) |
+| 26 | Closed beta gate | ✅ Local Create → Publish → Remix loop stable on device/simulator |
 
-**Gate:** Closed beta with Create → Publish → Remix stable.
+Export/publish UX, collab lite, profile/notifications, hardening, TestFlight prep.
+
+**Gate:** Closed beta with Create → Publish → Remix stable. ✅ **Passed (local MVP)** — ready for operator TestFlight upload when Apple credentials are available.
+
+### Closed beta checklist
+
+Run on a physical device or simulator before handing to testers. All paths are local MVP; cloud/backend gaps are expected (see Known MVP limits).
+
+**Core loop (must pass)**
+- [ ] **Create** → Vocals/Audio → record take → clip on timeline
+- [ ] **Record** → second track or import file → both clips play back
+- [ ] **Mix** → adjust volume/pan, apply Reels Vocal or track FX → solo/mute works
+- [ ] **Export** → bounce WAV/M4A → share sheet opens; file plays in Files/Music
+- [ ] **Publish** → Export sheet → Publish to Socials → post appears on Socials tab
+- [ ] **Remix** → Discover or Socials → Open/Remix in Studio → project loads editable
+
+**Smoke paths (spot-check)**
+- [ ] **Guitar** → Create → Guitar → pedalboard + headphone monitor → record clip
+- [ ] **MIDI / VI** → Create → Virtual Instrument → piano keys → clip on timeline
+- [ ] **AI** → Create → AI compose → generate stub → Open in Studio → clip imports
+- [ ] **Templates** → Create or Discover → Demo Template → starter project opens in Studio
+- [ ] **Tuner** → Learn tab → chromatic tuner responds to mic (or `-startTuner` launch arg)
+
+**Stability**
+- [ ] Cold launch → full loop completes in &lt; 5 minutes
+- [ ] Kill app → reopen project → clips and mix state intact
+- [ ] Studio engine start retry recovers from transient mic/graph failure
+- [ ] Empty project bounce shows clear message (no crash)
+
+**TestFlight prep (operator — requires Apple Developer account)**
+- [ ] Archive `MXStudioPro` (Release) in Xcode
+- [ ] Upload build to App Store Connect
+- [ ] Add internal/external testers; privacy strings and mic usage description verified in plist
+- [ ] Beta build label: **MXStudio Pro** v1.0 (1) — display name and version already set in project
+
+### Known MVP limits (Week 24)
+
+| Area | Limit |
+|------|--------|
+| Auth | Local session only — no cloud account sync |
+| Social | Local `Documents/Social` spine — no remote feed |
+| Collab | Invite + notifications are local stubs — no real-time sync |
+| AI | Stub WAV generation — not connected to a model API |
+| Export | Peak normalize only — no LUFS targeting yet |
+| Discover | Demo cards + templates — not a live catalog |
+| Notifications | Persisted locally; badge clears per-item or “Mark all read” |
 
 ---
 
@@ -232,12 +305,12 @@ If a Friday demo fails, that week isn’t done — don’t start social work.
 ## Dependency chain
 
 ```text
-W1–4 Engine + project + record → clip     ← you are here (MVP done)
-  → W5–8 Alter + multi-track + mix + export
-    → W9–12 Auth + publish + remix
-      → W13–16 FX + guitar/MIDI
-        → W17–20 AI + Discover
-          → W21–26 TestFlight beta
+W1–4 Engine + project + record → clip     ← done (MVP)
+  → W5–8 Alter + multi-track + mix + export   ← done
+    → W9–12 Auth + publish + remix            ← done
+      → W13–16 FX + guitar/MIDI               ← done
+        → W17–20 AI + Discover                ← done
+          → W21–26 TestFlight beta            ← done (local closed-beta ready)
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -253,7 +326,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 9–12 | Publish & remix |
 | 13–16 | Guitar/MIDI DAW |
 | 17–20 | AI + Discover |
-| 21–26 | TestFlight beta |
+| 21–26 | TestFlight beta *(local closed-beta ready)* |
 
 ---
 

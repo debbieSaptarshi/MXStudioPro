@@ -15,6 +15,12 @@ public struct SocialsView: View {
     public var onTogglePlay: () -> Void
     public var onOpenPlayer: () -> Void
     public var onStartPlaying: () -> Void
+    public var onRemixPost: (MXSocialStore.Post) -> Void
+    public var onOpenProject: (UUID) -> Void
+
+    @State private var social = MXSocialStore.shared
+    @State private var notifications = MXNotificationStore.shared
+    @State private var showNotifications = false
 
     public init(
         isLoggedIn: Bool = false,
@@ -25,7 +31,9 @@ public struct SocialsView: View {
         onCompose: @escaping () -> Void = {},
         onTogglePlay: @escaping () -> Void = {},
         onOpenPlayer: @escaping () -> Void = {},
-        onStartPlaying: @escaping () -> Void = {}
+        onStartPlaying: @escaping () -> Void = {},
+        onRemixPost: @escaping (MXSocialStore.Post) -> Void = { _ in },
+        onOpenProject: @escaping (UUID) -> Void = { _ in }
     ) {
         self.isLoggedIn = isLoggedIn
         self.showFullFeed = showFullFeed
@@ -36,25 +44,41 @@ public struct SocialsView: View {
         self.onTogglePlay = onTogglePlay
         self.onOpenPlayer = onOpenPlayer
         self.onStartPlaying = onStartPlaying
+        self.onRemixPost = onRemixPost
+        self.onOpenProject = onOpenProject
     }
 
     private var posts: [MXSocialFeedPost.Model] {
         if !isLoggedIn {
             return MXSocialFeedData.notLoginFeed
         }
-        return showFullFeed ? MXSocialFeedData.fullFeed : MXSocialFeedData.notLoginFeed
+        return social.feedModels(includingMock: showFullFeed)
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            MXHeader(kind: isLoggedIn ? .home : .notLogin, onProfile: onLogin)
+            MXHeader(
+                kind: isLoggedIn ? .home : .notLogin,
+                onBell: { showNotifications = true },
+                onProfile: onLogin,
+                unreadNotificationCount: notifications.unreadCount
+            )
 
             sectionTitle
 
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(posts) { post in
-                        MXSocialFeedPost(model: post, onPlay: onStartPlaying)
+                        MXSocialFeedPost(
+                            model: post,
+                            onOpenStudio: {
+                                if let uuid = UUID(uuidString: post.id),
+                                   let storePost = social.posts.first(where: { $0.id == uuid }) {
+                                    onRemixPost(storePost)
+                                }
+                            },
+                            onPlay: onStartPlaying
+                        )
                     }
                     Color.clear.frame(height: bottomClearance)
                 }
@@ -74,6 +98,24 @@ public struct SocialsView: View {
                     MXLoginBanner(onLogin: onLogin)
                 }
             }
+        }
+        .onAppear {
+            social.load()
+            notifications.load()
+        }
+        .onChange(of: showNotifications) { _, showing in
+            if !showing {
+                notifications.load()
+            }
+        }
+        .sheet(isPresented: $showNotifications) {
+            NotificationsView(
+                onOpenProject: onOpenProject,
+                onDismiss: { showNotifications = false }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
     }
 

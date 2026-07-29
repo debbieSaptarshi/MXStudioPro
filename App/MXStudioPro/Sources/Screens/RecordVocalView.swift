@@ -10,17 +10,27 @@ struct RecordVocalView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            recordHeader
-            liveWaveform
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let track = armedTrack {
-                mixerStrip(track: track)
+        ZStack {
+            VStack(spacing: 0) {
+                recordHeader
+                if session.showClipWarning {
+                    clipWarningBanner
+                }
+                liveWaveform
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                captureQualityStrip
+                if let track = armedTrack {
+                    mixerStrip(track: track)
+                }
+                detailsStrip
+                actionBoard
             }
-            detailsStrip
-            actionBoard
+            .background(MXColor.surface.ignoresSafeArea())
+
+            if session.showQuietRoomTip {
+                quietRoomTipOverlay
+            }
         }
-        .background(MXColor.surface.ignoresSafeArea())
         .task {
             if !session.isRecording {
                 await session.startRecording()
@@ -37,7 +47,7 @@ struct RecordVocalView: View {
                     Text("No Fx")
                         .font(MXFont.smallButton())
                         .foregroundStyle(MXColor.white)
-                    Text(armedTrack?.name ?? "Vocal/Audio")
+                    Text(armedTrack?.name ?? (session.preset == .guitar ? "Guitar" : "Vocal/Audio"))
                         .font(MXFont.caption())
                         .foregroundStyle(MXColor.grey)
                 }
@@ -95,40 +105,148 @@ struct RecordVocalView: View {
             )
     }
 
+    // MARK: - Clip warning
+
+    private var clipWarningBanner: some View {
+        Text("Too loud — back off the mic")
+            .font(MXFont.body3())
+            .foregroundStyle(MXColor.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .background(MXColor.red)
+    }
+
+    // MARK: - Quiet room tip
+
+    private var quietRoomTipOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { session.dismissQuietRoomTip() }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Quiet room tip")
+                    .font(MXFont.mediumButton())
+                    .foregroundStyle(MXColor.white)
+
+                Text(
+                    session.preset == .guitar
+                        ? "Plug in or play near the mic — Monitor works best with headphones."
+                        : "Record in a quiet room, keep the phone about a hand's length away, and don't cover the mic."
+                )
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.lightGrey)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    session.dismissQuietRoomTip()
+                } label: {
+                    Text("Got it")
+                        .font(MXFont.smallButton())
+                        .foregroundStyle(MXColor.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(MXColor.accent)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MXColor.surfaceRaised)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(MXColor.layer2, lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 28)
+        }
+    }
+
     // MARK: - Live waveform
 
     private var liveWaveform: some View {
         GeometryReader { geo in
-            ZStack {
-                MXColor.surface
+            HStack(spacing: 8) {
+                ZStack {
+                    MXColor.surface
 
-                // Beat grid backdrop
-                HStack(spacing: 0) {
-                    ForEach(0..<8, id: \.self) { beat in
-                        Rectangle()
-                            .fill(beat % 4 == 0 ? MXColor.layer2.opacity(0.8) : MXColor.layer2.opacity(0.35))
-                            .frame(width: 1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    // Beat grid backdrop
+                    HStack(spacing: 0) {
+                        ForEach(0..<8, id: \.self) { beat in
+                            Rectangle()
+                                .fill(beat % 4 == 0 ? MXColor.layer2.opacity(0.8) : MXColor.layer2.opacity(0.35))
+                                .frame(width: 1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+
+                    LiveInputWaveform(level: session.inputLevel, isActive: session.isRecording)
+                        .frame(height: min(160, geo.size.height * 0.45))
+                        .padding(.horizontal, 8)
+
+                    // Playhead
+                    Rectangle()
+                        .fill(MXColor.white)
+                        .frame(width: 1.5)
+                        .offset(x: playheadOffset(width: max(geo.size.width - 28, 1)) - max(geo.size.width - 28, 1) / 2)
+
+                    VStack {
+                        Spacer()
+                        statusCaption
+                            .padding(.bottom, 12)
                     }
                 }
 
-                LiveInputWaveform(level: session.inputLevel, isActive: session.isRecording)
-                    .frame(height: min(160, geo.size.height * 0.45))
-                    .padding(.horizontal, 8)
-
-                // Playhead
-                Rectangle()
-                    .fill(MXColor.white)
-                    .frame(width: 1.5)
-                    .offset(x: playheadOffset(width: geo.size.width) - geo.size.width / 2)
-
-                VStack {
-                    Spacer()
-                    statusCaption
-                        .padding(.bottom, 12)
-                }
+                InputPeakMeter(
+                    level: session.inputLevel,
+                    peakHold: session.peakHoldLevel,
+                    isClipping: session.isInputClipping
+                )
+                .frame(width: 12)
+                .padding(.vertical, 16)
+                .padding(.trailing, 8)
             }
         }
+    }
+
+    // MARK: - Capture quality
+
+    private var captureQualityStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Toggle(isOn: $session.isHighPassEnabled) {
+                    Text("Cut rumble")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.lightGrey)
+                }
+                .toggleStyle(CaptureQualityToggleStyle())
+
+                Toggle(isOn: $session.isMonitoringEnabled) {
+                    Text("Monitor")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.lightGrey)
+                }
+                .toggleStyle(CaptureQualityToggleStyle())
+
+                Spacer(minLength: 0)
+            }
+
+            if let tip = session.headphoneTip {
+                Text(tip)
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(MXColor.surfaceRaised)
+        .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
     }
 
     private var statusCaption: some View {
@@ -433,6 +551,62 @@ private struct LiveInputWaveform: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Peak meter
+
+private struct InputPeakMeter: View {
+    var level: Float
+    var peakHold: Float
+    var isClipping: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let clamped = CGFloat(min(max(level, 0), 1))
+            let hold = CGFloat(min(max(peakHold, 0), 1))
+            let fillHeight = max(2, geo.size.height * clamped)
+            let holdY = geo.size.height * (1 - hold)
+
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(isClipping ? MXColor.red : MXColor.accent)
+                    .frame(height: fillHeight)
+
+                // Peak hold marker
+                Rectangle()
+                    .fill(isClipping ? MXColor.red : MXColor.white)
+                    .frame(width: geo.size.width, height: 2)
+                    .position(x: geo.size.width / 2, y: max(1, min(geo.size.height - 1, holdY)))
+            }
+        }
+    }
+}
+
+// MARK: - Capture toggle style
+
+private struct CaptureQualityToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(configuration.isOn ? MXColor.accent : MXColor.layer2)
+                    .frame(width: 28, height: 16)
+                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                        Circle()
+                            .fill(MXColor.white)
+                            .frame(width: 12, height: 12)
+                            .padding(2)
+                    }
+                configuration.label
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

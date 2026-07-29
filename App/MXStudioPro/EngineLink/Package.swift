@@ -17,6 +17,8 @@ let package = Package(
             name: "MXStudioEngine",
             dependencies: [
                 .product(name: "MXAudioCore", package: "Music App"),
+                .product(name: "MXAudioDSP", package: "Music App"),
+                .product(name: "MXInstruments", package: "Music App"),
             ],
             path: "Sources"
         ),
