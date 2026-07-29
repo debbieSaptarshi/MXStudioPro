@@ -40,6 +40,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **26** | Closed beta gate | **Done (MVP)** ✅ local Create → Publish → Remix stable; Month 6 gate passed |
 | **27** | Arrangement polish — loop, fades, redo, Reels LUFS | **Done (MVP)** ✅ |
 | **28** | Vocal capture polish — de-esser, live gate, pre-roll | **Done (MVP)** ✅ |
+| **29** | Quiet-room checklist; loop schedule clamp; punch comps lite | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -193,9 +194,21 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **De-esser (vocal)** | ✅ Week 28 live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount |
 | **Pre-roll buffer** | ✅ Week 28 ring while record-armed; Settings 0–500 ms; clip start shifts / trims at 0 |
 
-**Still backlog (next):** quiet-room checklist; playlist lanes / crossfade comps; full mixer depth.
+---
 
-**Takes / punch MVP limits:** no playlist lanes, no crossfade comps, no take folder UI — one active take per overlapping region.
+## Month 8 — Capture onboarding + comps *(Week 29)* ✅
+
+Patterned after GarageBand first-record tips, Logic punch comps, BandLab take lanes:
+
+| Item | Status |
+|------|--------|
+| **Quiet-room checklist (onboarding)** | ✅ Interactive checklist on first Record; auto-check headphones + mic level; holds auto-Rec until dismissed |
+| **Clamp clip schedules to loop end** | ✅ `MXLoopScheduleClamp` caps `AVAudioPlayerNode` frames so audio doesn’t bleed past loop on hostTime |
+| **Playlist lanes / crossfade comps lite** | ✅ Punch splits active takes into before/after; ~12 ms abut fades; ghost inactive takes; take-lane activation |
+
+**Still backlog (next):** full mixer depth / insert chain UI polish; bounce remaining live inserts (EQ/delay/reverb) for export parity; true overlapping equal-power crossfades; expanded multi-row playlist folder.
+
+**Takes / punch Week 29 limits:** abut fade dips (not overlapping X-fades); ghosts only when inactive takes exist; no always-on multi-row playlist folder.
 
 ### Closed beta checklist
 
@@ -261,10 +274,12 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Capture
 - **Input meter + clip warning**
 - **Monitor policy (speaker vs headphones)**
-- Punch-in / punch-out ✅ Week 27+ MVP (playhead punch-in; loop-end punch-out; no playlist lanes)
-- Multiple takes + take picker ✅ Week 27+ MVP (`takeIndex` / `isActive`; no playlist crossfade comps)
+- Punch-in / punch-out ✅ Week 27+ MVP (playhead punch-in; loop-end punch-out)
+- Multiple takes + take picker ✅ Week 27+ MVP; Week 29 punch comps + ghost lanes + take-lane activation
 - Pre-roll buffer ✅ Week 28 (`MXRecorder` ring while armed; Studio Settings 0–500 ms)
 - Latency calibration UX ✅ Week 27+ (Studio settings sheet → `MXLatencyCalibrator`; UserDefaults)
+- Quiet-room checklist ✅ Week 29 (`QuietRoomChecklist` + Record overlay)
+- Loop schedule clamp ✅ Week 29 (`MXLoopScheduleClamp`)
 
 ### Phone-vocal / Reels quality
 - **HPF on take**
@@ -273,7 +288,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - De-esser ✅ Week 28 (live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount)
 - Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
-- Quiet-room checklist (onboarding)
+- Quiet-room checklist (onboarding) ✅ Week 29
 
 ### Later “wow”
 - Pitch correction, time stretch, harmonies

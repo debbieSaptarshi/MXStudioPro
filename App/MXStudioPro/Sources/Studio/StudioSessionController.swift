@@ -34,6 +34,8 @@ public final class StudioSessionController {
     public private(set) var showQuietRoomTip = false
     /// Checklist row completion — indices match `QuietRoomChecklistItem.allCases`.
     public private(set) var quietRoomChecklistDone: Set<Int> = []
+    /// Rows the user manually unchecked — auto-check will not re-insert these.
+    private var quietRoomChecklistUserCleared: Set<Int> = []
     public private(set) var selectedClipID: UUID?
     public private(set) var canUndo = false
     public private(set) var canRedo = false
@@ -877,6 +879,7 @@ public final class StudioSessionController {
     public func dismissQuietRoomTip() {
         showQuietRoomTip = false
         quietRoomChecklistDone.removeAll()
+        quietRoomChecklistUserCleared.removeAll()
         UserDefaults.standard.set(true, forKey: Self.quietRoomTipKey)
         UserDefaults.standard.set(true, forKey: Self.quietRoomChecklistKey)
     }
@@ -885,8 +888,10 @@ public final class StudioSessionController {
     public func toggleQuietRoomChecklistItem(_ item: QuietRoomChecklistItem) {
         if quietRoomChecklistDone.contains(item.rawValue) {
             quietRoomChecklistDone.remove(item.rawValue)
+            quietRoomChecklistUserCleared.insert(item.rawValue)
         } else {
             quietRoomChecklistDone.insert(item.rawValue)
+            quietRoomChecklistUserCleared.remove(item.rawValue)
         }
     }
 
@@ -2056,19 +2061,24 @@ public final class StudioSessionController {
         guard !UserDefaults.standard.bool(forKey: Self.quietRoomChecklistKey) else { return }
         showQuietRoomTip = true
         quietRoomChecklistDone.removeAll()
+        quietRoomChecklistUserCleared.removeAll()
         refreshQuietRoomAutoChecks()
     }
 
     /// Auto-check headphones + mic-level rows from live route / meter (BandLab-style).
+    /// Respects rows the user manually unchecked so the meter poll doesn’t fight taps.
     private func refreshQuietRoomAutoChecks() {
         guard showQuietRoomTip else { return }
         #if os(iOS)
-        if Self.currentRouteHasHeadphones() {
-            quietRoomChecklistDone.insert(QuietRoomChecklistItem.headphones.rawValue)
+        let headphones = QuietRoomChecklistItem.headphones.rawValue
+        if Self.currentRouteHasHeadphones(), !quietRoomChecklistUserCleared.contains(headphones) {
+            quietRoomChecklistDone.insert(headphones)
         }
         #endif
-        if inputLevel >= Self.quietRoomMicLevelThreshold || peakHoldLevel >= Self.quietRoomMicLevelThreshold {
-            quietRoomChecklistDone.insert(QuietRoomChecklistItem.micLevel.rawValue)
+        let mic = QuietRoomChecklistItem.micLevel.rawValue
+        if (inputLevel >= Self.quietRoomMicLevelThreshold || peakHoldLevel >= Self.quietRoomMicLevelThreshold),
+           !quietRoomChecklistUserCleared.contains(mic) {
+            quietRoomChecklistDone.insert(mic)
         }
     }
 
