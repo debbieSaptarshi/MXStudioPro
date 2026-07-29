@@ -162,7 +162,8 @@ public enum StudioBounceExporter {
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
 
-        // Live insert order: HPF → EQ mid → De-esser → Delay → (skip Dist) → Dynamics → Reverb.
+        // Live insert order: vocal HPF → EQ → De-ess → Gate → Delay → Dist → Dyn → Rev;
+        // guitar HPF → EQ/Tone → Dist → Delay → Rev (soft-clip Dist approx).
         // Gate sits after de-ess (before delay) — closer to live Dynamics placement than pre-EQ.
         let hpfOn = highPassEnabled || track.reelsVocalEnabled
         var hpf = MXBiquad()

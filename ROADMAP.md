@@ -43,8 +43,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **29** | Quiet-room checklist; loop schedule clamp; punch comps lite | **Done (MVP)** ✅ |
 | **30** | Mixer channel strips; insert chain UI; bounce FX parity | **Done (MVP)** ✅ |
 | **31** | Studio shell ↔ Figma layout parity | **Done (MVP)** ✅ Guitar Studio proportions |
-| **32** | Guitar Studio Section (Figma) | **Next** |
-| **33** | Piano Studio Section (Figma) | Planned |
+| **32** | Guitar Studio Section (Figma) | **Done (MVP)** ✅ Pedalboard presets + Dist→Delay→Rev |
+| **33** | Piano Studio Section (Figma) | **Next** |
 | **34** | Drum & Others Studio Section (Figma) | Planned |
 | **35** | Quick Landscape Studio Section (Figma) | Planned |
 
@@ -231,7 +231,7 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; bounce Distortion approximation; playback strip meters.
+**Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; playback strip meters. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
@@ -241,7 +241,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 **Week 31 (done):** Shell layout parity — timeline fills, details/action board pinned, track headers 60pt, `+ ADD TRACK`, Figma transport cluster. Reference: [`Studio - Guitar`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85203).
 
-### Week 32 — Guitar Studio Section **Next**
+### Week 32 — Guitar Studio Section ✅
 
 **Figma cluster (≈ y=8476)**
 | Frame | Node | Intent |
@@ -251,13 +251,15 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Select Guitar Effect | [`95:89964`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-89964) | Pedalboard / FX pick |
 
 **Done when (BandLab / GarageBand guitar path)**
-- [ ] Create → Guitar opens shell matching Figma proportions (already close after W31)
-- [ ] Pedalboard sheet matches Select Guitar Effect flow (Dist / Delay / Rev order + presets)
-- [ ] Input monitor defaults on with headphones tip; DI / mic policy clear
-- [ ] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
-- [ ] Demo: record guitar take over a second track → hear FX → bounce
+- [x] Create → Guitar opens shell matching Figma proportions (already close after W31)
+- [x] Pedalboard sheet matches Select Guitar Effect flow (Dist / Delay / Rev order + Clean/Crunch/Lead/Ambient presets)
+- [x] Input monitor defaults on with headphones tip; DI / mic policy clear
+- [x] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
+- [x] Demo: record guitar take over a second track → hear FX → bounce *(cold Rec schedules beds; bounce soft-clip Dist)*
 
-### Week 33 — Piano Studio Section
+**Week 32 notes:** Pedalboard gated on `track.category == .guitar` so vocal lanes in a Guitar project keep Dyn chain. Live monitor remains dry (hear pedals on playback/bounce). Wet input monitoring deferred.
+
+### Week 33 — Piano Studio Section **Next**
 
 **Figma cluster (≈ y=9854)**
 | Frame | Node | Intent |

@@ -31,7 +31,17 @@ final class MXGuitarPedalboardTests: XCTestCase {
                 distortionMix: 42,
                 delayMix: 22,
                 delayTime: 0.32,
-                reverbMix: 18
+                reverbMix: 18,
+                eqMidGain: 2.0
+            )
+        )
+        XCTAssertFalse(
+            MXGuitarPedalPreset.crunch.matches(
+                distortionMix: 42,
+                delayMix: 22,
+                delayTime: 0.32,
+                reverbMix: 18,
+                eqMidGain: 8.0
             )
         )
     }

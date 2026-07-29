@@ -87,12 +87,15 @@ public enum MXGuitarPedalPreset: String, CaseIterable, Codable, Sendable, Identi
         delayMix: Float,
         delayTime: Float,
         reverbMix: Float,
+        eqMidGain: Float? = nil,
         tolerance: Float = 1.5
     ) -> Bool {
-        abs(distortionMix - self.distortionMix) <= tolerance
+        let toneOK = eqMidGain.map { abs($0 - self.eqMidGain) <= tolerance } ?? true
+        return abs(distortionMix - self.distortionMix) <= tolerance
             && abs(delayMix - self.delayMix) <= tolerance
             && abs(delayTime - self.delayTime) <= 0.03
             && abs(reverbMix - self.reverbMix) <= tolerance
+            && toneOK
     }
 
     /// Soft-clip distortion approximation for offline bounce (no AVAudioUnit).

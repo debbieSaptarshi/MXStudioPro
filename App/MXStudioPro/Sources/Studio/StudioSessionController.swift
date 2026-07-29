@@ -465,7 +465,10 @@ public final class StudioSessionController {
                         }
                     }
                 }
+                // Cold Rec: still schedule other tracks so overdub demos hear FX beds
+                // (BandLab / GarageBand overdub path).
                 transport.record(fromSample: punchSample)
+                scheduleClipPlayers(fromSample: punchSample)
             }
             isPlaying = true
         } catch {
@@ -1247,7 +1250,7 @@ public final class StudioSessionController {
     public func applyGuitarPedalPreset(_ preset: MXGuitarPedalPreset, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         let track = project.tracks[index]
-        guard track.category == .guitar || project.preset == .guitar else { return }
+        guard track.category == .guitar else { return }
         project.tracks[index].distortionMix = preset.distortionMix
         project.tracks[index].delayMix = preset.delayMix
         project.tracks[index].delayTime = preset.delayTime
@@ -1257,15 +1260,18 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// Which named preset (if any) matches the track's current Dist/Delay/Rev mixes.
+    /// Which named preset (if any) matches the track's current Dist/Delay/Rev/Tone mixes.
     public func matchingGuitarPedalPreset(for trackID: UUID) -> MXGuitarPedalPreset? {
-        guard let track = project.tracks.first(where: { $0.id == trackID }) else { return nil }
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              track.category == .guitar
+        else { return nil }
         return MXGuitarPedalPreset.allCases.first {
             $0.matches(
                 distortionMix: track.distortionMix,
                 delayMix: track.delayMix,
                 delayTime: track.delayTime,
-                reverbMix: track.reverbMix
+                reverbMix: track.reverbMix,
+                eqMidGain: track.eqMidGain
             )
         }
     }
@@ -1827,7 +1833,8 @@ public final class StudioSessionController {
         configureDistortion(distortion, for: clip)
         configureReverb(reverb, for: clip)
         let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
-        let isGuitar = track?.category == .guitar || preset == .guitar
+        // Gate on track category only so vocal lanes in a Guitar project keep Dyn chain.
+        let isGuitar = track?.category == .guitar
         // Guitar pedalboard (Figma Select Guitar Effect): Dist → Delay → Rev.
         // Vocal / general: EQ → Delay → Dist → Dyn → Rev.
         let inserts: [AVAudioNode]
@@ -1868,7 +1875,7 @@ public final class StudioSessionController {
         let reverb = clipReverbs.removeValue(forKey: id)
         player?.stop()
         let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == id }) })
-        let isGuitar = track?.category == .guitar || preset == .guitar
+        let isGuitar = track?.category == .guitar
         var inserts: [AVAudioNode] = []
         if isGuitar {
             if let eq { inserts.append(eq) }
@@ -1979,8 +1986,8 @@ public final class StudioSessionController {
 
     private func configureDistortion(_ distortion: AVAudioUnitDistortion, for clip: MXClip) {
         let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
-        // Guitar gets a warmer grit; other presets keep the bit-brush texture.
-        if preset == .guitar || track?.category == .guitar {
+        // Guitar gets a warmer grit; other tracks keep the bit-brush texture.
+        if track?.category == .guitar {
             distortion.loadFactoryPreset(.multiBrokenSpeaker)
             distortion.preGain = -3
         } else {

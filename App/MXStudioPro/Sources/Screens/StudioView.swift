@@ -1439,7 +1439,7 @@ public struct StudioView: View {
 
     private var fxSheetTitle: String {
         let track = fxSheetTracks.first
-        if track?.category == .guitar || session.preset == .guitar {
+        if track?.category == .guitar {
             return "Pedalboard"
         }
         return "Track FX"
@@ -1468,7 +1468,7 @@ public struct StudioView: View {
     }
 
     private func fxTrackRow(_ track: MXSessionTrack) -> some View {
-        let isGuitar = track.category == .guitar || session.preset == .guitar
+        let isGuitar = track.category == .guitar
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -1551,6 +1551,17 @@ public struct StudioView: View {
                         set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
                     ),
                     range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Tone",
+                    valueLabel: String(format: "%+.0f", track.eqMidGain),
+                    value: Binding(
+                        get: { Double(track.eqMidGain) },
+                        set: { session.setTrackEQMidGain(Float($0), trackID: track.id) }
+                    ),
+                    range: -12...12,
                     labelWidth: 56
                 )
 
@@ -1816,7 +1827,7 @@ public struct StudioView: View {
 
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
-        let isGuitar = track.category == .guitar || session.preset == .guitar
+        let isGuitar = track.category == .guitar
         // Guitar pedalboard: Dist → Dly → Rev. Vocal: HPF → EQ → Dly → Dist → Dyn → Rev.
         let stages: [(label: String, active: Bool)] = isGuitar
             ? [
