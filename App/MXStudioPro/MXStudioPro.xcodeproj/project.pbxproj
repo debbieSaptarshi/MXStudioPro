@@ -43,6 +43,7 @@
 		C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */; };
 		C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003D /* MXDemoTemplates.swift */; };
 		C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */; };
+		C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005B /* DrumPadView.swift */; };
 		C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */; };
 		C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000041 /* DemoTemplatesView.swift */; };
 		C1A00101AAAA000100000042 /* LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000043 /* LearnView.swift */; };
@@ -91,6 +92,7 @@
 		C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIStudioImporter.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003D /* MXDemoTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDemoTemplates.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietRoomChecklist.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000005B /* DrumPadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPadView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDiscoverStudioBridge.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000041 /* DemoTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTemplatesView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000043 /* LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnView.swift; sourceTree = "<group>"; };
@@ -203,6 +205,7 @@
 				C1A00101AAAA00010000001F /* MXProject.swift */,
 				C1A00101AAAA000100000020 /* MXProjectStore.swift */,
 				C1A00101AAAA000100000031 /* PianoKeyboardView.swift */,
+				C1A00101AAAA00010000005B /* DrumPadView.swift */,
 				C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */,
 				C1A00101AAAA000100000025 /* StudioEditStack.swift */,
 				C1A00101AAAA000100000019 /* StudioSessionController.swift */,
@@ -339,6 +342,7 @@
 				C1A00101AAAA00010000002E /* EmailSignInView.swift in Sources */,
 				C1A00101AAAA000100000030 /* MXSocialStore.swift in Sources */,
 				C1A00101AAAA000100000032 /* PianoKeyboardView.swift in Sources */,
+				C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */,
 				C1A00101AAAA000100000009 /* StudioSessionController.swift in Sources */,
 				C1A00101AAAA00010000000A /* StudioView.swift in Sources */,
 				C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */,
