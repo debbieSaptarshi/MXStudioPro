@@ -84,13 +84,13 @@ final class MXCompRegionSplitTests: XCTestCase {
     }
 
     func testTinyFragmentDiscarded() {
-        // 8 ms before fragment at 120 BPM: 0.016 beats ≈ 8 ms — below 12 ms min.
+        // 40 ms before fragment at 120 BPM: 0.08 beats = 40 ms — below 50 ms floor.
         let result = MXCompRegionSplit.split(
             sibling: longTake,
-            punchStartBeat: 0.016,
+            punchStartBeat: 0.08,
             punchEndBeat: 4,
             secondsBetween: secondsBetween,
-            minFragmentSeconds: 0.012
+            minFragmentSeconds: 0.05
         )
 
         XCTAssertNil(result.before)

@@ -1005,12 +1005,20 @@ public struct StudioView: View {
 
             if let clip = selected {
                 if let track = session.project.tracks.first(where: { $0.id == clip.trackID }),
-                   track.clips.count > 1 {
+                   Set(track.clips.map(\.takeIndex)).count > 1 {
+                    // One row per takeIndex — punch comps may split a take into pieces.
+                    let takeRows: [MXClip] = Dictionary(grouping: track.clips, by: \.takeIndex)
+                        .values
+                        .compactMap { pieces in
+                            pieces.min(by: { $0.startBeat < $1.startBeat })
+                        }
+                        .sorted { $0.takeIndex < $1.takeIndex }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Takes")
                             .font(MXFont.caption())
                             .foregroundStyle(MXColor.grey)
-                        ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
+                        ForEach(takeRows) { take in
+                            let laneActive = track.clips.contains { $0.takeIndex == take.takeIndex && $0.isActive }
                             Button {
                                 session.setActiveTake(clipID: take.id)
                             } label: {
@@ -1019,7 +1027,7 @@ public struct StudioView: View {
                                         .font(MXFont.body3())
                                         .foregroundStyle(MXColor.white)
                                     Spacer()
-                                    if take.isActive {
+                                    if laneActive {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 12, weight: .bold))
                                             .foregroundStyle(MXColor.accent)
@@ -1029,7 +1037,7 @@ public struct StudioView: View {
                                 .padding(.horizontal, 10)
                                 .background(
                                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(take.isActive ? MXColor.layer2 : MXColor.black.opacity(0.35))
+                                        .fill(laneActive ? MXColor.layer2 : MXColor.black.opacity(0.35))
                                 )
                             }
                             .buttonStyle(.plain)
@@ -1907,7 +1915,7 @@ private struct GhostStudioClip: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
         .accessibilityLabel("Inactive \(clip.name)")
-        .accessibilityHint("Activates this take")
+        .accessibilityHint("Activates this take lane")
     }
 }
 

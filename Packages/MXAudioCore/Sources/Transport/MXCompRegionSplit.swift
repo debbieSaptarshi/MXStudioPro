@@ -6,8 +6,9 @@ public enum MXCompRegionSplit: Sendable {
 
     /// Default click-guard crossfade at punch seams (~12 ms).
     public static let crossfadeSeconds: Double = 0.012
-    /// Discard fragments shorter than one crossfade (avoid inflated 50 ms clips).
-    public static let minFragmentSeconds: Double = 0.012
+    /// Discard fragments shorter than `MXClip`’s 50 ms duration floor so a
+    /// save/reload cannot inflate a tiny piece and over-read the audio file.
+    public static let minFragmentSeconds: Double = 0.05
 
     public struct SourceClip: Equatable, Sendable {
         public var startBeat: Double

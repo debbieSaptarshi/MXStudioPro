@@ -619,22 +619,25 @@ public final class StudioSessionController {
                 kept.fadeOutSeconds = before.fadeOutSeconds
                 kept.isActive = true
                 project.tracks[trackIndex].clips[i] = kept
+                // Interior punch: keep original as before; append after as a new piece.
+                if let after = result.after {
+                    afterPieces.append(Self.makeCompPiece(from: sib, piece: after))
+                }
+            } else if let after = result.after {
+                // Punch at start (or tiny before discarded): shrink original to the
+                // after piece — do not leave a full-length inactive ghost.
+                var kept = sib
+                kept.startBeat = after.startBeat
+                kept.lengthBeats = after.lengthBeats
+                kept.sourceOffsetSeconds = after.sourceOffsetSeconds
+                kept.sourceDurationSeconds = after.sourceDurationSeconds
+                kept.fadeInSeconds = after.fadeInSeconds
+                kept.fadeOutSeconds = after.fadeOutSeconds
+                kept.isActive = true
+                project.tracks[trackIndex].clips[i] = kept
             } else if result.deactivateOriginal {
+                // Whole-cover punch: keep original as an inactive alternate take.
                 project.tracks[trackIndex].clips[i].isActive = false
-            }
-
-            if let after = result.after {
-                var piece = sib
-                piece.id = UUID()
-                piece.startBeat = after.startBeat
-                piece.lengthBeats = after.lengthBeats
-                piece.sourceOffsetSeconds = after.sourceOffsetSeconds
-                piece.sourceDurationSeconds = after.sourceDurationSeconds
-                piece.fadeInSeconds = after.fadeInSeconds
-                piece.fadeOutSeconds = after.fadeOutSeconds
-                piece.isActive = true
-                // Same takeIndex — playlist lane of the original take.
-                afterPieces.append(piece)
             }
 
             punch.fadeInSeconds = max(punch.fadeInSeconds, result.punchFadeInSeconds)
@@ -650,6 +653,20 @@ public final class StudioSessionController {
             project.tracks[trackIndex].clips.append(piece)
             attachPlayer(for: piece)
         }
+    }
+
+    private static func makeCompPiece(from sibling: MXClip, piece: MXCompRegionSplit.Piece) -> MXClip {
+        var clip = sibling
+        clip.id = UUID()
+        clip.startBeat = piece.startBeat
+        clip.lengthBeats = piece.lengthBeats
+        clip.sourceOffsetSeconds = piece.sourceOffsetSeconds
+        clip.sourceDurationSeconds = piece.sourceDurationSeconds
+        clip.fadeInSeconds = piece.fadeInSeconds
+        clip.fadeOutSeconds = piece.fadeOutSeconds
+        clip.isActive = true
+        // Same takeIndex — playlist lane of the original take.
+        return clip
     }
 
     // MARK: - Track controls
@@ -916,19 +933,25 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// Activate one take on its track; overlapping siblings become inactive (comp-lane lite).
+    /// Activate one take lane on its track (all pieces sharing `takeIndex`).
+    /// Competing punch-comp siblings become inactive; sequential non-overlapping
+    /// takes that only abut stay active (`MXTakeLaneActivation`).
     public func setActiveTake(clipID: UUID) {
         guard let loc = locateClip(clipID) else { return }
-        let chosen = project.tracks[loc.trackIndex].clips[loc.clipIndex]
         pushUndoSnapshot()
+        let trackClips = project.tracks[loc.trackIndex].clips
+        let refs = trackClips.map {
+            MXTakeLaneActivation.ClipRef(
+                id: $0.id,
+                takeIndex: $0.takeIndex,
+                startBeat: $0.startBeat,
+                lengthBeats: $0.lengthBeats
+            )
+        }
+        let activeIDs = MXTakeLaneActivation.activeIDs(afterSelecting: clipID, clips: refs)
         for i in project.tracks[loc.trackIndex].clips.indices {
-            var c = project.tracks[loc.trackIndex].clips[i]
-            if c.id == clipID {
-                c.isActive = true
-            } else if c.overlaps(with: chosen) {
-                c.isActive = false
-            }
-            project.tracks[loc.trackIndex].clips[i] = c
+            project.tracks[loc.trackIndex].clips[i].isActive =
+                activeIDs.contains(project.tracks[loc.trackIndex].clips[i].id)
         }
         selectedClipID = clipID
         persistNow()
