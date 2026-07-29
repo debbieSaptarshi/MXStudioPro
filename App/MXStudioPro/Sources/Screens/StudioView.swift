@@ -14,6 +14,7 @@ public struct StudioView: View {
     @State private var showAIComposeSheet = false
     @State private var showMixerSheet = false
     @State private var showFXSheet = false
+    @State private var showSettingsSheet = false
     @State private var showFileImporter = false
     @State private var importError: String?
     @State private var selectedTrackID: UUID?
@@ -96,6 +97,12 @@ public struct StudioView: View {
         .sheet(isPresented: $showFXSheet) {
             fxSheet
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showSettingsSheet) {
+            studioSettingsSheet
+                .presentationDetents([.height(340)])
                 .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
         }
@@ -278,7 +285,9 @@ public struct StudioView: View {
                 studioIconButton(asset: "studio_fx", systemFallback: "wand.and.stars") {
                     showFXSheet = true
                 }
-                studioIconButton(asset: "studio_settings", systemFallback: "gearshape") {}
+                studioIconButton(asset: "studio_settings", systemFallback: "gearshape") {
+                    showSettingsSheet = true
+                }
                 studioIconButton(asset: "studio_export", systemFallback: "square.and.arrow.up") {
                     showExportSheet = true
                 }
@@ -1157,6 +1166,90 @@ public struct StudioView: View {
                     in: 0...1
                 )
                 .tint(MXColor.accent)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .background(MXColor.surface)
+    }
+
+    /// Studio settings — latency calibration (GarageBand-style loopback).
+    private var studioSettingsSheet: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Studio Settings")
+                .font(MXFont.sectionTitle())
+                .foregroundStyle(MXColor.white)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Input latency")
+                    .font(MXFont.mediumButton())
+                    .foregroundStyle(MXColor.white)
+                Text("Play a click into the mic with headphones on")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.grey)
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Applied")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                Spacer(minLength: 8)
+                if session.hasLatencyCompensation {
+                    Text(String(format: "%.1f ms", session.latencyCompensationMilliseconds))
+                        .font(MXFont.studioReadout())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .monospacedDigit()
+                } else {
+                    Text("Not calibrated")
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+
+            if let summary = session.lastCalibrationSummary {
+                Text(summary)
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.lightGrey)
+            }
+
+            Button {
+                session.calibrateLatency()
+            } label: {
+                HStack(spacing: 8) {
+                    if session.isCalibrating {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(MXColor.black)
+                    }
+                    Text(session.isCalibrating ? "Calibrating…" : "Calibrate")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.black)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(MXColor.accent)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(session.isCalibrating || session.phase != .ready || session.isRecording)
+            .opacity(session.isCalibrating || session.phase != .ready || session.isRecording ? 0.5 : 1)
+
+            if let error = session.calibrationError {
+                Text(error)
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)

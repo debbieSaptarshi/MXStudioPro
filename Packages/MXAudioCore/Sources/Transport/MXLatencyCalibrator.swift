@@ -41,20 +41,50 @@ public final class MXLatencyCalibrator: @unchecked Sendable {
         case simulated(delayFrames: Int, noiseAmplitude: Float)
     }
 
-    public enum CalibrationError: Error, Equatable {
+    public enum CalibrationError: Error, Equatable, LocalizedError {
         case noInputAvailable
         case correlationTooWeak(Float)
         case measurementUnstable(stdDev: Double)
+
+        public var errorDescription: String? {
+            switch self {
+            case .noInputAvailable:
+                return "No microphone input available. Check mic permission and try again."
+            case .correlationTooWeak:
+                return "Couldn’t hear the calibration chirp. Use headphones and hold the phone near the ear cup."
+            case .measurementUnstable(let stdDev):
+                return String(format: "Measurement was unstable (σ %.0f frames). Try again in a quieter spot.", stdDev)
+            }
+        }
     }
 
     public let session: MXAudioSession
     public private(set) var sampleRate: Double
 
-    /// Frames trimmed from the head of a recorded take. Persisted with the
-    /// project so a take recorded yesterday still lines up today.
+    /// Frames trimmed from the head of a recorded take. Persisted in
+    /// UserDefaults so a take recorded yesterday still lines up today.
     public private(set) var compensationFrames: Int = 0
 
-    private let defaultsKey = "com.mxstudio.latency.compensationFrames"
+    /// Current applied compensation in milliseconds (0 when unset).
+    public var compensationMilliseconds: Double {
+        guard sampleRate > 0 else { return 0 }
+        return Double(compensationFrames) / sampleRate * 1_000
+    }
+
+    /// UserDefaults key shared with Studio settings UI.
+    public static let compensationFramesDefaultsKey = "com.mxstudio.latency.compensationFrames"
+
+    private var defaultsKey: String { Self.compensationFramesDefaultsKey }
+
+    /// Last persisted compensation frames (survives engine shutdown).
+    public static var persistedCompensationFrames: Int {
+        UserDefaults.standard.integer(forKey: compensationFramesDefaultsKey)
+    }
+
+    public static func persistedCompensationMilliseconds(sampleRate: Double) -> Double {
+        guard sampleRate > 0 else { return 0 }
+        return Double(persistedCompensationFrames) / sampleRate * 1_000
+    }
 
     public init(session: MXAudioSession = MXAudioSession(), sampleRate: Double = 48_000) {
         self.session = session

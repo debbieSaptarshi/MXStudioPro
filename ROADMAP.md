@@ -185,8 +185,9 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Master limiter on bounce** | ✅ Soft brickwall ≤ ~0.99 after peak/LUFS (`applyMasterLimiter`) |
 | **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
 | **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
+| **Latency calibration UX** | ✅ Studio gear → settings sheet; `MXLatencyCalibrator` measure/apply; UserDefaults persist |
 
-**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, latency calibration UX.
+**Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser.
 
 ### Closed beta checklist
 
@@ -255,7 +256,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - Punch-in / punch-out
 - Multiple takes + take picker
 - Pre-roll buffer
-- Latency calibration UX (engine already has `MXLatencyCalibrator`)
+- Latency calibration UX ✅ Week 27+ (Studio settings sheet → `MXLatencyCalibrator`; UserDefaults)
 
 ### Phone-vocal / Reels quality
 - **HPF on take**

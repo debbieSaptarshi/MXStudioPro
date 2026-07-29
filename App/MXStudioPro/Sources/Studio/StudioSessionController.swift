@@ -73,6 +73,13 @@ public final class StudioSessionController {
     /// Non-fatal warnings when clip audio files are missing on disk (Week 24).
     public private(set) var clipLoadWarnings: [String] = []
 
+    /// True while a latency calibration run is in flight.
+    public private(set) var isCalibrating = false
+    /// Last calibration failure message (does not block recording).
+    public private(set) var calibrationError: String?
+    /// Last successful measurement summary for the settings sheet, if any.
+    public private(set) var lastCalibrationSummary: String?
+
     public var isMetronomeEnabled: Bool = true {
         didSet { metronome?.isEnabled = isMetronomeEnabled }
     }
@@ -995,6 +1002,78 @@ public final class StudioSessionController {
         project.tracks[index].distortionMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
         persistSoon()
+    }
+
+    // MARK: - Latency calibration
+
+    /// Applied round-trip latency in milliseconds (persisted via `MXLatencyCalibrator`).
+    public var latencyCompensationMilliseconds: Double {
+        if let calibrator {
+            return calibrator.compensationMilliseconds
+        }
+        let sr = project.sampleRate > 0 ? project.sampleRate : 48_000
+        return MXLatencyCalibrator.persistedCompensationMilliseconds(sampleRate: sr)
+    }
+
+    /// True when a non-zero compensation is stored (measured or restored).
+    public var hasLatencyCompensation: Bool {
+        if let calibrator {
+            return calibrator.compensationFrames > 0
+        }
+        return MXLatencyCalibrator.persistedCompensationFrames > 0
+    }
+
+    /// Runs the engine calibrator (hardware loopback). Safe to call from UI —
+    /// failures set `calibrationError` and never tear down the recorder.
+    public func calibrateLatency() {
+        guard !isCalibrating else { return }
+        guard !isRecording else {
+            calibrationError = "Stop recording before calibrating latency."
+            return
+        }
+        guard let calibrator else {
+            calibrationError = "Studio isn’t ready. Open Studio and try again."
+            return
+        }
+
+        calibrationError = nil
+        isCalibrating = true
+
+        Task { @MainActor in
+            defer { isCalibrating = false }
+            do {
+                // Pause playback so the chirp isn’t masked by project audio.
+                if isPlaying { pausePlayback() }
+                let measurement = try await calibrator.measure(runs: 3, source: .hardware)
+                calibrator.apply(measurement)
+                if measurement.isStable {
+                    lastCalibrationSummary = String(
+                        format: "%.1f ms · %d frames",
+                        measurement.meanMilliseconds,
+                        calibrator.compensationFrames
+                    )
+                    calibrationError = nil
+                } else {
+                    lastCalibrationSummary = String(
+                        format: "%.1f ms · %d frames",
+                        measurement.meanMilliseconds,
+                        calibrator.compensationFrames
+                    )
+                    // Applied anyway — warn so the user can re-run if takes drift.
+                    calibrationError = MXLatencyCalibrator.CalibrationError
+                        .measurementUnstable(stdDev: measurement.standardDeviationFrames)
+                        .errorDescription
+                }
+            } catch {
+                // Leave previous compensation intact so recording still aligns.
+                calibrationError = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
+        }
+    }
+
+    public func dismissCalibrationError() {
+        calibrationError = nil
     }
 
     // MARK: - Live MIDI instrument
