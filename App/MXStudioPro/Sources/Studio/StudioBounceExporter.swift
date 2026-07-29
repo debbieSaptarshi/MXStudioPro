@@ -35,7 +35,8 @@ public enum StudioBounceExporter {
         audioDirectory: URL,
         outputDirectory: URL,
         normalize: Bool = true,
-        loudnessMode: LoudnessMode = .peakNormalize
+        loudnessMode: LoudnessMode = .peakNormalize,
+        highPassEnabled: Bool = true
     ) throws -> Result {
         let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
         let bpm = max(project.bpm, 1)
@@ -78,6 +79,7 @@ public enum StudioBounceExporter {
                 track: job.track,
                 bpm: bpm,
                 sampleRate: sampleRate,
+                highPassEnabled: highPassEnabled,
                 intoLeft: &left,
                 intoRight: &right
             )
@@ -128,6 +130,7 @@ public enum StudioBounceExporter {
         track: MXSessionTrack,
         bpm: Double,
         sampleRate: Double,
+        highPassEnabled: Bool,
         intoLeft left: inout [Float],
         intoRight right: inout [Float]
     ) throws {
@@ -156,8 +159,28 @@ public enum StudioBounceExporter {
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
-        let gateOn = track.noiseGateEnabled
-        let gateThreshold = min(max(track.noiseGateThreshold, 0), 0.2)
+
+        // Live insert order: HPF → EQ mid → De-esser → Delay → (skip Dist) → Dynamics → Reverb.
+        // Gate sits after de-ess (before delay) — closer to live Dynamics placement than pre-EQ.
+        let hpfOn = highPassEnabled || track.reelsVocalEnabled
+        var hpf = MXBiquad()
+        if hpfOn {
+            hpf.configure(kind: .highpass, frequency: 100, q: 0.707, sampleRate: sampleRate)
+        }
+
+        let eqGain = track.eqMidGain
+        let eqOn = abs(eqGain) >= 0.05
+        var eqMid = MXBiquad()
+        if eqOn {
+            eqMid.configure(
+                kind: .peaking,
+                frequency: 1_200,
+                q: 1.0,
+                gainDB: eqGain,
+                sampleRate: sampleRate
+            )
+        }
+
         let deEssOn = track.deEsserEnabled && track.deEsserAmount > 0.5
         var deEssFilter = MXBiquad()
         if deEssOn {
@@ -170,6 +193,25 @@ public enum StudioBounceExporter {
             )
         }
 
+        let gateOn = track.noiseGateEnabled
+        let gateThreshold = min(max(track.noiseGateThreshold, 0), 0.2)
+
+        let delayOn = track.delayMix >= 0.5
+        let delayLine: MXDelayLine? = delayOn ? MXDelayLine(maxDelaySeconds: 2.0, sampleRate: sampleRate) : nil
+        if let delayLine {
+            delayLine.setDelay(milliseconds: track.delayTime * 1_000)
+            delayLine.feedback = 0.35
+            delayLine.mix = track.delayMix / 100
+        }
+
+        let reelsCompOn = track.reelsVocalEnabled
+
+        let reverbOn = track.reverbMix > 0.5
+        let reverb: MXSimpleReverb? = reverbOn
+            ? MXSimpleReverb(sampleRate: sampleRate, smallRoom: track.reelsVocalEnabled)
+            : nil
+        reverb?.wetDryMix = track.reverbMix
+
         for i in 0..<outFrames {
             let srcIndex = min(Int(framesToRead) - 1, Int((Double(i) / ratio).rounded(.down)))
             var mono: Float
@@ -178,11 +220,27 @@ public enum StudioBounceExporter {
             } else {
                 mono = data[0][srcIndex]
             }
-            if gateOn {
-                mono = applyNoiseGate(mono, threshold: gateThreshold)
+            if hpfOn {
+                mono = hpf.process(mono)
+            }
+            if eqOn {
+                mono = eqMid.process(mono)
             }
             if deEssOn {
                 mono = deEssFilter.process(mono)
+            }
+            if gateOn {
+                mono = applyNoiseGate(mono, threshold: gateThreshold)
+            }
+            if let delayLine {
+                mono = delayLine.process(mono)
+            }
+            // Distortion skipped on bounce (live AU only).
+            if reelsCompOn {
+                mono = applySoftCompressor(mono)
+            }
+            if let reverb {
+                mono = reverb.process(mono)
             }
             let t = Double(i) / max(sampleRate, 1)
             let envelope = clip.fadeEnvelope(atSeconds: t, durationSeconds: audibleDuration)
@@ -202,6 +260,36 @@ public enum StudioBounceExporter {
         let ratio = magnitude / thresh
         // Soft knee: quadratic taper toward silence (strong attenuation, not hard mute).
         return sample * ratio * ratio
+    }
+
+    /// Soft-knee compressor for Reels Vocal bounce path (mirrors live Dynamics ~−18 dB / +2 dB).
+    static func applySoftCompressor(
+        _ sample: Float,
+        thresholdLinear: Float = 0.12589254, // −18 dBFS
+        ratio: Float = 3,
+        makeup: Float = 1.2589254, // +2 dB
+        kneeWidth: Float = 0.06
+    ) -> Float {
+        let x = abs(sample)
+        guard x > 1e-9 else { return 0 }
+        let halfKnee = kneeWidth * 0.5
+        let lower = max(thresholdLinear - halfKnee, 1e-6)
+        let upper = thresholdLinear + halfKnee
+        let gain: Float
+        if x <= lower {
+            gain = 1
+        } else {
+            let over = max(0, x - thresholdLinear)
+            let hardGain = (thresholdLinear + over / max(ratio, 1)) / x
+            if x >= upper {
+                gain = hardGain
+            } else {
+                let t = (x - lower) / max(kneeWidth, 1e-6)
+                let soft = t * t
+                gain = 1 + soft * (hardGain - 1)
+            }
+        }
+        return sample * gain * makeup
     }
 
     static func peakNormalize(left: inout [Float], right: inout [Float], targetPeak: Float = 0.89) {

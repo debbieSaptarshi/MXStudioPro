@@ -1533,13 +1533,15 @@ public final class StudioSessionController {
         let exportDir = MXProjectStore.shared.exportsDirectory(for: snapshot.id)
         let mode = loudnessMode
 
+        let highPass = isHighPassEnabled
         let result = try await Task.detached(priority: .userInitiated) {
             try StudioBounceExporter.bounce(
                 project: snapshot,
                 audioDirectory: audioDir,
                 outputDirectory: exportDir,
                 normalize: normalize,
-                loudnessMode: mode
+                loudnessMode: mode,
+                highPassEnabled: highPass
             )
         }.value
 
