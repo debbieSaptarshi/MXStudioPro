@@ -112,9 +112,14 @@ public final class StudioSessionController {
     public private(set) var graph: MXGraph?
     public private(set) var transport: MXTransport?
 
-    /// True when the armed track is MIDI — drives piano keyboard visibility.
+    /// True when the armed track is keys MIDI — drives Virtual Piano visibility.
     public var showsPianoKeyboard: Bool {
-        armedTrack?.kind == .midi
+        armedTrack?.kind == .midi && armedTrack?.category == .keys
+    }
+
+    /// True when the armed track is drums — drives DrumPad surface visibility.
+    public var showsDrumPads: Bool {
+        armedTrack?.kind == .midi && armedTrack?.category == .drums
     }
 
     /// True when the armed track can accept microphone recording.
@@ -188,6 +193,10 @@ public final class StudioSessionController {
             project = existing
         } else if preset == .midi {
             project = (try? MXProjectStore.shared.createMIDIProject()) ?? .untitledMIDI()
+        } else if preset == .drums, let existing = MXProjectStore.shared.loadLastOpened(), existing.preset == .drums {
+            project = existing
+        } else if preset == .drums {
+            project = (try? MXProjectStore.shared.createDrumsProject()) ?? .untitledDrums()
         } else {
             project = MXProject(name: "Untitled \(preset.title)", tracks: [
                 MXSessionTrack(name: "Track 1", kind: .audio, isArmed: true)
@@ -746,7 +755,7 @@ public final class StudioSessionController {
             trackLimitMessage = "Track limit reached (\(Self.maxTracks))"
             return nil
         }
-        let keysIndex = project.tracks.filter { $0.kind == .midi }.count + 1
+        let keysIndex = project.tracks.filter { $0.category == .keys }.count + 1
         let trackName = name ?? (keysIndex == 1 ? "Piano" : "Piano \(keysIndex)")
         let track = MXSessionTrack(
             name: trackName,
@@ -756,6 +765,36 @@ public final class StudioSessionController {
             reverbMix: 14,
             reverbSend: 20,
             synthBankPresetID: MXSynthBankPreset.trackSeed.rawValue
+        )
+        for i in project.tracks.indices {
+            project.tracks[i].isArmed = false
+        }
+        project.tracks.append(track)
+        if let graph {
+            _ = ensureReverbAux(on: graph)
+            attachMIDIInstrument(for: track.id, name: track.name)
+        }
+        persistSoon()
+        return track
+    }
+
+    /// Append a MIDI drums track with Drum Kit patch and arm it.
+    @discardableResult
+    public func addDrumTrack(named name: String? = nil) -> MXSessionTrack? {
+        guard canAddTrack else {
+            trackLimitMessage = "Track limit reached (\(Self.maxTracks))"
+            return nil
+        }
+        let drumIndex = project.tracks.filter { $0.category == .drums }.count + 1
+        let trackName = name ?? (drumIndex == 1 ? "Drums" : "Drums \(drumIndex)")
+        let track = MXSessionTrack(
+            name: trackName,
+            kind: .midi,
+            category: .drums,
+            isArmed: true,
+            reverbMix: 8,
+            reverbSend: 12,
+            synthBankPresetID: MXSynthBankPreset.drumKit.rawValue
         )
         for i in project.tracks.indices {
             project.tracks[i].isArmed = false

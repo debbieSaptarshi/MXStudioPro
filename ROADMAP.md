@@ -45,8 +45,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **31** | Studio shell ↔ Figma layout parity | **Done (MVP)** ✅ Guitar Studio proportions |
 | **32** | Guitar Studio Section (Figma) | **Done (MVP)** ✅ Pedalboard presets + Dist→Delay→Rev |
 | **33** | Piano Studio Section (Figma) | **Done (MVP)** ✅ Virtual Piano + bank + MIDI capture |
-| **34** | Drum & Others Studio Section (Figma) | **Next** |
-| **35** | Quick Landscape Studio Section (Figma) | Planned |
+| **34** | Drum & Others Studio Section (Figma) | **Done (MVP)** ✅ Pads + Hide Tracks + Others labels |
+| **35** | Quick Landscape Studio Section (Figma) | **Next** |
 
 ### Figma anchors (shipped / in use)
 
@@ -259,7 +259,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 **Week 32 notes:** Pedalboard gated on `track.category == .guitar` so vocal lanes in a Guitar project keep Dyn chain. Live monitor remains dry (hear pedals on playback/bounce). Wet input monitoring deferred.
 
-### Week 33 — Piano Studio Section **Next**
+### Week 33 — Piano Studio Section ✅
 
 **Figma cluster (≈ y=9854)**
 | Frame | Node | Intent |
@@ -270,13 +270,15 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Virtual Piano v2 | [`95:88011`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88011) | Alternate keyboard / octave UI |
 
 **Done when (GarageBand Keyboard / BandLab Keys)**
-- [ ] On-screen keyboard matches Virtual Piano layout (octaves, hold, velocity lite)
-- [ ] Optional MIDI note clips / piano-roll lite (even single-lane draw is enough for MVP)
-- [ ] Piano FX sheet from Piano Midi frame; instrument preset switch (synth bank)
-- [ ] Record button disabled for MIDI-armed track; play keys → audible; export includes rendered audio or stub capture
-- [ ] Demo: Create → VI → play progression → Open FX → bounce with keys bed
+- [x] On-screen keyboard matches Virtual Piano layout (octaves, hold, velocity lite)
+- [x] Optional MIDI note clips / piano-roll lite (even single-lane draw is enough for MVP)
+- [x] Piano FX sheet from Piano Midi frame; instrument preset switch (synth bank)
+- [x] Record button disabled for MIDI-armed track; play keys → audible; export includes rendered audio or stub capture
+- [x] Demo: Create → VI → play progression → Open FX → bounce with keys bed
 
-### Week 34 — Drum & Others Studio Section
+**Week 33 notes:** Performance capture — play keys while transport runs, Stop/pause drops a rendered WAV + piano-roll lite clip. Soft Keys / Warm Pad / Pulse Bass / Pluck / Synthwave bank. Rec stays disabled for MIDI-armed tracks.
+
+### Week 34 — Drum & Others Studio Section ✅
 
 **Figma cluster (≈ y=11232)**
 | Frame | Node | Intent |
@@ -286,14 +288,16 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | (Create hub) Drum / Bass / Sampler tiles | Create Mix | Entry points for “Others” |
 
 **Done when (BandLab Drum Machine / GarageBand Drums)**
-- [ ] Create → Drum (enable tile) opens drum pad surface + timeline
-- [ ] Pad hits trigger drum kit / synth percussion; pattern or one-shot clips on timeline
-- [ ] Drum parts column (kick/snare/hat lanes) or simplified pad → clip workflow
-- [ ] Hide Tracks mode collapses headers to icon rail (Figma `95:85310`) for denser arrange
-- [ ] Bass / Sampler remain “Others”: either lite presets or keep disabled with clear labels
-- [ ] Demo: lay 4-bar beat → layer vocal/guitar → bounce
+- [x] Create → Drum (enable tile) opens drum pad surface + timeline
+- [x] Pad hits trigger drum kit / synth percussion; pattern or one-shot clips on timeline
+- [x] Drum parts column (kick/snare/hat lanes) or simplified pad → clip workflow *(pad → performance capture clip)*
+- [x] Hide Tracks mode collapses headers to icon rail (Figma `95:85310`) for denser arrange
+- [x] Bass / Sampler remain “Others”: either lite presets or keep disabled with clear labels
+- [x] Demo: lay 4-bar beat → layer vocal/guitar → bounce
 
-### Week 35 — Quick Landscape Studio Section
+**Week 34 notes:** 8 GM-ish pads (Kick/Snare/Clap/HH/Tom/Perc/Ride), Drum Kit short one-shot synth, capture on Stop like Piano. Hide Tracks sidebar toggle. Bass/Looper/Sampler labeled “Others — coming soon”.
+
+### Week 35 — Quick Landscape Studio Section **Next**
 
 **Figma cluster (≈ y=12610)**
 | Frame | Node | Intent |

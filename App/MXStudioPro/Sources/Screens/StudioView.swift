@@ -22,8 +22,10 @@ public struct StudioView: View {
     @State private var showTunerSheet = false
     @State private var showCollabSheet = false
     @State private var showClipInspector = false
+    /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
+    @State private var tracksCollapsed = false
 
-    private let trackColumnWidth: CGFloat = 135
+    private var trackColumnWidth: CGFloat { tracksCollapsed ? 44 : 135 }
     private let beatsVisible: Double = 8
     /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
     private let trackLaneHeight: CGFloat = 60
@@ -211,6 +213,12 @@ public struct StudioView: View {
                         onNoteOff: { session.noteOff($0) }
                     )
                     .fixedSize(horizontal: false, vertical: true)
+                } else if session.showsDrumPads {
+                    DrumPadView(
+                        onPadHit: { session.noteOn($0, velocity: $1) },
+                        onPadRelease: { session.noteOff($0) }
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 actionBoard
                     .fixedSize(horizontal: false, vertical: true)
@@ -277,6 +285,27 @@ public struct StudioView: View {
                 studioIconButton(asset: "studio_tuner_a", systemFallback: "tuningfork") {
                     showTunerSheet = true
                 }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        tracksCollapsed.toggle()
+                    }
+                } label: {
+                    Image(systemName: tracksCollapsed ? "sidebar.left" : "sidebar.leading")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tracksCollapsed ? MXColor.accent : MXColor.white)
+                        .frame(width: 20, height: 20)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tracksCollapsed ? "Show track names" : "Hide tracks")
             }
             .padding(2)
             .background(
@@ -359,39 +388,59 @@ public struct StudioView: View {
 
     private var trackListColumn: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(session.playheadTimeLabel)
-                .font(MXFont.body3())
-                .foregroundStyle(MXColor.grey)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-                .frame(height: rulerHeight)
+            if tracksCollapsed {
+                Image(systemName: "clock")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: rulerHeight)
+            } else {
+                Text(session.playheadTimeLabel)
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                    .frame(height: rulerHeight)
+            }
 
             ForEach(session.project.tracks) { track in
-                StudioTrackHeader(
-                    track: track,
-                    isSelected: selectedTrackID == track.id,
-                    isArmed: track.isArmed,
-                    onSelect: {
-                        selectedTrackID = track.id
-                        session.armTrack(id: track.id)
-                    },
-                    onMute: { session.toggleMute(trackID: track.id) },
-                    onSolo: { session.toggleSolo(trackID: track.id) },
-                    onSetActiveTake: { session.setActiveTake(clipID: $0) }
-                )
-                .frame(height: trackLaneHeight)
-                .clipped()
+                if tracksCollapsed {
+                    collapsedTrackRailButton(track)
+                        .frame(height: trackLaneHeight)
+                } else {
+                    StudioTrackHeader(
+                        track: track,
+                        isSelected: selectedTrackID == track.id,
+                        isArmed: track.isArmed,
+                        onSelect: {
+                            selectedTrackID = track.id
+                            session.armTrack(id: track.id)
+                        },
+                        onMute: { session.toggleMute(trackID: track.id) },
+                        onSolo: { session.toggleSolo(trackID: track.id) },
+                        onSetActiveTake: { session.setActiveTake(clipID: $0) }
+                    )
+                    .frame(height: trackLaneHeight)
+                    .clipped()
+                }
             }
 
             Button {
                 showAddTrackSheet = true
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("ADD TRACK")
-                        .font(MXFont.caption())
-                        .fontWeight(.semibold)
+                Group {
+                    if tracksCollapsed {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("ADD TRACK")
+                                .font(MXFont.caption())
+                                .fontWeight(.semibold)
+                        }
+                    }
                 }
                 .foregroundStyle(session.canAddTrack ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
                 .frame(maxWidth: .infinity)
@@ -415,6 +464,48 @@ public struct StudioView: View {
         .padding(.trailing, 4)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(MXColor.surface)
+        .animation(.easeInOut(duration: 0.2), value: tracksCollapsed)
+    }
+
+    /// Figma Hide Tracks — icon rail for denser arrange.
+    private func collapsedTrackRailButton(_ track: MXSessionTrack) -> some View {
+        let tint = mixerCategoryTint(track.category)
+        let icon: String = {
+            switch track.category {
+            case .vocal: return "mic.fill"
+            case .guitar: return "guitars.fill"
+            case .keys: return "pianokeys"
+            case .drums: return "circle.grid.2x2.fill"
+            case .imported: return "waveform"
+            }
+        }()
+        return Button {
+            selectedTrackID = track.id
+            session.armTrack(id: track.id)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(track.isArmed ? MXColor.red : tint)
+                if track.isMuted {
+                    Text("M")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(selectedTrackID == track.id ? tint : Color.clear, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .accessibilityLabel(track.name)
     }
 
     private func trackLimitBanner(_ message: String) -> some View {
@@ -901,6 +992,18 @@ public struct StudioView: View {
                 tint: MXColor.orange
             ) {
                 if let track = session.addMIDITrack() {
+                    selectedTrackID = track.id
+                }
+                showAddTrackSheet = false
+            }
+
+            addTrackOption(
+                title: "Drums",
+                subtitle: "Pad machine with Drum Kit patch",
+                systemImage: "circle.grid.2x2.fill",
+                tint: MXColor.orange
+            ) {
+                if let track = session.addDrumTrack() {
                     selectedTrackID = track.id
                 }
                 showAddTrackSheet = false
@@ -1442,7 +1545,10 @@ public struct StudioView: View {
         if track?.category == .guitar {
             return "Pedalboard"
         }
-        if track?.category == .keys || track?.kind == .midi {
+        if track?.category == .drums {
+            return "Drum Kit"
+        }
+        if track?.category == .keys {
             return "Piano FX"
         }
         return "Track FX"
@@ -1472,7 +1578,8 @@ public struct StudioView: View {
 
     private func fxTrackRow(_ track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar
-        let isKeys = track.category == .keys || track.kind == .midi
+        let isKeys = track.category == .keys
+        let isDrums = track.category == .drums
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -1492,6 +1599,11 @@ public struct StudioView: View {
                     Image(systemName: "pianokeys")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(MXColor.orange)
+                } else if isDrums {
+                    Spacer(minLength: 4)
+                    Image(systemName: "circle.grid.2x2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.orange)
                 }
             }
 
@@ -1506,6 +1618,13 @@ public struct StudioView: View {
                 // Figma Piano Midi (`95:86149`): instrument bank switch.
                 pianoSynthBankRow(for: track)
                 Text("Play keys while transport runs — stop to drop a keys clip on the timeline.")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if isDrums {
+                Text("Tap pads while transport runs — stop to drop a drum clip. Kit is short one-shots.")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1560,7 +1679,7 @@ public struct StudioView: View {
                     range: 0.05...0.8,
                     labelWidth: 56
                 )
-            } else if !isKeys {
+            } else if !isKeys && !isDrums {
                 mixerSliderRow(
                     label: "EQ Mid",
                     valueLabel: String(format: "%+.0f", track.eqMidGain),
@@ -1610,7 +1729,7 @@ public struct StudioView: View {
                 )
             }
 
-            if isKeys {
+            if isKeys || isDrums {
                 mixerSliderRow(
                     label: "Send",
                     valueLabel: String(format: "%.0f", track.reverbSend),
@@ -1694,7 +1813,7 @@ public struct StudioView: View {
                 }
             }
 
-            if !isGuitar && !isKeys {
+            if !isGuitar && !isKeys && !isDrums {
                 Button {
                     session.toggleReelsVocal(trackID: track.id)
                 } label: {
@@ -1859,8 +1978,9 @@ public struct StudioView: View {
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar
-        let isKeys = track.category == .keys || track.kind == .midi
-        // Guitar: Dist → Dly → Rev. Keys: Synth → Send → Rev. Vocal: HPF → EQ → …
+        let isKeys = track.category == .keys
+        let isDrums = track.category == .drums
+        // Guitar: Dist → Dly → Rev. Keys/Drums: Synth → Send → Rev. Vocal: HPF → EQ → …
         let stages: [(label: String, active: Bool)]
         if isGuitar {
             stages = [
@@ -1868,7 +1988,7 @@ public struct StudioView: View {
                 ("Dly", track.delayMix > 0.5),
                 ("Rev", track.reverbMix > 0.5),
             ]
-        } else if isKeys {
+        } else if isKeys || isDrums {
             stages = [
                 ("Synth", true),
                 ("Send", track.reverbSend > 0.5),
@@ -1884,7 +2004,7 @@ public struct StudioView: View {
                 ("Rev", track.reverbMix > 0.5),
             ]
         }
-        let activeFill = isGuitar ? MXColor.teal : (isKeys ? MXColor.orange : MXColor.accent)
+        let activeFill = isGuitar ? MXColor.teal : ((isKeys || isDrums) ? MXColor.orange : MXColor.accent)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
@@ -1912,7 +2032,9 @@ public struct StudioView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(isGuitar ? "Pedalboard chain" : (isKeys ? "Piano FX chain" : "Insert chain"))
+        .accessibilityLabel(
+            isGuitar ? "Pedalboard chain" : (isKeys ? "Piano FX chain" : (isDrums ? "Drum kit chain" : "Insert chain"))
+        )
     }
 
     /// Figma Piano Midi — Soft Keys / Pad / Bass / Pluck / Synthwave chips.
@@ -1924,7 +2046,7 @@ public struct StudioView: View {
                 .foregroundStyle(MXColor.grey)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(MXSynthBankPreset.allCases) { bank in
+                    ForEach(MXSynthBankPreset.pianoBank) { bank in
                         let isOn = selected == bank
                         Button {
                             session.loadSynthBankPreset(bank, trackID: track.id)
@@ -2010,6 +2132,7 @@ public struct StudioView: View {
         case .vocal: return MXColor.accent
         case .guitar: return MXColor.teal
         case .keys: return MXColor.orange
+        case .drums: return MXColor.orange
         case .imported: return MXColor.red
         }
     }
@@ -2166,6 +2289,7 @@ private struct StudioTrackHeader: View {
         case .vocal: return MXColor.accent
         case .guitar: return MXColor.teal
         case .keys: return MXColor.orange
+        case .drums: return MXColor.orange
         case .imported: return MXColor.red
         }
     }
@@ -2175,6 +2299,7 @@ private struct StudioTrackHeader: View {
         case .vocal: return "mic.fill"
         case .guitar: return "guitars.fill"
         case .keys: return "pianokeys"
+        case .drums: return "circle.grid.2x2.fill"
         case .imported: return "waveform"
         }
     }

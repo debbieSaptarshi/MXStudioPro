@@ -6,6 +6,7 @@ public enum StudioPreset: String, Equatable, Sendable {
     case guitar
     case bass
     case midi
+    case drums
     case looper
     case sampler
     case ai
@@ -19,6 +20,7 @@ public enum StudioPreset: String, Equatable, Sendable {
         case .guitar: return "Guitar"
         case .bass: return "Bass"
         case .midi: return "Virtual Instrument"
+        case .drums: return "Drums"
         case .looper: return "Looper"
         case .sampler: return "Sampler"
         case .ai: return "Create Music With AI"
@@ -202,6 +204,25 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
             preset: .midi
         )
     }
+
+    /// Drum Machine path: armed MIDI drums track with short kit patch.
+    public static func untitledDrums(bpm: Double = 120) -> MXProject {
+        let track = MXSessionTrack(
+            name: "Drums",
+            kind: .midi,
+            category: .drums,
+            isArmed: true,
+            reverbMix: 8,
+            reverbSend: 12,
+            synthBankPresetID: MXSynthBankPreset.drumKit.rawValue
+        )
+        return MXProject(
+            name: "Untitled Drums",
+            bpm: bpm,
+            tracks: [track],
+            preset: .drums
+        )
+    }
 }
 
 public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
@@ -215,6 +236,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         case vocal
         case guitar
         case keys
+        case drums
         case imported
     }
 
@@ -281,6 +303,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.name = name
         self.kind = kind
         self.category = category ?? (kind == .midi ? .keys : .vocal)
+        // Note: callers should pass `.drums` explicitly for drum tracks.
         self.isArmed = isArmed
         self.isMuted = isMuted
         self.isSolo = isSolo

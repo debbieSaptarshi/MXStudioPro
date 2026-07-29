@@ -7,6 +7,7 @@ public enum MXSynthBankPreset: String, CaseIterable, Codable, Sendable, Identifi
     case warmPad
     case pulseBass
     case pluckLead
+    case drumKit
 
     public var id: String { rawValue }
 
@@ -17,6 +18,7 @@ public enum MXSynthBankPreset: String, CaseIterable, Codable, Sendable, Identifi
         case .warmPad: return "Warm Pad"
         case .pulseBass: return "Pulse Bass"
         case .pluckLead: return "Pluck"
+        case .drumKit: return "Drum Kit"
         }
     }
 
@@ -27,7 +29,13 @@ public enum MXSynthBankPreset: String, CaseIterable, Codable, Sendable, Identifi
         case .warmPad: return "Slow attack wash"
         case .pulseBass: return "Low pulse foundation"
         case .pluckLead: return "Short bright lead"
+        case .drumKit: return "Short one-shot percussion"
         }
+    }
+
+    /// Presets shown in Piano FX (excludes drum kit).
+    public static var pianoBank: [MXSynthBankPreset] {
+        allCases.filter { $0 != .drumKit }
     }
 
     public var preset: MXSynthPreset {
@@ -117,6 +125,28 @@ public enum MXSynthBankPreset: String, CaseIterable, Codable, Sendable, Identifi
                 .ampRelease: 0.22,
                 .filterCutoff: 9_000,
                 .filterResonance: 0.22,
+            ])
+        case .drumKit:
+            // Short one-shots — different pad MIDI notes read as pitched percussion.
+            return MXSynthPreset(name: "DRUM KIT", parameters: [
+                .osc1Level: 0.95,
+                .osc1Waveform: Float(MXWaveform.square.rawValue),
+                .osc1Coarse: 0,
+                .osc1Fine: 0,
+                .osc2Level: 0.55,
+                .osc2Waveform: Float(MXWaveform.sawtooth.rawValue),
+                .osc2Coarse: 0,
+                .osc2Detune: 18,
+                .fmLevel: 0.35,
+                .fmMod: 0.55,
+                .subLevel: 0.45,
+                .subOctave: 1,
+                .ampAttack: 0.001,
+                .ampDecay: 0.12,
+                .ampSustain: 0.05,
+                .ampRelease: 0.08,
+                .filterCutoff: 7_500,
+                .filterResonance: 0.35,
             ])
         }
     }
