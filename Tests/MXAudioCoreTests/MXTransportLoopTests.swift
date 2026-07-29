@@ -59,4 +59,61 @@ final class MXTransportLoopTests: XCTestCase {
 
         XCTAssertGreaterThan(transport.currentBeat, 4.0)
     }
+
+    // MARK: - Loop schedule clamp (Week 29)
+
+    func testClampCapsFramesAtLoopEnd() {
+        let capped = MXLoopScheduleClamp.clampFrameCount(
+            requestedFrames: 10_000,
+            audibleStartSample: 8_000,
+            loopEndSample: 12_000,
+            loopEnabled: true
+        )
+        XCTAssertEqual(capped, 4_000)
+    }
+
+    func testClampReturnsZeroWhenStartAtOrPastLoopEnd() {
+        XCTAssertEqual(
+            MXLoopScheduleClamp.clampFrameCount(
+                requestedFrames: 1_000,
+                audibleStartSample: 12_000,
+                loopEndSample: 12_000,
+                loopEnabled: true
+            ),
+            0
+        )
+        XCTAssertEqual(
+            MXLoopScheduleClamp.clampFrameCount(
+                requestedFrames: 1_000,
+                audibleStartSample: 12_500,
+                loopEndSample: 12_000,
+                loopEnabled: true
+            ),
+            0
+        )
+    }
+
+    func testClampPassthroughWhenLoopDisabled() {
+        XCTAssertEqual(
+            MXLoopScheduleClamp.clampFrameCount(
+                requestedFrames: 10_000,
+                audibleStartSample: 8_000,
+                loopEndSample: 12_000,
+                loopEnabled: false
+            ),
+            10_000
+        )
+    }
+
+    func testClampDoesNotExtendShortRequest() {
+        XCTAssertEqual(
+            MXLoopScheduleClamp.clampFrameCount(
+                requestedFrames: 500,
+                audibleStartSample: 8_000,
+                loopEndSample: 12_000,
+                loopEnabled: true
+            ),
+            500
+        )
+    }
 }

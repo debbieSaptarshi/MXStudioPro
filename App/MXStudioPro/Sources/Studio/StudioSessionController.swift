@@ -1498,6 +1498,10 @@ public final class StudioSessionController {
         // Stop every player first so deactivated takes do not keep sounding.
         stopClipPlayers()
         let anySolo = project.tracks.contains(where: \.isSolo)
+        let loopEnabled = project.loopEnabled
+        let loopEndSample: Int64 = loopEnabled
+            ? transport.tempoMap.sample(forBeat: project.loopEndBeat, sampleRate: transport.sampleRate)
+            : Int64.max
 
         for track in project.tracks {
             if track.isMuted { continue }
@@ -1519,6 +1523,8 @@ public final class StudioSessionController {
                     sampleRate: transport.sampleRate
                 )
                 if sample >= clipEnd { continue }
+                // Skip clips that only exist past the loop end (would bleed on hostTime).
+                if loopEnabled && clipStart >= loopEndSample { continue }
 
                 let fileStart = AVAudioFramePosition(
                     (clip.sourceOffsetSeconds * transport.sampleRate).rounded()
@@ -1529,6 +1535,14 @@ public final class StudioSessionController {
                 var frameCount = AVAudioFrameCount(
                     min(Double(maxFrames), (durationSeconds * transport.sampleRate).rounded())
                 )
+                // Cap the whole-clip schedule at loop end so fades bake correctly.
+                let clippedFromStart = MXLoopScheduleClamp.clampFrameCount(
+                    requestedFrames: Int64(frameCount),
+                    audibleStartSample: clipStart,
+                    loopEndSample: loopEndSample,
+                    loopEnabled: loopEnabled
+                )
+                frameCount = AVAudioFrameCount(clippedFromStart)
                 guard frameCount > 0 else { continue }
 
                 let needsFade = clip.fadeInSeconds > 1e-3 || clip.fadeOutSeconds > 1e-3
@@ -1559,6 +1573,14 @@ public final class StudioSessionController {
                     let remainingFile = AVAudioFrameCount(max(0, file.length - startFrame))
                     let remainingClip = AVAudioFrameCount(max(0, Int64(frameCount) - intoClip))
                     frameCount = min(remainingFile, remainingClip)
+                    // Mid-clip: also clamp from the current playhead to loop end.
+                    let midClamped = MXLoopScheduleClamp.clampFrameCount(
+                        requestedFrames: Int64(frameCount),
+                        audibleStartSample: sample,
+                        loopEndSample: loopEndSample,
+                        loopEnabled: loopEnabled
+                    )
+                    frameCount = AVAudioFrameCount(midClamped)
                     guard frameCount > 0 else { continue }
                     let at = AVAudioTime(hostTime: transport.hostTime(forSample: sample))
                     player.scheduleSegment(
