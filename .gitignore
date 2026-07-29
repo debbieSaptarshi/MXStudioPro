@@ -1,0 +1,48 @@
+# Swift / SPM
+.build/
+.swiftpm/xcode/
+.swiftpm/configuration/
+**/Package.resolved.bak
+Spike/.build/
+
+# Xcode
+DerivedData/
+*.xcuserdata
+*.xcuserstate
+**/xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+
+# App local / generated
+App/MXStudioPro/Resources/SimShots/
+**/Index.noindex/
+**/*.swp
+*~.nib
+
+# OS / IDE
+.DS_Store
+.AppleDouble
+.LSOverride
+.idea/
+.vscode/
+*.tmp
+*.bak
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+Credentials.plist
+GoogleService-Info.plist
+
+# CocoaPods / Carthage (if added later)
+Pods/
+Carthage/Build/

@@ -1,0 +1,49 @@
+name: MXStudioPro
+options:
+  bundleIdPrefix: com.mxstudio
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    INFOPLIST_GENERATION_MODE: GeneratedFile
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  MXStudioEngineLink:
+    path: EngineLink
+targets:
+  MXStudioPro:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Assets.xcassets
+    dependencies:
+      - package: MXStudioEngineLink
+        product: MXStudioEngine
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mxstudio.pro
+        PRODUCT_NAME: MXStudioPro
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_CFBundleDisplayName: MXStudio Pro
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: MXStudio Pro needs the microphone to record vocals and instruments.
+        SWIFT_EMIT_LOC_STRINGS: YES
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  MXStudioPro:
+    build:
+      targets:
+        MXStudioPro: all
+    run:
+      config: Debug
