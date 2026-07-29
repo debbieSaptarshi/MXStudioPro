@@ -127,6 +127,12 @@ public final class StudioSessionController {
     private var instrumentChains: [UUID: MXTrackChain] = [:]
     private var reverbAux: MXAuxBus?
     private var activeTakeURL: URL?
+    /// Beat where the current take began (punch-in or cold start). Used on commit.
+    private var recordingStartBeat: Double?
+    /// Sample where the current take began — pairs with `recordingStartBeat`.
+    private var recordingStartSample: Int64?
+    /// True when record started while transport was already playing (punch-in).
+    private var isPunchInRecording = false
     private var editStack = StudioEditStack()
     private var clipWarningClearTask: Task<Void, Never>?
     /// Last playhead sample from the observer — used to detect loop wraps.
@@ -263,6 +269,9 @@ public final class StudioSessionController {
             _ = try? recorder?.stopRecording()
             isRecording = false
         }
+        isPunchInRecording = false
+        recordingStartBeat = nil
+        recordingStartSample = nil
         stopClipPlayers()
         detachAllClipPlayers()
         detachLiveInstrument()
@@ -380,9 +389,12 @@ public final class StudioSessionController {
         guard let transport, let recorder else { return }
 
         isRecordMode = true
-        if transport.isPlaying {
-            pausePlayback()
-        }
+
+        // Punch-in: if already playing, keep the playhead and backing clips —
+        // do not rewind to 0 or pause. Cold start records from the current playhead.
+        let wasPlaying = transport.isPlaying
+        let punchSample = transport.currentSample
+        let punchBeat = transport.tempoMap.beat(forSample: punchSample, sampleRate: transport.sampleRate)
 
         let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
@@ -394,29 +406,40 @@ public final class StudioSessionController {
             try recorder.startRecording(to: url, preferMono: preferMono)
             activeTakeURL = url
             isRecording = true
+            isPunchInRecording = wasPlaying
+            recordingStartBeat = punchBeat
+            recordingStartSample = punchSample
             startMeterPolling()
 
-            let sample = transport.currentSample
-            metronome?.prepareSchedule(fromSample: sample)
-            metronome?.resetCursor(toSample: sample)
+            metronome?.prepareSchedule(fromSample: punchSample)
+            metronome?.resetCursor(toSample: punchSample)
 
-            if countInBars > 0 {
-                isCountingIn = true
-                let beatsPerBar = Double(project.timeSignatureNumerator)
-                let seconds = Double(countInBars) * beatsPerBar * 60.0 / max(bpm, 1)
-                countInTask = Task { [weak self] in
-                    try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                    await MainActor.run {
-                        guard let self, !Task.isCancelled else { return }
-                        self.isCountingIn = false
+            if wasPlaying {
+                // Immediate punch-in — no count-in; re-anchor as recording and keep clips audible.
+                isCountingIn = false
+                transport.record(fromSample: punchSample)
+                scheduleClipPlayers(fromSample: punchSample)
+            } else {
+                if countInBars > 0 {
+                    isCountingIn = true
+                    let beatsPerBar = Double(project.timeSignatureNumerator)
+                    let seconds = Double(countInBars) * beatsPerBar * 60.0 / max(bpm, 1)
+                    countInTask = Task { [weak self] in
+                        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                        await MainActor.run {
+                            guard let self, !Task.isCancelled else { return }
+                            self.isCountingIn = false
+                        }
                     }
                 }
+                transport.record(fromSample: punchSample)
             }
-
-            transport.record(fromSample: sample)
             isPlaying = true
         } catch {
             isRecording = false
+            isPunchInRecording = false
+            recordingStartBeat = nil
+            recordingStartSample = nil
             activeTakeURL = nil
             recordError = error.localizedDescription
         }
@@ -441,14 +464,22 @@ public final class StudioSessionController {
             isRecording = false
             inputLevel = 0
 
+            let punchBeat = recordingStartBeat
+            let punchSample = recordingStartSample ?? take.startSample
+            recordingStartBeat = nil
+            recordingStartSample = nil
+            isPunchInRecording = false
+
             guard take.frameCount > 0, let trackID = project.armedTrack?.id ?? project.tracks.first?.id else {
                 try? FileManager.default.removeItem(at: take.url)
                 activeTakeURL = nil
                 return
             }
 
-            let startBeat = transport.tempoMap.beat(forSample: take.startSample, sampleRate: transport.sampleRate)
-            let endSample = take.startSample + Int64(take.frameCount)
+            // Place clip at punch-in (or cold-start) beat — never force to 0.
+            let startBeat = punchBeat
+                ?? transport.tempoMap.beat(forSample: punchSample, sampleRate: transport.sampleRate)
+            let endSample = punchSample + Int64(take.frameCount)
             let endBeat = transport.tempoMap.beat(forSample: endSample, sampleRate: transport.sampleRate)
             let lengthBeats = max(0.25, endBeat - startBeat)
             let durationSeconds = Double(take.frameCount) / max(transport.sampleRate, 1)
@@ -483,6 +514,9 @@ public final class StudioSessionController {
             }
         } catch {
             isRecording = false
+            isPunchInRecording = false
+            recordingStartBeat = nil
+            recordingStartSample = nil
             inputLevel = 0
             recordError = error.localizedDescription
             activeTakeURL = nil
@@ -1877,6 +1911,17 @@ public final class StudioSessionController {
             // Ignore tiny backward jitter; require a real wrap (at least ~half a loop or 1k samples).
             let jump = lastObservedSample - readout.sample
             if jump >= max(1_000, loopLengthSamples / 2) {
+                // Punch-out at loop end: commit the take instead of wrapping while recording.
+                if isRecording {
+                    lastObservedSample = readout.sample
+                    playheadBeat = readout.beat
+                    playheadLabel = readout.position.description
+                    playheadBar = readout.position.bar
+                    playheadBeatInBar = readout.position.beat
+                    playheadTimeLabel = Self.formatTime(readout.seconds)
+                    stopRecordingAndCommit()
+                    return
+                }
                 // Re-anchor host clock so scheduled hostTimes are in the future.
                 transport?.seek(toSample: readout.sample)
                 metronome?.resetCursor(toSample: readout.sample)
