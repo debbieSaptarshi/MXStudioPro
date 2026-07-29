@@ -184,6 +184,7 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Export loudness for Reels (−14 LUFS)** | ✅ `MXLoudness` in MXAudioDSP; Export sheet toggle vs peak normalize |
 | **Master limiter on bounce** | ✅ Soft brickwall ≤ ~0.99 after peak/LUFS (`applyMasterLimiter`) |
 | **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
+| **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
 
 **Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, latency calibration UX.
 
@@ -261,7 +262,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - **Reels Vocal preset chain**
 - Noise gate / light denoise
 - De-esser
-- Mono record default for vocals
+- Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
 - Quiet-room checklist (onboarding)
 

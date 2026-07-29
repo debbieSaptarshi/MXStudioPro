@@ -20,15 +20,21 @@ public final class MXAudioSession: @unchecked Sendable {
         public var preferredIOBufferFrames: Int
         public var enablesInput: Bool
         public var allowsBluetooth: Bool
+        /// When set (e.g. `1` for vocal mono), asked of `AVAudioSession` on activate
+        /// and before record. Hardware may still deliver stereo; the recorder
+        /// downmixes when mono is preferred.
+        public var preferredInputChannelCount: Int?
 
         public init(sampleRate: Double = 48_000,
                     preferredIOBufferFrames: Int = 256,
                     enablesInput: Bool = true,
-                    allowsBluetooth: Bool = true) {
+                    allowsBluetooth: Bool = true,
+                    preferredInputChannelCount: Int? = nil) {
             self.sampleRate = sampleRate
             self.preferredIOBufferFrames = preferredIOBufferFrames
             self.enablesInput = enablesInput
             self.allowsBluetooth = allowsBluetooth
+            self.preferredInputChannelCount = preferredInputChannelCount
         }
 
         public static let studio = Configuration()
@@ -107,11 +113,26 @@ public final class MXAudioSession: @unchecked Sendable {
             try session.setPreferredSampleRate(self.configuration.sampleRate)
             try session.setPreferredIOBufferDuration(
                 Double(self.configuration.preferredIOBufferFrames) / self.configuration.sampleRate)
+            if let channels = self.configuration.preferredInputChannelCount, channels > 0 {
+                // Best-effort: many built-in mics already report 1 channel; stereo
+                // interfaces may ignore this. Recorder still downmixes when asked.
+                try? session.setPreferredInputNumberOfChannels(channels)
+            }
             try session.setActive(true)
         } catch {
             throw MXAudioError.engineStartFailed("audio session: \(error.localizedDescription)")
         }
         installObservers()
+        #endif
+    }
+
+    /// Best-effort mono/stereo preference before a take. No-op off iOS.
+    /// Callers that need a mono file should also pass `preferMono` to the recorder.
+    public func preferInputChannelCount(_ count: Int) {
+        configuration.preferredInputChannelCount = count
+        #if os(iOS)
+        guard count > 0 else { return }
+        try? AVAudioSession.sharedInstance().setPreferredInputNumberOfChannels(count)
         #endif
     }
 

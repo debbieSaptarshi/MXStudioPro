@@ -43,6 +43,9 @@ public final class MXRecorder: @unchecked Sendable {
     private var framesWritten: AVAudioFrameCount = 0
     private var interrupted = false
     private let lock = NSLock()
+    /// When true, stereo (or multi-channel) tap buffers are downmixed to mono on write.
+    private var writeMono = false
+    private var monoWriteFormat: AVAudioFormat?
 
     /// Direct monitoring routes input to the output. Off by default because on
     /// a speaker route it feeds back (L-04 checks there is no howl).
@@ -86,7 +89,10 @@ public final class MXRecorder: @unchecked Sendable {
         }
     }
 
-    public func startRecording(to url: URL) throws {
+    /// - Parameter preferMono: When true, ask the session for 1 input channel and
+    ///   write a mono take (downmix if hardware still delivers stereo). Used for
+    ///   vocal-category tracks; guitar / import paths leave this false.
+    public func startRecording(to url: URL, preferMono: Bool = false) throws {
         lock.lock()
         guard !isRecording else {
             lock.unlock()
@@ -96,6 +102,10 @@ public final class MXRecorder: @unchecked Sendable {
 
         guard graph.session.hasInputPermission() else {
             throw RecorderError.inputUnavailable
+        }
+
+        if preferMono {
+            graph.session.preferInputChannelCount(1)
         }
 
         let input = graph.engine.inputNode
@@ -118,6 +128,22 @@ public final class MXRecorder: @unchecked Sendable {
             format = fallback
         }
 
+        let useMono = preferMono || format.channelCount == 1
+        let fileFormat: AVAudioFormat
+        if useMono, format.channelCount != 1 {
+            guard let mono = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: format.sampleRate,
+                channels: 1,
+                interleaved: false
+            ) else {
+                throw RecorderError.inputUnavailable
+            }
+            fileFormat = mono
+        } else {
+            fileFormat = format
+        }
+
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -125,12 +151,12 @@ public final class MXRecorder: @unchecked Sendable {
 
         let audioFile: AVAudioFile
         do {
-            audioFile = try AVAudioFile(forWriting: url, settings: format.settings)
+            audioFile = try AVAudioFile(forWriting: url, settings: fileFormat.settings)
         } catch {
             let fallbackSettings: [String: Any] = [
                 AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: format.sampleRate,
-                AVNumberOfChannelsKey: 1,
+                AVSampleRateKey: fileFormat.sampleRate,
+                AVNumberOfChannelsKey: useMono ? 1 : max(1, Int(fileFormat.channelCount)),
                 AVLinearPCMBitDepthKey: 16,
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
@@ -150,6 +176,8 @@ public final class MXRecorder: @unchecked Sendable {
         framesWritten = 0
         interrupted = false
         isRecording = true
+        writeMono = useMono && format.channelCount > 1
+        monoWriteFormat = writeMono ? fileFormat : nil
         lock.unlock()
 
         // Prefer hardware format for the tap; `nil` lets AVAudioEngine pick when
@@ -178,6 +206,8 @@ public final class MXRecorder: @unchecked Sendable {
         isRecording = false
         file = nil
         currentURL = nil
+        writeMono = false
+        monoWriteFormat = nil
         lock.unlock()
 
         graph.engine.inputNode.removeTap(onBus: 0)
@@ -191,10 +221,16 @@ public final class MXRecorder: @unchecked Sendable {
             lock.unlock()
             return
         }
+        let downmix = writeMono
+        let monoFormat = monoWriteFormat
         lock.unlock()
 
         do {
-            try file.write(from: buffer)
+            if downmix, let monoFormat, let mono = Self.downmixToMono(buffer, format: monoFormat) {
+                try file.write(from: mono)
+            } else {
+                try file.write(from: buffer)
+            }
             let peak = Self.peakLevel(in: buffer)
             lock.lock()
             framesWritten += buffer.frameLength
@@ -203,6 +239,28 @@ public final class MXRecorder: @unchecked Sendable {
         } catch {
             handleInterruption()
         }
+    }
+
+    /// Average L/R (or first channel) into a mono float buffer for vocal takes.
+    private static func downmixToMono(_ buffer: AVAudioPCMBuffer, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let frames = Int(buffer.frameLength)
+        guard frames > 0,
+              let src = buffer.floatChannelData,
+              let mono = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buffer.frameLength)
+        else { return nil }
+        mono.frameLength = buffer.frameLength
+        guard let dst = mono.floatChannelData?[0] else { return nil }
+        let channels = Int(buffer.format.channelCount)
+        if channels <= 1 {
+            dst.update(from: src[0], count: frames)
+        } else {
+            let left = src[0]
+            let right = src[1]
+            for i in 0..<frames {
+                dst[i] = 0.5 * (left[i] + right[i])
+            }
+        }
+        return mono
     }
 
     private static func peakLevel(in buffer: AVAudioPCMBuffer) -> Float {
@@ -230,6 +288,8 @@ public final class MXRecorder: @unchecked Sendable {
         interrupted = true
         file = nil
         isRecording = false
+        writeMono = false
+        monoWriteFormat = nil
         lock.unlock()
 
         graph.engine.inputNode.removeTap(onBus: 0)

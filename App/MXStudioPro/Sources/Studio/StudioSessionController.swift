@@ -56,6 +56,14 @@ public final class StudioSessionController {
     /// Snap move/trim/loop edits to 16th-note grid. Session preference (not persisted).
     public var isSnapEnabled: Bool = true
 
+    /// Prefer mono capture when recording on a vocal-category armed track.
+    /// Session preference (not persisted). Guitar / import paths leave this unused.
+    ///
+    /// Hardware may still deliver stereo; `MXRecorder` asks
+    /// `AVAudioSession.setPreferredInputNumberOfChannels(1)` and downmixes the
+    /// write tap when needed.
+    public var preferMonoVocalRecord: Bool = true
+
     public private(set) var lastSavedAt: Date?
     public private(set) var saveError: String?
     public private(set) var recordError: String?
@@ -375,7 +383,8 @@ public final class StudioSessionController {
         let url = audioDir.appendingPathComponent(fileName)
 
         do {
-            try recorder.startRecording(to: url)
+            let preferMono = preferMonoVocalRecord && (armedTrack?.category == .vocal)
+            try recorder.startRecording(to: url, preferMono: preferMono)
             activeTakeURL = url
             isRecording = true
             startMeterPolling()
