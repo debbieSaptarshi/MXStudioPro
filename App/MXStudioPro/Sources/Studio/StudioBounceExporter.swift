@@ -206,7 +206,11 @@ public enum StudioBounceExporter {
             delayLine.mix = track.delayMix / 100
         }
 
-        let reelsCompOn = track.reelsVocalEnabled
+        let isGuitar = track.category == .guitar
+        let distOn = track.distortionMix >= 0.5
+        let distAmount = track.distortionMix
+
+        let reelsCompOn = track.reelsVocalEnabled && !isGuitar
 
         let reverbOn = track.reverbMix > 0.5
         let reverb: MXSimpleReverb? = reverbOn
@@ -239,16 +243,23 @@ public enum StudioBounceExporter {
             if eqOn {
                 mono = eqMid.process(mono)
             }
-            if deEssOn {
+            if deEssOn && !isGuitar {
                 mono = deEssFilter.process(mono)
             }
-            if gateOn {
+            if gateOn && !isGuitar {
                 mono = applyNoiseGate(mono, threshold: gateThreshold)
+            }
+            // Guitar pedalboard: Dist before Delay (matches live insert order).
+            // Other tracks keep Delay → Dist approximation after the delay stage.
+            if isGuitar, distOn {
+                mono = MXGuitarPedalPreset.bounceDistortion(sample: mono, amount: distAmount)
             }
             if let delayLine {
                 mono = delayLine.process(mono)
             }
-            // Distortion skipped on bounce (live AU only).
+            if !isGuitar, distOn {
+                mono = MXGuitarPedalPreset.bounceDistortion(sample: mono, amount: distAmount)
+            }
             if reelsCompOn {
                 mono = applySoftCompressor(mono)
             }

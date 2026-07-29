@@ -710,16 +710,17 @@ public final class StudioSessionController {
         }
         let guitarIndex = project.tracks.filter { $0.category == .guitar }.count + 1
         let trackName = name ?? (guitarIndex == 1 ? "Guitar" : "Guitar \(guitarIndex)")
+        let seed = MXGuitarPedalPreset.trackSeed
         let track = MXSessionTrack(
             name: trackName,
             kind: .audio,
             category: .guitar,
             isArmed: true,
-            reverbMix: 18,
-            eqMidGain: 1.5,
-            delayMix: 20,
-            delayTime: 0.32,
-            distortionMix: 35
+            reverbMix: seed.reverbMix,
+            eqMidGain: seed.eqMidGain,
+            delayMix: seed.delayMix,
+            delayTime: seed.delayTime,
+            distortionMix: seed.distortionMix
         )
         for i in project.tracks.indices {
             project.tracks[i].isArmed = false
@@ -1240,6 +1241,33 @@ public final class StudioSessionController {
         project.tracks[index].distortionMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
         persistSoon()
+    }
+
+    /// Apply a named guitar pedalboard preset (Figma Select Guitar Effect / BandLab amp path).
+    public func applyGuitarPedalPreset(_ preset: MXGuitarPedalPreset, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        let track = project.tracks[index]
+        guard track.category == .guitar || project.preset == .guitar else { return }
+        project.tracks[index].distortionMix = preset.distortionMix
+        project.tracks[index].delayMix = preset.delayMix
+        project.tracks[index].delayTime = preset.delayTime
+        project.tracks[index].reverbMix = preset.reverbMix
+        project.tracks[index].eqMidGain = preset.eqMidGain
+        applyTrackFX(trackID: trackID)
+        persistSoon()
+    }
+
+    /// Which named preset (if any) matches the track's current Dist/Delay/Rev mixes.
+    public func matchingGuitarPedalPreset(for trackID: UUID) -> MXGuitarPedalPreset? {
+        guard let track = project.tracks.first(where: { $0.id == trackID }) else { return nil }
+        return MXGuitarPedalPreset.allCases.first {
+            $0.matches(
+                distortionMix: track.distortionMix,
+                delayMix: track.delayMix,
+                delayTime: track.delayTime,
+                reverbMix: track.reverbMix
+            )
+        }
     }
 
     public func setNoiseGateEnabled(_ enabled: Bool, trackID: UUID) {
@@ -1793,25 +1821,31 @@ public final class StudioSessionController {
         let eq = AVAudioUnitEQ(numberOfBands: 3)
         let delay = AVAudioUnitDelay()
         let distortion = AVAudioUnitDistortion()
-        let comp = Self.makeDynamicsProcessor()
         let reverb = AVAudioUnitReverb()
         configureEQ(eq, for: clip)
         configureDelay(delay, for: clip)
         configureDistortion(distortion, for: clip)
-        configureComp(comp, for: clip)
         configureReverb(reverb, for: clip)
-        // player → EQ → delay → distortion → dynamics → reverb → master
-        graph.connectSourceThroughInsertsToMaster(
-            source: player,
-            inserts: [eq, delay, distortion, comp, reverb]
-        )
+        let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
+        let isGuitar = track?.category == .guitar || preset == .guitar
+        // Guitar pedalboard (Figma Select Guitar Effect): Dist → Delay → Rev.
+        // Vocal / general: EQ → Delay → Dist → Dyn → Rev.
+        let inserts: [AVAudioNode]
+        if isGuitar {
+            inserts = [eq, distortion, delay, reverb]
+        } else {
+            let comp = Self.makeDynamicsProcessor()
+            configureComp(comp, for: clip)
+            clipComps[clip.id] = comp
+            inserts = [eq, delay, distortion, comp, reverb]
+        }
+        graph.connectSourceThroughInsertsToMaster(source: player, inserts: inserts)
         clipPlayers[clip.id] = player
         clipEQs[clip.id] = eq
         clipDelays[clip.id] = delay
         clipDistortions[clip.id] = distortion
-        clipComps[clip.id] = comp
         clipReverbs[clip.id] = reverb
-        if let trackID = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })?.id {
+        if let trackID = track?.id {
             applyTrackMix(trackID: trackID)
         }
     }
@@ -1833,12 +1867,21 @@ public final class StudioSessionController {
         let comp = clipComps.removeValue(forKey: id)
         let reverb = clipReverbs.removeValue(forKey: id)
         player?.stop()
+        let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == id }) })
+        let isGuitar = track?.category == .guitar || preset == .guitar
         var inserts: [AVAudioNode] = []
-        if let eq { inserts.append(eq) }
-        if let delay { inserts.append(delay) }
-        if let distortion { inserts.append(distortion) }
-        if let comp { inserts.append(comp) }
-        if let reverb { inserts.append(reverb) }
+        if isGuitar {
+            if let eq { inserts.append(eq) }
+            if let distortion { inserts.append(distortion) }
+            if let delay { inserts.append(delay) }
+            if let reverb { inserts.append(reverb) }
+        } else {
+            if let eq { inserts.append(eq) }
+            if let delay { inserts.append(delay) }
+            if let distortion { inserts.append(distortion) }
+            if let comp { inserts.append(comp) }
+            if let reverb { inserts.append(reverb) }
+        }
         if let player {
             if inserts.isEmpty {
                 graph.disconnectSourceFromMaster(player)
@@ -2088,7 +2131,7 @@ public final class StudioSessionController {
         #if os(iOS)
         let hasHeadphones = Self.currentRouteHasHeadphones()
         // Guitar sessions prefer Monitor on with headphones (BandLab-style).
-        if preset == .guitar && hasHeadphones {
+        if (preset == .guitar || armedTrack?.category == .guitar) && hasHeadphones {
             isMonitoringEnabled = true
         } else if !hasHeadphones {
             isMonitoringEnabled = false
@@ -2114,17 +2157,24 @@ public final class StudioSessionController {
     private func refreshRouteTip() {
         #if os(iOS)
         let hasHeadphones = Self.currentRouteHasHeadphones()
+        let isGuitar = preset == .guitar || armedTrack?.category == .guitar
         if hasHeadphones {
-            headphoneTip = isMonitoringEnabled
-                ? (preset == .guitar
-                   ? "Monitoring on — hear yourself while you play."
-                   : nil)
-                : "Headphones connected — turn on Monitor to hear yourself (optional)."
+            if isGuitar {
+                headphoneTip = isMonitoringEnabled
+                    ? "Monitoring on — phone mic or Lightning/USB DI; keep amp quiet if mic’d."
+                    : "Headphones connected — turn on Monitor to hear your DI / mic input."
+            } else {
+                headphoneTip = isMonitoringEnabled
+                    ? nil
+                    : "Headphones connected — turn on Monitor to hear yourself (optional)."
+            }
         } else {
             if isMonitoringEnabled {
                 isMonitoringEnabled = false
             }
-            headphoneTip = "Monitoring stays off on speaker to avoid feedback."
+            headphoneTip = isGuitar
+                ? "Speaker monitoring stays off (feedback). Plug in headphones for DI / mic monitor."
+                : "Monitoring stays off on speaker to avoid feedback."
         }
         #else
         headphoneTip = nil

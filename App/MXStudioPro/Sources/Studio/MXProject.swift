@@ -164,16 +164,17 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
 
     /// Guitar path: armed audio track with a light pedalboard seed (Dist / Delay / Rev).
     public static func untitledGuitar(bpm: Double = 120) -> MXProject {
+        let seed = MXGuitarPedalPreset.trackSeed
         let track = MXSessionTrack(
             name: "Guitar",
             kind: .audio,
             category: .guitar,
             isArmed: true,
-            reverbMix: 18,
-            eqMidGain: 1.5,
-            delayMix: 20,
-            delayTime: 0.32,
-            distortionMix: 35
+            reverbMix: seed.reverbMix,
+            eqMidGain: seed.eqMidGain,
+            delayMix: seed.delayMix,
+            delayTime: seed.delayTime,
+            distortionMix: seed.distortionMix
         )
         return MXProject(
             name: "Untitled Guitar",

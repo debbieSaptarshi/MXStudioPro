@@ -49,14 +49,18 @@ struct RecordVocalView: View {
 
     // MARK: - Header
 
+    private var isGuitarCapture: Bool {
+        armedTrack?.category == .guitar || session.preset == .guitar
+    }
+
     private var recordHeader: some View {
         HStack(spacing: 16) {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("No Fx")
+                    Text(isGuitarCapture ? "Pedalboard" : "No Fx")
                         .font(MXFont.smallButton())
                         .foregroundStyle(MXColor.white)
-                    Text(armedTrack?.name ?? (session.preset == .guitar ? "Guitar" : "Vocal/Audio"))
+                    Text(armedTrack?.name ?? (isGuitarCapture ? "Guitar" : "Vocal/Audio"))
                         .font(MXFont.caption())
                         .foregroundStyle(MXColor.grey)
                 }
@@ -70,7 +74,7 @@ struct RecordVocalView: View {
                 Button {
                     onOpenFX?()
                 } label: {
-                    Text("EQ")
+                    Text(isGuitarCapture ? "Pedals" : "EQ")
                         .font(MXFont.mediumButton())
                         .foregroundStyle(MXColor.white)
                         .padding(10)
@@ -80,7 +84,7 @@ struct RecordVocalView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Track FX")
+                .accessibilityLabel(isGuitarCapture ? "Pedalboard" : "Track FX")
 
                 metalIcon("square.and.arrow.up")
                 metalIcon("ellipsis")
@@ -291,7 +295,7 @@ struct RecordVocalView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Toggle(isOn: $session.isHighPassEnabled) {
-                    Text("Cut rumble")
+                    Text(isGuitarCapture ? "Cut rumble (DI)" : "Cut rumble")
                         .font(MXFont.caption())
                         .foregroundStyle(MXColor.lightGrey)
                 }
@@ -309,6 +313,11 @@ struct RecordVocalView: View {
 
             if let tip = session.headphoneTip {
                 Text(tip)
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if isGuitarCapture {
+                Text("Input: phone mic or Lightning/USB DI — same record path.")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
                     .fixedSize(horizontal: false, vertical: true)
@@ -332,7 +341,7 @@ struct RecordVocalView: View {
                 Text("Recording \(session.playheadTimeLabel)")
                     .foregroundStyle(MXColor.red)
             } else {
-                Text("Arming mic…")
+                Text(isGuitarCapture ? "Arming input…" : "Arming mic…")
                     .foregroundStyle(MXColor.grey)
             }
         }
@@ -347,16 +356,29 @@ struct RecordVocalView: View {
     // MARK: - Mixer strip
 
     private func mixerStrip(track: MXSessionTrack) -> some View {
-        HStack(spacing: 0) {
+        let guitar = track.category == .guitar || session.preset == .guitar
+        let tint = guitar ? MXColor.teal : MXColor.accent
+        return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
-                    Image(systemName: "mic.fill")
+                    Image(systemName: guitar ? "guitars.fill" : "mic.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(MXColor.accent)
+                        .foregroundStyle(tint)
                     Text(track.name.uppercased())
                         .font(MXFont.studioTrackName())
                         .foregroundStyle(MXColor.white)
                         .lineLimit(1)
+                    if guitar {
+                        Text("PEDALS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.black)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(MXColor.teal)
+                            )
+                    }
                 }
 
                 HStack(spacing: 6) {
@@ -372,7 +394,7 @@ struct RecordVocalView: View {
                         ),
                         in: 0...1
                     )
-                    .tint(MXColor.accent)
+                    .tint(tint)
 
                     Text("\(Int(((track.volume - 1) * 24).rounded()))")
                         .font(MXFont.caption())

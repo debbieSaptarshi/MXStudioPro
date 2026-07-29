@@ -1478,9 +1478,20 @@ public struct StudioView: View {
                     .font(MXFont.mediumButton())
                     .foregroundStyle(MXColor.white)
                     .lineLimit(1)
+                if isGuitar {
+                    Spacer(minLength: 4)
+                    Image(systemName: "guitars.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.teal)
+                }
             }
 
             insertChainBar(for: track)
+
+            if isGuitar {
+                // Figma Select Guitar Effect (`95:89964`): named amp/pedal presets.
+                guitarPedalPresetRow(for: track)
+            }
 
             if !isGuitar {
                 mixerSliderRow(
@@ -1493,44 +1504,82 @@ public struct StudioView: View {
                     range: -12...12,
                     labelWidth: 56
                 )
+
+                mixerSliderRow(
+                    label: "Dly Mix",
+                    valueLabel: String(format: "%.0f", track.delayMix),
+                    value: Binding(
+                        get: { Double(track.delayMix) },
+                        set: {
+                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
+                        }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Time",
+                    valueLabel: String(format: "%.2f", track.delayTime),
+                    value: Binding(
+                        get: { Double(track.delayTime) },
+                        set: {
+                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
+                        }
+                    ),
+                    range: 0.05...0.8,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dist",
+                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    value: Binding(
+                        get: { Double(track.distortionMix) },
+                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+            } else {
+                // Pedalboard order: Dist → Delay → Rev (matches live insert chain).
+                mixerSliderRow(
+                    label: "Dist",
+                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    value: Binding(
+                        get: { Double(track.distortionMix) },
+                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Mix",
+                    valueLabel: String(format: "%.0f", track.delayMix),
+                    value: Binding(
+                        get: { Double(track.delayMix) },
+                        set: {
+                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
+                        }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Time",
+                    valueLabel: String(format: "%.2f", track.delayTime),
+                    value: Binding(
+                        get: { Double(track.delayTime) },
+                        set: {
+                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
+                        }
+                    ),
+                    range: 0.05...0.8,
+                    labelWidth: 56
+                )
             }
-
-            mixerSliderRow(
-                label: "Dly Mix",
-                valueLabel: String(format: "%.0f", track.delayMix),
-                value: Binding(
-                    get: { Double(track.delayMix) },
-                    set: {
-                        session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
-                    }
-                ),
-                range: 0...100,
-                labelWidth: 56
-            )
-
-            mixerSliderRow(
-                label: "Dly Time",
-                valueLabel: String(format: "%.2f", track.delayTime),
-                value: Binding(
-                    get: { Double(track.delayTime) },
-                    set: {
-                        session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
-                    }
-                ),
-                range: 0.05...0.8,
-                labelWidth: 56
-            )
-
-            mixerSliderRow(
-                label: "Dist",
-                valueLabel: String(format: "%.0f", track.distortionMix),
-                value: Binding(
-                    get: { Double(track.distortionMix) },
-                    set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
-                ),
-                range: 0...100,
-                labelWidth: 56
-            )
 
             mixerSliderRow(
                 label: "Rev",
@@ -1767,14 +1816,23 @@ public struct StudioView: View {
 
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
-        let stages: [(label: String, active: Bool)] = [
-            ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
-            ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
-            ("Dly", track.delayMix > 0.5),
-            ("Dist", track.distortionMix > 0.5),
-            ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
-            ("Rev", track.reverbMix > 0.5),
-        ]
+        let isGuitar = track.category == .guitar || session.preset == .guitar
+        // Guitar pedalboard: Dist → Dly → Rev. Vocal: HPF → EQ → Dly → Dist → Dyn → Rev.
+        let stages: [(label: String, active: Bool)] = isGuitar
+            ? [
+                ("Dist", track.distortionMix > 0.5),
+                ("Dly", track.delayMix > 0.5),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+            : [
+                ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
+                ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
+                ("Dly", track.delayMix > 0.5),
+                ("Dist", track.distortionMix > 0.5),
+                ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+        let activeFill = isGuitar ? MXColor.teal : MXColor.accent
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
@@ -1790,7 +1848,7 @@ public struct StudioView: View {
                         .padding(.vertical, 4)
                         .background(
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(stage.active ? MXColor.accent : MXColor.black)
+                                .fill(stage.active ? activeFill : MXColor.black)
                         )
                         .overlay {
                             if !stage.active {
@@ -1802,7 +1860,52 @@ public struct StudioView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Insert chain")
+        .accessibilityLabel(isGuitar ? "Pedalboard chain" : "Insert chain")
+    }
+
+    /// Figma Select Guitar Effect — Clean / Crunch / Lead / Ambient chips.
+    private func guitarPedalPresetRow(for track: MXSessionTrack) -> some View {
+        let matched = session.matchingGuitarPedalPreset(for: track.id)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Effect")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(MXGuitarPedalPreset.allCases) { preset in
+                        let selected = matched == preset
+                        Button {
+                            session.applyGuitarPedalPreset(preset, trackID: track.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(selected ? MXColor.black : MXColor.white)
+                                Text(preset.subtitle)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(selected ? MXColor.black.opacity(0.7) : MXColor.grey)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 88, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(selected ? MXColor.teal : MXColor.black)
+                            )
+                            .overlay {
+                                if !selected {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(preset.title) pedalboard preset")
+                    }
+                }
+            }
+        }
     }
 
     private func mixerCategoryTint(_ category: MXSessionTrack.Category) -> Color {
