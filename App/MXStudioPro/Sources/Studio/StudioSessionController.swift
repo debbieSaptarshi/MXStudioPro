@@ -30,7 +30,10 @@ public final class StudioSessionController {
     public private(set) var peakHoldLevel: Float = 0
     public private(set) var showClipWarning = false
     public private(set) var headphoneTip: String?
+    /// First-record quiet-room checklist (GarageBand / BandLab-style onboarding).
     public private(set) var showQuietRoomTip = false
+    /// Checklist row completion — indices match `QuietRoomChecklistItem.allCases`.
+    public private(set) var quietRoomChecklistDone: Set<Int> = []
     public private(set) var selectedClipID: UUID?
     public private(set) var canUndo = false
     public private(set) var canRedo = false
@@ -152,8 +155,11 @@ public final class StudioSessionController {
     /// Last playhead sample from the observer — used to detect loop wraps.
     private var lastObservedSample: Int64 = 0
     private static let quietRoomTipKey = "mxstudio.didShowQuietRoomTip"
+    private static let quietRoomChecklistKey = "mxstudio.didShowQuietRoomChecklist"
     /// Linear amplitude ≈ −1 dBFS.
     private static let clipThreshold: Float = 0.891
+    /// Mic-level checklist auto-check threshold (~−40 dBFS linear).
+    private static let quietRoomMicLevelThreshold: Float = 0.01
 
     public init(project: MXProject) {
         self.project = project
@@ -369,6 +375,10 @@ public final class StudioSessionController {
         syncMonitorNoiseGate()
         startMeterPolling()
         refreshRouteTip()
+        // Prefer showing the checklist when the user actually opens Record
+        // (BandLab/GarageBand first-capture moment), not only on engine start.
+        maybeShowQuietRoomTip()
+        refreshQuietRoomAutoChecks()
     }
 
     public func exitRecordMode() {
@@ -779,7 +789,23 @@ public final class StudioSessionController {
 
     public func dismissQuietRoomTip() {
         showQuietRoomTip = false
+        quietRoomChecklistDone.removeAll()
         UserDefaults.standard.set(true, forKey: Self.quietRoomTipKey)
+        UserDefaults.standard.set(true, forKey: Self.quietRoomChecklistKey)
+    }
+
+    /// Toggle a quiet-room checklist row (user tap). Auto-checked rows can also be toggled off.
+    public func toggleQuietRoomChecklistItem(_ item: QuietRoomChecklistItem) {
+        if quietRoomChecklistDone.contains(item.rawValue) {
+            quietRoomChecklistDone.remove(item.rawValue)
+        } else {
+            quietRoomChecklistDone.insert(item.rawValue)
+        }
+    }
+
+    /// True when every quiet-room checklist row is marked done.
+    public var isQuietRoomChecklistComplete: Bool {
+        QuietRoomChecklistItem.allCases.allSatisfy { quietRoomChecklistDone.contains($0.rawValue) }
     }
 
     public func undo() {
@@ -1882,6 +1908,9 @@ public final class StudioSessionController {
                         self.showClipWarning = true
                         self.scheduleClipWarningClear()
                     }
+                    if self.showQuietRoomTip {
+                        self.refreshQuietRoomAutoChecks()
+                    }
                 }
                 try? await Task.sleep(nanoseconds: 33_000_000)
             }
@@ -1908,8 +1937,23 @@ public final class StudioSessionController {
     }
 
     private func maybeShowQuietRoomTip() {
-        if !UserDefaults.standard.bool(forKey: Self.quietRoomTipKey) {
-            showQuietRoomTip = true
+        // Week 29 checklist key — show once even if the Week 5 copy-only tip was seen.
+        guard !UserDefaults.standard.bool(forKey: Self.quietRoomChecklistKey) else { return }
+        showQuietRoomTip = true
+        quietRoomChecklistDone.removeAll()
+        refreshQuietRoomAutoChecks()
+    }
+
+    /// Auto-check headphones + mic-level rows from live route / meter (BandLab-style).
+    private func refreshQuietRoomAutoChecks() {
+        guard showQuietRoomTip else { return }
+        #if os(iOS)
+        if Self.currentRouteHasHeadphones() {
+            quietRoomChecklistDone.insert(QuietRoomChecklistItem.headphones.rawValue)
+        }
+        #endif
+        if inputLevel >= Self.quietRoomMicLevelThreshold || peakHoldLevel >= Self.quietRoomMicLevelThreshold {
+            quietRoomChecklistDone.insert(QuietRoomChecklistItem.micLevel.rawValue)
         }
     }
 

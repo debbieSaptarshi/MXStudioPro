@@ -32,8 +32,15 @@ struct RecordVocalView: View {
             }
         }
         .task {
-            if !session.isRecording {
+            // Hold auto-Rec while the first-record checklist is up so the
+            // user can prep the room (GarageBand / BandLab first-capture UX).
+            if !session.isRecording && !session.showQuietRoomTip {
                 await session.startRecording()
+            }
+        }
+        .onChange(of: session.showQuietRoomTip) { _, showing in
+            if !showing && !session.isRecording {
+                Task { await session.startRecording() }
             }
         }
     }
@@ -117,32 +124,50 @@ struct RecordVocalView: View {
             .background(MXColor.red)
     }
 
-    // MARK: - Quiet room tip
+    // MARK: - Quiet room checklist
 
     private var quietRoomTipOverlay: some View {
         ZStack {
             Color.black.opacity(0.55)
                 .ignoresSafeArea()
-                .onTapGesture { session.dismissQuietRoomTip() }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Quiet room tip")
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Quiet room checklist")
                     .font(MXFont.mediumButton())
                     .foregroundStyle(MXColor.white)
 
                 Text(
                     session.preset == .guitar
-                        ? "Plug in or play near the mic — Monitor works best with headphones."
-                        : "Record in a quiet room, keep the phone about a hand's length away, and don't cover the mic."
+                        ? "Quick prep before you play — headphones make Monitor safe."
+                        : "Quick prep before your first take — Reels-ready vocals start here."
                 )
-                    .font(MXFont.body3())
-                    .foregroundStyle(MXColor.lightGrey)
-                    .fixedSize(horizontal: false, vertical: true)
+                .font(MXFont.body3())
+                .foregroundStyle(MXColor.lightGrey)
+                .fixedSize(horizontal: false, vertical: true)
+
+                VStack(spacing: 8) {
+                    ForEach(QuietRoomChecklistItem.allCases) { item in
+                        quietRoomChecklistRow(item)
+                    }
+                }
+
+                // Live mic cue while checklist is up (input is armed).
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(MXColor.layer2)
+                        Capsule()
+                            .fill(session.isInputClipping ? MXColor.red : MXColor.accent)
+                            .frame(width: max(4, geo.size.width * CGFloat(min(session.inputLevel, 1))))
+                    }
+                }
+                .frame(height: 6)
+                .padding(.top, 2)
 
                 Button {
                     session.dismissQuietRoomTip()
                 } label: {
-                    Text("Got it")
+                    Text(session.isQuietRoomChecklistComplete ? "Start recording" : "Skip & record")
                         .font(MXFont.smallButton())
                         .foregroundStyle(MXColor.black)
                         .frame(maxWidth: .infinity)
@@ -163,8 +188,46 @@ struct RecordVocalView: View {
                             .strokeBorder(MXColor.layer2, lineWidth: 1)
                     )
             )
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 24)
         }
+    }
+
+    private func quietRoomChecklistRow(_ item: QuietRoomChecklistItem) -> some View {
+        let done = session.quietRoomChecklistDone.contains(item.rawValue)
+        return Button {
+            session.toggleQuietRoomChecklistItem(item)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(done ? MXColor.accent : MXColor.grey)
+                    .frame(width: 22, height: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(MXColor.grey)
+                        Text(item.title)
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.white)
+                    }
+                    Text(item.detail)
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(done ? MXColor.layer2.opacity(0.55) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Live waveform
