@@ -542,19 +542,18 @@ public final class StudioSessionController {
             )
 
             pushUndoSnapshot()
+            var committed = clip
             if let index = project.tracks.firstIndex(where: { $0.id == trackID }) {
-                // Deactivate overlapping takes on this track (comp-lane lite).
-                for i in project.tracks[index].clips.indices {
-                    if project.tracks[index].clips[i].overlaps(with: clip) {
-                        project.tracks[index].clips[i].isActive = false
-                    }
-                }
-                project.tracks[index].clips.append(clip)
+                // Playlist / crossfade comps lite (Logic punch comps):
+                // split overlapping ACTIVE takes into before/after, keep them
+                // audible outside the punch, and apply ~12 ms abut fades.
+                applyPunchCompLite(punch: &committed, trackIndex: index, transport: transport)
+                project.tracks[index].clips.append(committed)
             }
 
-            attachPlayer(for: clip)
+            attachPlayer(for: committed)
             applyHighPassToPlayers()
-            selectedClipID = clip.id
+            selectedClipID = committed.id
             persistNow()
             activeTakeURL = nil
             // Return to Figma 95:85026 — Studio After Record
@@ -579,6 +578,77 @@ public final class StudioSessionController {
             meterTask?.cancel()
             meterTask = nil
             recorder.setLiveInputArmed(false)
+        }
+    }
+
+    /// Split overlapping active takes around a punch clip and suggest abut crossfades.
+    private func applyPunchCompLite(punch: inout MXClip, trackIndex: Int, transport: MXTransport) {
+        let punchStart = punch.startBeat
+        let punchEnd = punch.startBeat + punch.lengthBeats
+        let secondsBetween: (Double, Double) -> Double = { a, b in
+            transport.tempoMap.seconds(forBeat: b) - transport.tempoMap.seconds(forBeat: a)
+        }
+
+        var afterPieces: [MXClip] = []
+        for i in project.tracks[trackIndex].clips.indices {
+            let sib = project.tracks[trackIndex].clips[i]
+            guard sib.isActive, sib.overlaps(with: punch) else { continue }
+
+            let source = MXCompRegionSplit.SourceClip(
+                startBeat: sib.startBeat,
+                lengthBeats: sib.lengthBeats,
+                sourceOffsetSeconds: sib.sourceOffsetSeconds,
+                sourceDurationSeconds: sib.sourceDurationSeconds,
+                fadeInSeconds: sib.fadeInSeconds,
+                fadeOutSeconds: sib.fadeOutSeconds
+            )
+            let result = MXCompRegionSplit.split(
+                sibling: source,
+                punchStartBeat: punchStart,
+                punchEndBeat: punchEnd,
+                secondsBetween: secondsBetween
+            )
+
+            if let before = result.before {
+                var kept = sib
+                kept.startBeat = before.startBeat
+                kept.lengthBeats = before.lengthBeats
+                kept.sourceOffsetSeconds = before.sourceOffsetSeconds
+                kept.sourceDurationSeconds = before.sourceDurationSeconds
+                kept.fadeInSeconds = before.fadeInSeconds
+                kept.fadeOutSeconds = before.fadeOutSeconds
+                kept.isActive = true
+                project.tracks[trackIndex].clips[i] = kept
+            } else if result.deactivateOriginal {
+                project.tracks[trackIndex].clips[i].isActive = false
+            }
+
+            if let after = result.after {
+                var piece = sib
+                piece.id = UUID()
+                piece.startBeat = after.startBeat
+                piece.lengthBeats = after.lengthBeats
+                piece.sourceOffsetSeconds = after.sourceOffsetSeconds
+                piece.sourceDurationSeconds = after.sourceDurationSeconds
+                piece.fadeInSeconds = after.fadeInSeconds
+                piece.fadeOutSeconds = after.fadeOutSeconds
+                piece.isActive = true
+                // Same takeIndex — playlist lane of the original take.
+                afterPieces.append(piece)
+            }
+
+            punch.fadeInSeconds = max(punch.fadeInSeconds, result.punchFadeInSeconds)
+            punch.fadeOutSeconds = max(punch.fadeOutSeconds, result.punchFadeOutSeconds)
+        }
+
+        if let dur = punch.sourceDurationSeconds {
+            punch.fadeInSeconds = min(punch.fadeInSeconds, dur)
+            punch.fadeOutSeconds = min(punch.fadeOutSeconds, dur)
+        }
+
+        for piece in afterPieces {
+            project.tracks[trackIndex].clips.append(piece)
+            attachPlayer(for: piece)
         }
     }
 

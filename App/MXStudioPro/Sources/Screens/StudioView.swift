@@ -557,7 +557,12 @@ public struct StudioView: View {
     }
 
     private func trackLane(track: MXSessionTrack, width: CGFloat, pixelsPerBeat: CGFloat, isPrimary: Bool) -> some View {
-        ZStack(alignment: .leading) {
+        let takeLaneCount = Set(track.clips.map(\.takeIndex)).count
+        let showGhostLanes = takeLaneCount >= 2
+        let activeClips = track.clips.filter(\.isActive)
+        let ghostClips = showGhostLanes ? track.clips.filter { !$0.isActive } : []
+
+        return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(MXColor.surfaceRaised.opacity(0.35))
                 .contentShape(Rectangle())
@@ -568,7 +573,15 @@ public struct StudioView: View {
                     onClearSelection: { session.selectClip(nil) }
                 ))
 
-            let activeClips = track.clips.filter(\.isActive)
+            // Ghost playlist lanes under actives (BandLab / Logic take comps lite).
+            ForEach(ghostClips) { clip in
+                GhostStudioClip(
+                    clip: clip,
+                    pixelsPerBeat: pixelsPerBeat,
+                    onActivate: { session.setActiveTake(clipID: clip.id) }
+                )
+            }
+
             if activeClips.isEmpty {
                 if isPrimary {
                     Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
@@ -1856,6 +1869,45 @@ private struct LaneBackgroundPointerModifier: ViewModifier {
                     }
             )
         }
+    }
+}
+
+// MARK: - Ghost playlist clip (inactive take)
+
+private struct GhostStudioClip: View {
+    let clip: MXClip
+    let pixelsPerBeat: CGFloat
+    var onActivate: () -> Void
+
+    private var width: CGFloat {
+        max(16, CGFloat(clip.lengthBeats) * pixelsPerBeat)
+    }
+
+    private var x: CGFloat {
+        CGFloat(clip.startBeat) * pixelsPerBeat
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(MXColor.layer2.opacity(0.55))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .strokeBorder(MXColor.grey.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                )
+            Text("T\(clip.takeIndex + 1)")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+                .padding(.leading, 4)
+                .padding(.top, 2)
+        }
+        .frame(width: width, height: 36)
+        .offset(x: x, y: 8)
+        .opacity(0.45)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onActivate)
+        .accessibilityLabel("Inactive \(clip.name)")
+        .accessibilityHint("Activates this take")
     }
 }
 
