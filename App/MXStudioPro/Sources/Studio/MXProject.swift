@@ -190,7 +190,10 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
             name: "Piano",
             kind: .midi,
             category: .keys,
-            isArmed: true
+            isArmed: true,
+            reverbMix: 14,
+            reverbSend: 20,
+            synthBankPresetID: MXSynthBankPreset.trackSeed.rawValue
         )
         return MXProject(
             name: "Untitled MIDI",
@@ -247,6 +250,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var deEsserEnabled: Bool
     /// De-esser amount 0…100 (maps to ~0…−12 dB peaking cut).
     public var deEsserAmount: Float
+    /// Keys / VI synth bank preset id (`MXSynthBankPreset.rawValue`). Nil for non-MIDI.
+    public var synthBankPresetID: String?
 
     public init(
         id: UUID = UUID(),
@@ -269,7 +274,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         noiseGateEnabled: Bool = false,
         noiseGateThreshold: Float = 0.02,
         deEsserEnabled: Bool = false,
-        deEsserAmount: Float = 50
+        deEsserAmount: Float = 50,
+        synthBankPresetID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -292,6 +298,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.noiseGateThreshold = min(max(noiseGateThreshold, 0), 0.2)
         self.deEsserEnabled = deEsserEnabled
         self.deEsserAmount = min(max(deEsserAmount, 0), 100)
+        self.synthBankPresetID = synthBankPresetID
+            ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
     }
 
     public init(from decoder: Decoder) throws {
@@ -318,12 +326,15 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         noiseGateThreshold = min(max(try c.decodeIfPresent(Float.self, forKey: .noiseGateThreshold) ?? 0.02, 0), 0.2)
         deEsserEnabled = try c.decodeIfPresent(Bool.self, forKey: .deEsserEnabled) ?? false
         deEsserAmount = min(max(try c.decodeIfPresent(Float.self, forKey: .deEsserAmount) ?? 50, 0), 100)
+        synthBankPresetID = try c.decodeIfPresent(String.self, forKey: .synthBankPresetID)
+            ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
+        case synthBankPresetID
     }
 }
 
@@ -351,6 +362,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var takeIndex: Int
     /// When false, clip is kept as an alternate take but skipped in playback/bounce.
     public var isActive: Bool
+    /// Piano-roll lite notes (MIDI tracks). Empty for audio clips.
+    public var midiNotes: [MXMIDINote]
 
     public init(
         id: UUID = UUID(),
@@ -365,7 +378,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         fadeInSeconds: Double = 0,
         fadeOutSeconds: Double = 0,
         takeIndex: Int = 0,
-        isActive: Bool = true
+        isActive: Bool = true,
+        midiNotes: [MXMIDINote] = []
     ) {
         self.id = id
         self.trackID = trackID
@@ -380,6 +394,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.fadeOutSeconds = max(0, fadeOutSeconds)
         self.takeIndex = max(0, takeIndex)
         self.isActive = isActive
+        self.midiNotes = midiNotes
     }
 
     /// Back-compat with Week 4 projects that omit trim / fade / take fields.
@@ -398,13 +413,14 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         fadeOutSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
         takeIndex = max(0, try c.decodeIfPresent(Int.self, forKey: .takeIndex) ?? 0)
         isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+        midiNotes = try c.decodeIfPresent([MXMIDINote].self, forKey: .midiNotes) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, trackID, name, startBeat, lengthBeats, audioFileName
         case sourceOffsetSeconds, sourceDurationSeconds
         case gain, fadeInSeconds, fadeOutSeconds
-        case takeIndex, isActive
+        case takeIndex, isActive, midiNotes
     }
 
     /// True when this clip’s beat range overlaps `other` (exclusive ends).

@@ -207,7 +207,7 @@ public struct StudioView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if session.showsPianoKeyboard {
                     PianoKeyboardView(
-                        onNoteOn: { session.noteOn($0) },
+                        onNoteOn: { session.noteOn($0, velocity: $1) },
                         onNoteOff: { session.noteOff($0) }
                     )
                     .fixedSize(horizontal: false, vertical: true)
@@ -1442,6 +1442,9 @@ public struct StudioView: View {
         if track?.category == .guitar {
             return "Pedalboard"
         }
+        if track?.category == .keys || track?.kind == .midi {
+            return "Piano FX"
+        }
         return "Track FX"
     }
 
@@ -1469,6 +1472,7 @@ public struct StudioView: View {
 
     private func fxTrackRow(_ track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar
+        let isKeys = track.category == .keys || track.kind == .midi
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -1483,6 +1487,11 @@ public struct StudioView: View {
                     Image(systemName: "guitars.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(MXColor.teal)
+                } else if isKeys {
+                    Spacer(minLength: 4)
+                    Image(systemName: "pianokeys")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.orange)
                 }
             }
 
@@ -1493,7 +1502,65 @@ public struct StudioView: View {
                 guitarPedalPresetRow(for: track)
             }
 
-            if !isGuitar {
+            if isKeys {
+                // Figma Piano Midi (`95:86149`): instrument bank switch.
+                pianoSynthBankRow(for: track)
+                Text("Play keys while transport runs — stop to drop a keys clip on the timeline.")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if isGuitar {
+                // Pedalboard order: Dist → Delay → Rev (matches live insert chain).
+                mixerSliderRow(
+                    label: "Dist",
+                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    value: Binding(
+                        get: { Double(track.distortionMix) },
+                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Tone",
+                    valueLabel: String(format: "%+.0f", track.eqMidGain),
+                    value: Binding(
+                        get: { Double(track.eqMidGain) },
+                        set: { session.setTrackEQMidGain(Float($0), trackID: track.id) }
+                    ),
+                    range: -12...12,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Mix",
+                    valueLabel: String(format: "%.0f", track.delayMix),
+                    value: Binding(
+                        get: { Double(track.delayMix) },
+                        set: {
+                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
+                        }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Time",
+                    valueLabel: String(format: "%.2f", track.delayTime),
+                    value: Binding(
+                        get: { Double(track.delayTime) },
+                        set: {
+                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
+                        }
+                    ),
+                    range: 0.05...0.8,
+                    labelWidth: 56
+                )
+            } else if !isKeys {
                 mixerSliderRow(
                     label: "EQ Mid",
                     valueLabel: String(format: "%+.0f", track.eqMidGain),
@@ -1541,53 +1608,17 @@ public struct StudioView: View {
                     range: 0...100,
                     labelWidth: 56
                 )
-            } else {
-                // Pedalboard order: Dist → Delay → Rev (matches live insert chain).
+            }
+
+            if isKeys {
                 mixerSliderRow(
-                    label: "Dist",
-                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    label: "Send",
+                    valueLabel: String(format: "%.0f", track.reverbSend),
                     value: Binding(
-                        get: { Double(track.distortionMix) },
-                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                        get: { Double(track.reverbSend) },
+                        set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
                     ),
                     range: 0...100,
-                    labelWidth: 56
-                )
-
-                mixerSliderRow(
-                    label: "Tone",
-                    valueLabel: String(format: "%+.0f", track.eqMidGain),
-                    value: Binding(
-                        get: { Double(track.eqMidGain) },
-                        set: { session.setTrackEQMidGain(Float($0), trackID: track.id) }
-                    ),
-                    range: -12...12,
-                    labelWidth: 56
-                )
-
-                mixerSliderRow(
-                    label: "Dly Mix",
-                    valueLabel: String(format: "%.0f", track.delayMix),
-                    value: Binding(
-                        get: { Double(track.delayMix) },
-                        set: {
-                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
-                        }
-                    ),
-                    range: 0...100,
-                    labelWidth: 56
-                )
-
-                mixerSliderRow(
-                    label: "Dly Time",
-                    valueLabel: String(format: "%.2f", track.delayTime),
-                    value: Binding(
-                        get: { Double(track.delayTime) },
-                        set: {
-                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
-                        }
-                    ),
-                    range: 0.05...0.8,
                     labelWidth: 56
                 )
             }
@@ -1663,7 +1694,7 @@ public struct StudioView: View {
                 }
             }
 
-            if !isGuitar {
+            if !isGuitar && !isKeys {
                 Button {
                     session.toggleReelsVocal(trackID: track.id)
                 } label: {
@@ -1828,14 +1859,23 @@ public struct StudioView: View {
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar
-        // Guitar pedalboard: Dist → Dly → Rev. Vocal: HPF → EQ → Dly → Dist → Dyn → Rev.
-        let stages: [(label: String, active: Bool)] = isGuitar
-            ? [
+        let isKeys = track.category == .keys || track.kind == .midi
+        // Guitar: Dist → Dly → Rev. Keys: Synth → Send → Rev. Vocal: HPF → EQ → …
+        let stages: [(label: String, active: Bool)]
+        if isGuitar {
+            stages = [
                 ("Dist", track.distortionMix > 0.5),
                 ("Dly", track.delayMix > 0.5),
                 ("Rev", track.reverbMix > 0.5),
             ]
-            : [
+        } else if isKeys {
+            stages = [
+                ("Synth", true),
+                ("Send", track.reverbSend > 0.5),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+        } else {
+            stages = [
                 ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
                 ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
                 ("Dly", track.delayMix > 0.5),
@@ -1843,7 +1883,8 @@ public struct StudioView: View {
                 ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
                 ("Rev", track.reverbMix > 0.5),
             ]
-        let activeFill = isGuitar ? MXColor.teal : MXColor.accent
+        }
+        let activeFill = isGuitar ? MXColor.teal : (isKeys ? MXColor.orange : MXColor.accent)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
@@ -1871,7 +1912,52 @@ public struct StudioView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(isGuitar ? "Pedalboard chain" : "Insert chain")
+        .accessibilityLabel(isGuitar ? "Pedalboard chain" : (isKeys ? "Piano FX chain" : "Insert chain"))
+    }
+
+    /// Figma Piano Midi — Soft Keys / Pad / Bass / Pluck / Synthwave chips.
+    private func pianoSynthBankRow(for track: MXSessionTrack) -> some View {
+        let selected = session.synthBankPreset(for: track.id)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Instrument")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(MXSynthBankPreset.allCases) { bank in
+                        let isOn = selected == bank
+                        Button {
+                            session.loadSynthBankPreset(bank, trackID: track.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(bank.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(isOn ? MXColor.black : MXColor.white)
+                                Text(bank.subtitle)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(isOn ? MXColor.black.opacity(0.7) : MXColor.grey)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 92, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(isOn ? MXColor.orange : MXColor.black)
+                            )
+                            .overlay {
+                                if !isOn {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(bank.title) instrument preset")
+                    }
+                }
+            }
+        }
     }
 
     /// Figma Select Guitar Effect — Clean / Crunch / Lead / Ambient chips.
@@ -2305,9 +2391,15 @@ private struct InteractiveStudioClip: View {
     @ViewBuilder
     private var clipChrome: some View {
         let base = ZStack(alignment: .leading) {
-            StudioWaveformClip()
-                .frame(width: displayWidth, height: clipHeight)
-                .opacity(isSelected ? 1 : 0.92)
+            if clip.midiNotes.isEmpty {
+                StudioWaveformClip()
+                    .frame(width: displayWidth, height: clipHeight)
+                    .opacity(isSelected ? 1 : 0.92)
+            } else {
+                StudioMIDIRollClip(notes: clip.midiNotes, lengthBeats: clip.lengthBeats)
+                    .frame(width: displayWidth, height: clipHeight)
+                    .opacity(isSelected ? 1 : 0.92)
+            }
 
             if isSelected {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -2406,6 +2498,40 @@ private struct InteractiveStudioClip: View {
                 dragDeltaX = 0
                 onTrimEnd(newEnd)
             }
+    }
+}
+
+// MARK: - Piano-roll lite clip (MIDI notes)
+
+private struct StudioMIDIRollClip: View {
+    let notes: [MXMIDINote]
+    let lengthBeats: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let beats = max(lengthBeats, 0.25)
+            let minNote = notes.map(\.note).min() ?? 60
+            let maxNote = notes.map(\.note).max() ?? 72
+            let noteSpan = max(1, Int(maxNote) - Int(minNote) + 1)
+            let rowH = size.height / CGFloat(noteSpan)
+            for note in notes {
+                let x = CGFloat(note.startBeat / beats) * size.width
+                let w = max(2, CGFloat(note.lengthBeats / beats) * size.width)
+                let row = Int(maxNote) - Int(note.note)
+                let y = CGFloat(row) * rowH + 1
+                let rect = CGRect(x: x, y: y, width: w, height: max(2, rowH - 2))
+                let alpha = 0.45 + 0.55 * (Double(note.velocity) / 127.0)
+                context.fill(
+                    Path(roundedRect: rect, cornerRadius: 1),
+                    with: .color(MXColor.orange.opacity(alpha))
+                )
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(MXColor.layer2.opacity(0.65))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
     }
 }
 

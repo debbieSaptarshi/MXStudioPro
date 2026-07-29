@@ -152,6 +152,11 @@ public final class StudioSessionController {
     private var recordingStartSample: Int64?
     /// True when record started while transport was already playing (punch-in).
     private var isPunchInRecording = false
+    /// Open MIDI note-ons captured while transport is playing (Piano Studio performance capture).
+    private var pendingMIDINoteOns: [UInt8: (startBeat: Double, velocity: UInt8, trackID: UUID)] = [:]
+    /// Completed MIDI notes waiting to be committed into a clip on stop/pause.
+    private var pendingMIDINotes: [MXMIDINote] = []
+    private var pendingMIDITrackID: UUID?
     private var editStack = StudioEditStack()
     private var clipWarningClearTask: Task<Void, Never>?
     /// Last playhead sample from the observer — used to detect loop wraps.
@@ -352,6 +357,7 @@ public final class StudioSessionController {
         countInTask?.cancel()
         countInTask = nil
         isCountingIn = false
+        commitMIDIPerformanceCapture()
         stopClipPlayers()
         transport?.stopAndReturn()
         transport?.seek(toSample: 0)
@@ -742,7 +748,15 @@ public final class StudioSessionController {
         }
         let keysIndex = project.tracks.filter { $0.kind == .midi }.count + 1
         let trackName = name ?? (keysIndex == 1 ? "Piano" : "Piano \(keysIndex)")
-        let track = MXSessionTrack(name: trackName, kind: .midi, category: .keys, isArmed: true)
+        let track = MXSessionTrack(
+            name: trackName,
+            kind: .midi,
+            category: .keys,
+            isArmed: true,
+            reverbMix: 14,
+            reverbSend: 20,
+            synthBankPresetID: MXSynthBankPreset.trackSeed.rawValue
+        )
         for i in project.tracks.indices {
             project.tracks[i].isArmed = false
         }
@@ -1382,24 +1396,139 @@ public final class StudioSessionController {
 
     public func noteOn(_ note: UInt8, velocity: UInt8 = 100) {
         activeMIDIInstrument()?.noteOn(note, velocity: velocity)
+        captureMIDINoteOn(note, velocity: velocity)
     }
 
     public func noteOff(_ note: UInt8) {
         activeMIDIInstrument()?.noteOff(note)
+        captureMIDINoteOff(note)
     }
 
     public func allNotesOff() {
         activeMIDIInstrument()?.allNotesOff()
+        // Close any open capture notes at the current playhead.
+        for note in Array(pendingMIDINoteOns.keys) {
+            captureMIDINoteOff(note)
+        }
+    }
+
+    /// Load a named synth bank preset onto a MIDI / keys track (Piano FX sheet).
+    public func loadSynthBankPreset(_ bank: MXSynthBankPreset, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].kind == .midi else { return }
+        project.tracks[index].synthBankPresetID = bank.rawValue
+        persistSoon()
+        guard let synth = liveInstruments[trackID] else { return }
+        Task {
+            try? await synth.load(.synthPreset(bank.preset))
+        }
+    }
+
+    public func synthBankPreset(for trackID: UUID) -> MXSynthBankPreset {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              let id = track.synthBankPresetID,
+              let bank = MXSynthBankPreset(rawValue: id)
+        else { return .trackSeed }
+        return bank
+    }
+
+    private func activeMIDITrackID() -> UUID? {
+        if let armed = armedTrack, armed.kind == .midi { return armed.id }
+        return project.tracks.first(where: { $0.kind == .midi })?.id
     }
 
     private func activeMIDIInstrument() -> (any MXInstrument)? {
-        if let armed = armedTrack, armed.kind == .midi {
-            return liveInstruments[armed.id]
-        }
-        if let firstMIDI = project.tracks.first(where: { $0.kind == .midi }) {
-            return liveInstruments[firstMIDI.id]
+        if let id = activeMIDITrackID() {
+            return liveInstruments[id]
         }
         return nil
+    }
+
+    /// While transport plays, keys performances are captured into a MIDI clip on stop/pause.
+    private func captureMIDINoteOn(_ note: UInt8, velocity: UInt8) {
+        guard isPlaying, !isRecording, let trackID = activeMIDITrackID() else { return }
+        // Retrigger: close prior note of same pitch.
+        if pendingMIDINoteOns[note] != nil {
+            captureMIDINoteOff(note)
+        }
+        pendingMIDINoteOns[note] = (startBeat: playheadBeat, velocity: max(1, velocity), trackID: trackID)
+        pendingMIDITrackID = trackID
+    }
+
+    private func captureMIDINoteOff(_ note: UInt8) {
+        guard let open = pendingMIDINoteOns.removeValue(forKey: note) else { return }
+        let endBeat = max(open.startBeat + 0.0625, playheadBeat)
+        let length = endBeat - open.startBeat
+        pendingMIDINotes.append(
+            MXMIDINote(
+                note: note,
+                velocity: open.velocity,
+                startBeat: open.startBeat,
+                lengthBeats: length
+            )
+        )
+        pendingMIDITrackID = open.trackID
+    }
+
+    /// Render captured notes to a WAV bed and place an `MXClip` on the MIDI track.
+    private func commitMIDIPerformanceCapture() {
+        // Close still-held notes at the current playhead before committing.
+        for note in Array(pendingMIDINoteOns.keys) {
+            captureMIDINoteOff(note)
+        }
+        let notes = pendingMIDINotes
+        let trackID = pendingMIDITrackID
+        pendingMIDINotes.removeAll()
+        pendingMIDITrackID = nil
+        pendingMIDINoteOns.removeAll()
+        guard let trackID, !notes.isEmpty,
+              let trackIndex = project.tracks.firstIndex(where: { $0.id == trackID })
+        else { return }
+
+        let startBeat = notes.map(\.startBeat).min() ?? 0
+        let endBeat = notes.map(\.endBeat).max() ?? startBeat
+        // Shift notes so the clip-local timeline starts at 0.
+        let localNotes = notes.map {
+            MXMIDINote(
+                id: $0.id,
+                note: $0.note,
+                velocity: $0.velocity,
+                startBeat: max(0, $0.startBeat - startBeat),
+                lengthBeats: $0.lengthBeats
+            )
+        }
+        let lengthBeats = max(0.25, endBeat - startBeat)
+        let bank = synthBankPreset(for: trackID)
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let fileName = "keys_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            try MXMIDIClipRenderer.writeWAV(
+                notes: localNotes,
+                to: url,
+                preset: bank.preset,
+                bpm: bpm,
+                sampleRate: transport?.sampleRate ?? 48_000
+            )
+        } catch {
+            recordError = "Keys capture failed: \(error.localizedDescription)"
+            return
+        }
+
+        pushUndoSnapshot()
+        let clip = MXClip(
+            trackID: trackID,
+            name: "Keys \(project.tracks[trackIndex].clips.count + 1)",
+            startBeat: startBeat,
+            lengthBeats: lengthBeats,
+            audioFileName: fileName,
+            sourceDurationSeconds: lengthBeats * 60.0 / max(bpm, 1),
+            midiNotes: localNotes
+        )
+        project.tracks[trackIndex].clips.append(clip)
+        attachPlayer(for: clip)
+        selectedClipID = clip.id
+        persistSoon()
     }
 
     @discardableResult
@@ -1416,7 +1545,8 @@ public final class StudioSessionController {
         guard project.tracks.first(where: { $0.id == trackID })?.kind == .midi else { return }
         guard instrumentChains[trackID] == nil else { return }
 
-        let synth = MXSynthBackend(displayName: name, sampleRate: graph.sampleRate)
+        let bank = synthBankPreset(for: trackID)
+        let synth = MXSynthBackend(displayName: bank.preset.name, sampleRate: graph.sampleRate)
         liveInstruments[trackID] = synth
         let chain = graph.addTrack(name: name, instrument: synth)
         instrumentChains[trackID] = chain
@@ -1428,7 +1558,7 @@ public final class StudioSessionController {
         syncLiveInstrumentMix()
 
         Task { [weak self] in
-            try? await synth.load(.synthPreset(.synthwave1974))
+            try? await synth.load(.synthPreset(bank.preset))
             await MainActor.run {
                 self?.syncLiveInstrumentMix()
             }
@@ -1622,6 +1752,7 @@ public final class StudioSessionController {
         countInTask?.cancel()
         countInTask = nil
         isCountingIn = false
+        commitMIDIPerformanceCapture()
         stopClipPlayers()
         transport?.stop()
         isPlaying = false

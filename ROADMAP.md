@@ -44,8 +44,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **30** | Mixer channel strips; insert chain UI; bounce FX parity | **Done (MVP)** ✅ |
 | **31** | Studio shell ↔ Figma layout parity | **Done (MVP)** ✅ Guitar Studio proportions |
 | **32** | Guitar Studio Section (Figma) | **Done (MVP)** ✅ Pedalboard presets + Dist→Delay→Rev |
-| **33** | Piano Studio Section (Figma) | **Next** |
-| **34** | Drum & Others Studio Section (Figma) | Planned |
+| **33** | Piano Studio Section (Figma) | **Done (MVP)** ✅ Virtual Piano + bank + MIDI capture |
+| **34** | Drum & Others Studio Section (Figma) | **Next** |
 | **35** | Quick Landscape Studio Section (Figma) | Planned |
 
 ### Figma anchors (shipped / in use)
