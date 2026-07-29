@@ -41,6 +41,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **27** | Arrangement polish — loop, fades, redo, Reels LUFS | **Done (MVP)** ✅ |
 | **28** | Vocal capture polish — de-esser, live gate, pre-roll | **Done (MVP)** ✅ |
 | **29** | Quiet-room checklist; loop schedule clamp; punch comps lite | **Done (MVP)** ✅ |
+| **30** | Mixer channel strips; insert chain UI; bounce FX parity | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -206,9 +207,21 @@ Patterned after GarageBand first-record tips, Logic punch comps, BandLab take la
 | **Clamp clip schedules to loop end** | ✅ `MXLoopScheduleClamp` caps `AVAudioPlayerNode` frames so audio doesn’t bleed past loop on hostTime |
 | **Playlist lanes / crossfade comps lite** | ✅ Punch splits active takes into before/after; ~12 ms abut fades; ghost inactive takes; take-lane activation |
 
-**Still backlog (next):** full mixer depth / insert chain UI polish; bounce remaining live inserts (EQ/delay/reverb) for export parity; true overlapping equal-power crossfades; expanded multi-row playlist folder.
-
 **Takes / punch Week 29 limits:** abut fade dips (not overlapping X-fades); ghosts only when inactive takes exist; no always-on multi-row playlist folder.
+
+---
+
+## Month 8 continued — Mixer + export parity *(Week 30)* ✅
+
+Patterned after BandLab channel strips and GarageBand insert order:
+
+| Item | Status |
+|------|--------|
+| **Full mixer view (channel strips)** | ✅ Horizontal scroll of per-track strips: vertical fader, pan, M/S, Rev; Send for MIDI; Reels for vocals |
+| **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
+| **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
+
+**Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; bounce Distortion approximation; playback strip meters.
 
 ### Closed beta checklist
 
@@ -266,10 +279,11 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 - Undo/redo ✅ Week 27
 
 ### Mix / FX
-- Full mixer view
-- Insert chain UI
-- Shared reverb send
+- Full mixer view ✅ Week 30 channel strips
+- Insert chain UI ✅ Week 30 FX chips + Record EQ entry
+- Shared reverb send ✅ MIDI aux; audio Rev on strip
 - Master limiter on bounce ✅ Week 27+ (`StudioBounceExporter.applyMasterLimiter`)
+- Bounce FX parity ✅ Week 30 (HPF/EQ/delay/reverb/comp; Dist deferred)
 
 ### Capture
 - **Input meter + clip warning**
@@ -356,6 +370,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
           → W21–26 TestFlight beta            ← done (local closed-beta ready)
             → W27–28 Arrangement + vocal polish ← done
               → W29 Checklist + loop clamp + comps ← done
+                → W30 Mixer strips + bounce FX parity ← done
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -374,6 +389,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 21–26 | TestFlight beta *(local closed-beta ready)* |
 | 27–28 | Arrangement + vocal capture polish |
 | 29 | Quiet-room checklist + loop clamp + punch comps |
+| 30 | Mixer channel strips + bounce FX parity |
 
 ---
 
