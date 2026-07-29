@@ -733,6 +733,28 @@ public struct StudioView: View {
                 )
                 .accessibilityLabel(session.project.loopEnabled ? "Disable loop" : "Enable loop")
 
+                // Snap to 16th-note grid
+                Button {
+                    session.isSnapEnabled.toggle()
+                } label: {
+                    Image(systemName: "magnet")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            if session.isSnapEnabled {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(session.isSnapEnabled ? "Disable snap to grid" : "Enable snap to grid")
+
                 studioIconButton(asset: "studio_to_start", systemFallback: "chevron.backward.2") {
                     session.stop()
                 }

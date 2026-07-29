@@ -53,6 +53,9 @@ public final class StudioSessionController {
         }
     }
 
+    /// Snap move/trim/loop edits to 16th-note grid. Session preference (not persisted).
+    public var isSnapEnabled: Bool = true
+
     public private(set) var lastSavedAt: Date?
     public private(set) var saveError: String?
     public private(set) var recordError: String?
@@ -719,7 +722,7 @@ public final class StudioSessionController {
     public func moveSelectedClip(byBeats delta: Double) {
         guard let id = selectedClipID, var clip = clip(id) else { return }
         pushUndoSnapshot()
-        clip.startBeat = max(0, ((clip.startBeat + delta) * 4).rounded() / 4) // 16th snap
+        clip.startBeat = max(0, snapBeat(clip.startBeat + delta))
         replaceClip(clip)
         persistSoon()
         if transport?.isPlaying == true, let sample = transport?.currentSample {
@@ -730,7 +733,7 @@ public final class StudioSessionController {
     public func moveClip(id: UUID, toStartBeat newStart: Double) {
         guard var clip = clip(id) else { return }
         pushUndoSnapshot()
-        clip.startBeat = max(0, (newStart * 4).rounded() / 4)
+        clip.startBeat = max(0, snapBeat(newStart))
         replaceClip(clip)
         persistSoon()
         if transport?.isPlaying == true, let sample = transport?.currentSample {
@@ -742,8 +745,8 @@ public final class StudioSessionController {
     public func trimClipStart(id: UUID, toStartBeat newStartBeat: Double) {
         guard var clip = clip(id), let transport else { return }
         let rightEdge = clip.startBeat + clip.lengthBeats
-        let snapped = max(0, min(newStartBeat, rightEdge - 0.25))
-        let snappedStart = (snapped * 4).rounded() / 4
+        let constrained = max(0, min(newStartBeat, rightEdge - 0.25))
+        let snappedStart = snapBeat(constrained)
         guard abs(snappedStart - clip.startBeat) > 1e-6 else { return }
 
         pushUndoSnapshot()
@@ -766,7 +769,7 @@ public final class StudioSessionController {
     /// Trim right edge: `newEndBeat` on timeline; keeps left edge fixed.
     public func trimClipEnd(id: UUID, toEndBeat newEndBeat: Double) {
         guard var clip = clip(id), let transport else { return }
-        let snappedEnd = max(clip.startBeat + 0.25, (newEndBeat * 4).rounded() / 4)
+        let snappedEnd = max(clip.startBeat + 0.25, snapBeat(newEndBeat))
         let newLength = snappedEnd - clip.startBeat
         guard abs(newLength - clip.lengthBeats) > 1e-6 else { return }
 
@@ -783,6 +786,12 @@ public final class StudioSessionController {
         if transport.isPlaying {
             scheduleClipPlayers(fromSample: transport.currentSample)
         }
+    }
+
+    /// Snap to 16th-note grid when `isSnapEnabled`; otherwise pass through.
+    private func snapBeat(_ beat: Double) -> Double {
+        guard isSnapEnabled else { return beat }
+        return (beat * 4).rounded() / 4
     }
 
     /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
@@ -850,8 +859,8 @@ public final class StudioSessionController {
     }
 
     public func setLoopRegion(startBeat: Double, endBeat: Double) {
-        let start = max(0, (startBeat * 4).rounded() / 4)
-        let end = max(start + 0.25, (endBeat * 4).rounded() / 4)
+        let start = max(0, snapBeat(startBeat))
+        let end = max(start + 0.25, snapBeat(endBeat))
         project.loopStartBeat = start
         project.loopEndBeat = end
         syncTransportLoop()

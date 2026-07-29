@@ -183,6 +183,7 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Clip fade in/out + gain** | ✅ `MXClip` fields; live + bounce envelopes; clip inspector sheet |
 | **Export loudness for Reels (−14 LUFS)** | ✅ `MXLoudness` in MXAudioDSP; Export sheet toggle vs peak normalize |
 | **Master limiter on bounce** | ✅ Soft brickwall ≤ ~0.99 after peak/LUFS (`applyMasterLimiter`) |
+| **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
 
 **Still backlog (next):** punch-in/out, multiple takes, noise gate / de-esser, latency calibration UX.
 
@@ -238,7 +239,7 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Arrangement
 - **Trim / move / delete**
 - Fade in/out, clip gain ✅ Week 27
-- Snap to grid, loop region ✅ loop Week 27 (snap remains hard-coded 16ths)
+- Snap to grid, loop region ✅ Week 27+ (loop + `isSnapEnabled` 16th toggle)
 - Undo/redo ✅ Week 27
 
 ### Mix / FX
