@@ -99,6 +99,7 @@ public enum StudioBounceExporter {
         var jobs: [(clip: MXClip, track: MXSessionTrack, url: URL)] = []
         var skippedMissing = 0
         var fxTailSeconds: Double = 0.25
+        var hasAuxSend = false
         for track in project.tracks {
             if track.isMuted { continue }
             if anySolo && !track.isSolo { continue }
@@ -113,6 +114,7 @@ public enum StudioBounceExporter {
                 jobs.append((clip, track, url))
                 endBeat = max(endBeat, clip.startBeat + clip.lengthBeats)
                 fxTailSeconds = max(fxTailSeconds, mixClipFXTailSeconds(track: track))
+                hasAuxSend = hasAuxSend || MXAuxSend.isActive(sendPercent: track.reverbSend)
             }
         }
         guard !jobs.isEmpty, endBeat > 0 else {
@@ -126,6 +128,8 @@ public enum StudioBounceExporter {
         let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
         var left = [Float](repeating: 0, count: frameCount)
         var right = [Float](repeating: 0, count: frameCount)
+        var auxLeft = [Float](repeating: 0, count: frameCount)
+        var auxRight = [Float](repeating: 0, count: frameCount)
 
         // Week 75 — kick key list for bounce duck parity with live mix.
         let kickTriggers = sidechainKickTriggers(project: project)
@@ -139,6 +143,19 @@ public enum StudioBounceExporter {
                 sampleRate: sampleRate,
                 highPassEnabled: highPassEnabled,
                 kickTriggers: kickTriggers,
+                intoLeft: &left,
+                intoRight: &right,
+                intoAuxLeft: &auxLeft,
+                intoAuxRight: &auxRight
+            )
+        }
+
+        if hasAuxSend || buffersHaveEnergy(auxLeft, auxRight) {
+            mixAuxReturn(
+                auxLeft: auxLeft,
+                auxRight: auxRight,
+                returnPercent: project.auxReverbReturn,
+                sampleRate: sampleRate,
                 intoLeft: &left,
                 intoRight: &right
             )
@@ -249,6 +266,8 @@ public enum StudioBounceExporter {
             let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
             var left = [Float](repeating: 0, count: frameCount)
             var right = [Float](repeating: 0, count: frameCount)
+            var auxLeft = [Float](repeating: 0, count: frameCount)
+            var auxRight = [Float](repeating: 0, count: frameCount)
 
             // Stems still apply SC duck so a sidechained bass stem matches live feel.
             let kickTriggers = sidechainKickTriggers(project: project)
@@ -262,6 +281,19 @@ public enum StudioBounceExporter {
                     sampleRate: sampleRate,
                     highPassEnabled: highPassEnabled,
                     kickTriggers: kickTriggers,
+                    intoLeft: &left,
+                    intoRight: &right,
+                    intoAuxLeft: &auxLeft,
+                    intoAuxRight: &auxRight
+                )
+            }
+
+            if MXAuxSend.isActive(sendPercent: track.reverbSend) || buffersHaveEnergy(auxLeft, auxRight) {
+                mixAuxReturn(
+                    auxLeft: auxLeft,
+                    auxRight: auxRight,
+                    returnPercent: project.auxReverbReturn,
+                    sampleRate: sampleRate,
                     intoLeft: &left,
                     intoRight: &right
                 )
@@ -336,7 +368,9 @@ public enum StudioBounceExporter {
         highPassEnabled: Bool,
         kickTriggers: [(startBeat: Double, note: UInt8)] = [],
         intoLeft left: inout [Float],
-        intoRight right: inout [Float]
+        intoRight right: inout [Float],
+        intoAuxLeft auxLeft: inout [Float],
+        intoAuxRight auxRight: inout [Float]
     ) throws {
         let file = try AVAudioFile(forReading: url)
         let fileSR = file.processingFormat.sampleRate
@@ -497,6 +531,40 @@ public enum StudioBounceExporter {
             let rightGain = gain * min(1, max(0, 1 + pan))
             left[di] += mono * leftGain
             right[di] += mono * rightGain
+            if di < auxLeft.count, di < auxRight.count {
+                let sendSample = MXAuxSend.sendTap(
+                    postFaderSample: mono * gain,
+                    sendPercent: track.reverbSend
+                )
+                auxLeft[di] += sendSample
+                auxRight[di] += sendSample
+            }
+        }
+    }
+
+    static func mixAuxReturn(
+        auxLeft: [Float],
+        auxRight: [Float],
+        returnPercent: Float,
+        sampleRate: Double,
+        intoLeft left: inout [Float],
+        intoRight right: inout [Float]
+    ) {
+        guard !auxLeft.isEmpty, !auxRight.isEmpty, !left.isEmpty, left.count == right.count else { return }
+
+        let reverb = MXSimpleReverb(sampleRate: sampleRate, smallRoom: false)
+        reverb.wetDryMix = 100
+
+        let count = min(auxLeft.count, auxRight.count, left.count, right.count)
+        for i in 0..<count {
+            let mid = 0.5 * (auxLeft[i] + auxRight[i])
+            let wet = reverb.process(mid)
+            let contribution = MXAuxSend.masterContribution(
+                wetSample: wet,
+                returnPercent: returnPercent
+            )
+            left[i] += contribution
+            right[i] += contribution
         }
     }
 
@@ -525,7 +593,17 @@ public enum StudioBounceExporter {
             // Schroeder combs ~1s RT60 (medium) / shorter for Reels small room.
             tail = max(tail, track.reelsVocalEnabled ? 0.85 : 1.35)
         }
+        tail = max(tail, MXAuxSend.auxTailSeconds(sendPercent: track.reverbSend, smallRoom: false))
         return tail
+    }
+
+    private static func buffersHaveEnergy(_ left: [Float], _ right: [Float]) -> Bool {
+        let count = min(left.count, right.count)
+        guard count > 0 else { return false }
+        for i in 0..<count where abs(left[i]) > 1e-7 || abs(right[i]) > 1e-7 {
+            return true
+        }
+        return false
     }
 
     /// Soft-knee downward expander: below `threshold`, gain falls as (abs/threshold)².

@@ -290,6 +290,7 @@ public final class StudioSessionController {
     private var clipDistortions: [UUID: AVAudioUnitDistortion] = [:]
     private var clipComps: [UUID: AVAudioUnitEffect] = [:]
     private var clipReverbs: [UUID: AVAudioUnitReverb] = [:]
+    private var clipAuxSendGains: [UUID: AVAudioMixerNode] = [:]
     private var liveInstruments: [UUID: any MXInstrument] = [:]
     private var instrumentChains: [UUID: MXTrackChain] = [:]
     private var reverbAux: MXAuxBus?
@@ -420,7 +421,8 @@ public final class StudioSessionController {
 
             attachPlayersForExistingClips()
             applyHighPassToPlayers()
-            ensureReverbAux(on: graph)
+            let aux = ensureReverbAux(on: graph)
+            aux.returnLevel = MXAuxSend.returnGain(percent: project.auxReverbReturn)
             for track in project.tracks where track.kind == .midi {
                 attachMIDIInstrument(for: track.id, name: track.name)
             }
@@ -490,6 +492,7 @@ public final class StudioSessionController {
         clipDistortions.removeAll()
         clipComps.removeAll()
         clipReverbs.removeAll()
+        clipAuxSendGains.removeAll()
         editStack.clear()
         canUndo = false
         canRedo = false
@@ -1669,20 +1672,26 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// Aux reverb send (0…100). MIDI tracks route through the shared aux bus;
-    /// audio tracks map to insert reverb mix for an audible approximation.
+    public func setAuxReverbReturn(_ percent: Float) {
+        let clamped = MXAuxSend.clampPercent(percent)
+        project.auxReverbReturn = clamped
+        reverbAux?.returnLevel = MXAuxSend.returnGain(percent: clamped)
+        persistSoon()
+    }
+
+    /// Aux reverb send (0…100). MIDI and audio tracks route through the shared aux bus.
     public func setTrackReverbSend(_ mix: Float, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
-        let clamped = min(max(mix, 0), 100)
+        let clamped = MXAuxSend.clampPercent(mix)
         project.tracks[index].reverbSend = clamped
         let track = project.tracks[index]
         if track.kind == .midi,
            let chain = instrumentChains[trackID],
            let aux = reverbAux,
            let graph {
-            graph.setSend(clamped / 100, from: chain, to: aux)
+            graph.setSend(MXAuxSend.linearGain(percent: clamped), from: chain, to: aux)
         } else if track.kind == .audio {
-            setTrackReverbMix(clamped, trackID: trackID)
+            applyAudioAuxSend(trackID: trackID)
         }
         persistSoon()
     }
@@ -2857,7 +2866,7 @@ public final class StudioSessionController {
     private func ensureReverbAux(on graph: MXGraph) -> MXAuxBus {
         if let reverbAux { return reverbAux }
         let bus = graph.addAuxBus(name: "Reverb", effect: MXAUReverbEffect())
-        bus.returnLevel = 0.7
+        bus.returnLevel = MXAuxSend.returnGain(percent: project.auxReverbReturn)
         reverbAux = bus
         return bus
     }
@@ -3407,6 +3416,7 @@ public final class StudioSessionController {
 
     private func attachPlayer(for clip: MXClip) {
         guard clipPlayers[clip.id] == nil, let graph else { return }
+        let aux = ensureReverbAux(on: graph)
         let player = AVAudioPlayerNode()
         // 3 bands: HPF, mid parametric, de-esser peaking (~6.5 kHz).
         let eq = AVAudioUnitEQ(numberOfBands: 3)
@@ -3431,7 +3441,16 @@ public final class StudioSessionController {
             clipComps[clip.id] = comp
             inserts = [eq, delay, distortion, comp, reverb]
         }
-        graph.connectSourceThroughInsertsToMaster(source: player, inserts: inserts)
+        let sendLevel = MXAuxSend.linearGain(percent: track?.reverbSend ?? 0)
+        let auxSend: (bus: MXAuxBus, level: Float, gainNode: AVAudioMixerNode)?
+        if sendLevel > 0 {
+            let sendGain = AVAudioMixerNode()
+            clipAuxSendGains[clip.id] = sendGain
+            auxSend = (bus: aux, level: sendLevel, gainNode: sendGain)
+        } else {
+            auxSend = nil
+        }
+        graph.connectSourceThroughInsertsToMaster(source: player, inserts: inserts, auxSend: auxSend)
         clipPlayers[clip.id] = player
         clipEQs[clip.id] = eq
         clipDelays[clip.id] = delay
@@ -3456,6 +3475,7 @@ public final class StudioSessionController {
             clipDistortions.removeValue(forKey: id)
             clipComps.removeValue(forKey: id)
             clipReverbs.removeValue(forKey: id)
+            clipAuxSendGains.removeValue(forKey: id)
             return
         }
         let player = clipPlayers.removeValue(forKey: id)
@@ -3464,6 +3484,7 @@ public final class StudioSessionController {
         let distortion = clipDistortions.removeValue(forKey: id)
         let comp = clipComps.removeValue(forKey: id)
         let reverb = clipReverbs.removeValue(forKey: id)
+        let auxSendGain = clipAuxSendGains.removeValue(forKey: id)
         // Remove meter tap before disconnecting the chain.
         reverb?.removeTap(onBus: 0)
         clearClipMeterPeak(id)
@@ -3487,7 +3508,11 @@ public final class StudioSessionController {
             if inserts.isEmpty {
                 graph.disconnectSourceFromMaster(player)
             } else {
-                graph.disconnectSourceThroughInsertsFromMaster(source: player, inserts: inserts)
+                graph.disconnectSourceThroughInsertsFromMaster(
+                    source: player,
+                    inserts: inserts,
+                    auxSendGain: auxSendGain
+                )
             }
         }
     }
@@ -3503,6 +3528,7 @@ public final class StudioSessionController {
         clipDistortions.removeAll()
         clipComps.removeAll()
         clipReverbs.removeAll()
+        clipAuxSendGains.removeAll()
     }
 
     private func rebuildPlayers(for project: MXProject) {
@@ -3623,6 +3649,29 @@ public final class StudioSessionController {
             if let distortion = clipDistortions[clip.id] { configureDistortion(distortion, for: clip) }
             if let comp = clipComps[clip.id] { configureComp(comp, for: clip) }
             if let reverb = clipReverbs[clip.id] { configureReverb(reverb, for: clip) }
+        }
+    }
+
+    private func applyAudioAuxSend(trackID: UUID) {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              track.kind == .audio
+        else { return }
+        let sendLevel = MXAuxSend.linearGain(percent: track.reverbSend)
+        let wantsAuxSend = sendLevel > 0
+        var rebuilt = false
+        for clip in track.clips {
+            guard clipPlayers[clip.id] != nil else { continue }
+            if let sendGain = clipAuxSendGains[clip.id] {
+                sendGain.outputVolume = sendLevel
+            }
+            let hasAuxSend = clipAuxSendGains[clip.id] != nil
+            guard hasAuxSend != wantsAuxSend else { continue }
+            detachPlayer(for: clip.id)
+            attachPlayer(for: clip)
+            rebuilt = true
+        }
+        if rebuilt, isPlaying, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
         }
     }
 

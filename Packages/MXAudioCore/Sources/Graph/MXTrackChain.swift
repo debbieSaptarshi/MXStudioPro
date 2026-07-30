@@ -28,6 +28,8 @@ public final class MXTrackChain: @unchecked Sendable {
 
     /// Send levels keyed by aux bus index.
     public private(set) var sendLevels: [Int: Float] = [:]
+    /// Per-aux gain nodes so send level is real attenuation (not just route open/close).
+    private var sendGainNodes: [Int: AVAudioMixerNode] = [:]
 
     private var _volume: Float = 1
     private var _pan: Float = 0
@@ -120,6 +122,15 @@ public final class MXTrackChain: @unchecked Sendable {
         sendLevels[bus] = min(max(level, 0), 1)
     }
 
+    /// Gain node for an aux send (created lazily). `MXGraph` attaches + wires it.
+    func sendGainNode(for bus: Int) -> AVAudioMixerNode {
+        if let existing = sendGainNodes[bus] { return existing }
+        let node = AVAudioMixerNode()
+        node.outputVolume = sendLevels[bus] ?? 0
+        sendGainNodes[bus] = node
+        return node
+    }
+
     /// Insert nodes that should actually be wired, skipping graph-level bypasses.
     /// An effect that handles bypass internally stays in the chain so removing
     /// it cannot click.
@@ -139,6 +150,7 @@ public final class MXTrackChain: @unchecked Sendable {
         var nodes: [AVAudioNode] = [inputMixer, eq, trackMixer]
         if let instrument { nodes.append(instrument.node) }
         nodes.append(contentsOf: inserts.map(\.node))
+        nodes.append(contentsOf: sendGainNodes.values)
         return nodes
     }
 

@@ -300,15 +300,41 @@ public final class MXGraph: @unchecked Sendable {
 
     /// Connects `source → inserts[0] → … → inserts[n] → master` with tracked attach.
     public func connectSourceThroughInsertsToMaster(source: AVAudioNode, inserts: [AVAudioNode]) {
+        connectSourceThroughInsertsToMaster(
+            source: source,
+            inserts: inserts,
+            auxSend: nil
+        )
+    }
+
+    /// Same as `connectSourceThroughInsertsToMaster`, optionally fanning the last
+    /// insert into a post-FX aux send gain (Week 81 audio→aux reverb bus).
+    public func connectSourceThroughInsertsToMaster(
+        source: AVAudioNode,
+        inserts: [AVAudioNode],
+        auxSend: (bus: MXAuxBus, level: Float, gainNode: AVAudioMixerNode)?
+    ) {
         graphMutation {
             configureMasterIfNeeded()
-            attach(inserts + [source])
+            var attachNodes = inserts + [source]
+            if let auxSend { attachNodes.append(auxSend.gainNode) }
+            attach(attachNodes)
             var chain: [AVAudioNode] = [source] + inserts
             for (a, b) in zip(chain, chain.dropFirst()) {
                 engine.connect(a, to: b, format: processingFormat)
             }
-            if let last = chain.last {
-                engine.connect(last, to: masterBus, format: processingFormat)
+            guard let last = chain.last else { return }
+            let format = processingFormat
+            if let auxSend, auxSend.level > 0 {
+                auxSend.gainNode.outputVolume = min(max(auxSend.level, 0), 1)
+                let destinations = [
+                    AVAudioConnectionPoint(node: masterBus, bus: masterBus.nextAvailableInputBus),
+                    AVAudioConnectionPoint(node: auxSend.gainNode, bus: 0),
+                ]
+                engine.connect(last, to: destinations, fromBus: 0, format: format)
+                engine.connect(auxSend.gainNode, to: auxSend.bus.input, format: format)
+            } else {
+                engine.connect(last, to: masterBus, format: format)
             }
         }
     }
@@ -320,12 +346,26 @@ public final class MXGraph: @unchecked Sendable {
 
     /// Tears down a chain built with `connectSourceThroughInsertsToMaster`.
     public func disconnectSourceThroughInsertsFromMaster(source: AVAudioNode, inserts: [AVAudioNode]) {
+        disconnectSourceThroughInsertsFromMaster(source: source, inserts: inserts, auxSendGain: nil)
+    }
+
+    /// Tears down a chain that may include a Week 81 aux send gain node.
+    public func disconnectSourceThroughInsertsFromMaster(
+        source: AVAudioNode,
+        inserts: [AVAudioNode],
+        auxSendGain: AVAudioMixerNode?
+    ) {
         graphMutation {
             engine.disconnectNodeOutput(source)
             for node in inserts {
                 engine.disconnectNodeOutput(node)
             }
-            disconnectAndDetach([source] + inserts)
+            if let auxSendGain {
+                engine.disconnectNodeOutput(auxSendGain)
+            }
+            var nodes: [AVAudioNode] = [source] + inserts
+            if let auxSendGain { nodes.append(auxSendGain) }
+            disconnectAndDetach(nodes)
         }
     }
 
@@ -405,6 +445,12 @@ public final class MXGraph: @unchecked Sendable {
         for node in path {
             engine.disconnectNodeOutput(node)
         }
+        // Detach prior send-gain outputs so multi-dest rebuild is clean.
+        for node in track.allNodes where node !== track.trackMixer && !(path.contains { $0 === node }) {
+            if node is AVAudioMixerNode {
+                engine.disconnectNodeOutput(node)
+            }
+        }
         if let instrument = track.instrument {
             engine.disconnectNodeOutput(instrument.node)
             engine.connect(instrument.node, to: track.inputMixer, format: format)
@@ -414,15 +460,29 @@ public final class MXGraph: @unchecked Sendable {
             engine.connect(a, to: b, format: format)
         }
 
-        // trackMixer fans out to the master bus plus any active sends.
+        // trackMixer → master (+ optional send-gain nodes). Each send-gain then
+        // feeds its aux at `level` so Send is real attenuation, not on/off.
         var destinations = [AVAudioConnectionPoint(node: masterBus, bus: masterBus.nextAvailableInputBus)]
+        var activeSends: [(gain: AVAudioMixerNode, aux: MXAuxBus, level: Float)] = []
         for (busIndex, level) in track.sendLevels where level > 0 {
             guard busIndex < auxBuses.count else { continue }
             let aux = auxBuses[busIndex]
-            destinations.append(AVAudioConnectionPoint(node: aux.input,
-                                                       bus: aux.input.nextAvailableInputBus))
+            let gain = track.sendGainNode(for: busIndex)
+            gain.outputVolume = min(max(level, 0), 1)
+            destinations.append(AVAudioConnectionPoint(node: gain, bus: 0))
+            activeSends.append((gain, aux, level))
         }
+        // Attach any newly created send-gain nodes before connecting.
+        attach(activeSends.map(\.gain))
         engine.connect(track.trackMixer, to: destinations, fromBus: 0, format: format)
+        for send in activeSends {
+            engine.disconnectNodeOutput(send.gain)
+            engine.connect(
+                send.gain,
+                to: send.aux.input,
+                format: format
+            )
+        }
     }
 
     private func rebuildConnections(for bus: MXAuxBus) {

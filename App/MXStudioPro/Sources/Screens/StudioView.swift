@@ -3014,6 +3014,20 @@ public struct StudioView: View {
             .padding(.top, 8)
             .padding(.bottom, 12)
 
+            mixerSliderRow(
+                label: "Aux",
+                valueLabel: String(format: "%.0f", session.project.auxReverbReturn),
+                value: Binding(
+                    get: { Double(session.project.auxReverbReturn) },
+                    set: { session.setAuxReverbReturn(Float($0)) }
+                ),
+                range: 0...100,
+                labelWidth: 36
+            )
+            .tint(MXColor.teal)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(session.project.tracks) { track in
@@ -3390,7 +3404,7 @@ public struct StudioView: View {
                     .monospacedDigit()
             }
 
-            // Insert reverb for audio; MIDI keeps a separate aux Send below.
+            // Insert reverb mix stays independent; Send feeds the shared aux below.
             VStack(spacing: 2) {
                 Text("Rev")
                     .font(MXFont.caption())
@@ -3410,7 +3424,7 @@ public struct StudioView: View {
                     .monospacedDigit()
             }
 
-            // Shared reverb send (Week 63 MVP B): audio strips alias Send → Rev mix.
+            // Shared reverb send (Week 81): audio and MIDI feed the aux reverb bus.
             VStack(spacing: 2) {
                 Text("Send")
                     .font(MXFont.caption())
@@ -3509,11 +3523,10 @@ public struct StudioView: View {
         }
     }
 
-    /// Send (shared reverb visual) + Rev + Sidechain grouped for the FX sheet row.
+    /// Send (shared aux reverb) + Rev + Sidechain grouped for the FX sheet row.
     @ViewBuilder
     private func sendReverbSidechainRows(for track: MXSessionTrack) -> some View {
-        // Shared reverb send (Week 63 MVP B): shown on audio strips too — for
-        // audio tracks Send aliases into the insert Rev mix.
+        // Shared reverb send (Week 81): audio and MIDI feed the aux reverb bus.
         mixerSliderRow(
             label: "Send",
             valueLabel: String(format: "%.0f", track.reverbSend),
@@ -3605,8 +3618,8 @@ public struct StudioView: View {
                 ("Rev", track.reverbMix > 0.5),
             ]
         }
-        // Shared reverb send visual (Week 63 MVP B): audio + guitar strips show a
-        // Send chip once the send is active (keys/drums already list it above).
+        // Shared reverb send visual (Week 81): audio + guitar strips show a
+        // Send chip once aux send is active (keys/drums already list it above).
         if !isKeys && !isDrums && track.reverbSend > 0.5 {
             stages.append(("Send", true))
         }

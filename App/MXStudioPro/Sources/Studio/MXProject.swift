@@ -85,6 +85,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
     public var loopEnabled: Bool
     public var loopStartBeat: Double
     public var loopEndBeat: Double
+    /// Shared reverb aux return level (0…100). Week 81 — BandLab / Logic return.
+    public var auxReverbReturn: Float
 
     public init(
         id: UUID = UUID(),
@@ -100,7 +102,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         collaborators: [MXCollaborator] = [],
         loopEnabled: Bool = false,
         loopStartBeat: Double = 0,
-        loopEndBeat: Double = 8
+        loopEndBeat: Double = 8,
+        auxReverbReturn: Float = MXAuxSend.defaultReturnPercent
     ) {
         self.id = id
         self.name = name
@@ -116,6 +119,7 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         self.loopEnabled = loopEnabled
         self.loopStartBeat = max(0, loopStartBeat)
         self.loopEndBeat = max(self.loopStartBeat + 0.25, loopEndBeat)
+        self.auxReverbReturn = MXAuxSend.clampPercent(auxReverbReturn)
     }
 
     public init(from decoder: Decoder) throws {
@@ -135,6 +139,9 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         loopStartBeat = max(0, try c.decodeIfPresent(Double.self, forKey: .loopStartBeat) ?? 0)
         let end = try c.decodeIfPresent(Double.self, forKey: .loopEndBeat) ?? 8
         loopEndBeat = max(loopStartBeat + 0.25, end)
+        auxReverbReturn = MXAuxSend.clampPercent(
+            try c.decodeIfPresent(Float.self, forKey: .auxReverbReturn) ?? MXAuxSend.defaultReturnPercent
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -142,6 +149,7 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         case timeSignatureNumerator, timeSignatureDenominator, sampleRate
         case tracks, presetRaw, collaborators
         case loopEnabled, loopStartBeat, loopEndBeat
+        case auxReverbReturn
     }
 
     public var preset: StudioPreset {
