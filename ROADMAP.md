@@ -55,6 +55,11 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **41** | Record orientation lock + landscape chrome | **Done (MVP)** ✅ opt-in portrait lock; densified Rec |
 | **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ mute re-renders WAV beds |
 | **43** | Arrange timeline strip meters | **Done (MVP)** ✅ header meters reuse W38 peaks |
+| **44** | Per-part drum solo (Kick/Snare/Hats… S) | **Done (MVP)** ✅ solo + mute → audible bed |
+| **45** | MIDI quantize lite (16th note starts) | **In progress** |
+| **46** | Clip fade wedges on arrange timeline | **Planned** |
+| **47** | Stem export (per-track bounce) | **Planned** |
+| **48** | Import tempo detect lite | **Planned** |
 
 ### Figma anchors (shipped / in use)
 
@@ -403,6 +408,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 | **41** | Optional record orientation lock; Record landscape chrome | **Done (MVP)** ✅ |
 | **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ |
 | **43** | Arrange timeline strip meters | **Done (MVP)** ✅ |
+| **44** | Per-part drum solo (Kick/Snare/Hats… S) | **Done (MVP)** ✅ |
 | — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
 
 ### Week 40 — Per-part drum lanes ✅
@@ -442,7 +448,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 - [x] Live pads stay audible while composing (mute is playback/mix state)
 - [x] Unit tests for mute filter + silence WAV
 
-**Week 42 notes:** Parts remain one shared performance clip (no per-part WAVs). Playlist takes still win over part columns when ≥2 takes. Deferred: nested takes×parts, per-part solo, step sequencer, SFZ choke.
+**Week 42 notes:** Parts remain one shared performance clip (no per-part WAVs). Playlist takes still win over part columns when ≥2 takes. Deferred: nested takes×parts, step sequencer, SFZ choke.
 
 ### Week 43 — Arrange timeline strip meters ✅
 
@@ -456,12 +462,56 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 
 **Week 43 notes:** Slim 5 pt meter beside M/S in `StudioTrackHeader`. Reuses Week 38 post-FX / trackMixer taps.
 
+### Week 44 — Per-part drum solo ✅
+
+**Done when (BandLab / GarageBand kit-piece solo)**
+- [x] Each Kick / Snare / Hats / Toms / Perc / Ride row has an **S** toggle in the expanded part folder
+- [x] Solo isolates audible parts (mute wins over solo for the same part)
+- [x] Multi-part solo is additive; empty solo set = all unmuted parts audible
+- [x] Persisted on `MXSessionTrack.soloedDrumParts` (Codable; older projects decode empty)
+- [x] WAV bed re-renders via `MXDrumPart.audibleNotes(muted:soloed:)`
+- [x] Live pads stay audible while composing
+- [x] Unit tests for solo + mute interaction
+
+**Week 44 notes:** Same shared performance clip as mute. Nested takes×parts still deferred.
+
 ### Month 11 remaining
 
 | Focus | Status |
 |-------|--------|
 | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
-| Optional: nested takes×drum parts; per-part solo | Backlog |
+| Optional: nested takes×drum parts; step sequencer; SFZ choke | Backlog |
+
+---
+
+## Month 12 — SOTA DAW polish *(Weeks 45–48)*
+
+Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ableton / BandLab stem export; Mixed In Key / GarageBand tempo detect.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **45** | MIDI quantize lite — snap captured note starts to 16ths | **In progress** |
+| **46** | Clip fade wedges on arrange timeline (visual equal-power fades) | **Planned** |
+| **47** | Stem export — one WAV(+M4A) per track from Export sheet | **Planned** |
+| **48** | Import tempo detect lite (estimate BPM from imported audio) | **Planned** |
+
+### Week 45 — MIDI quantize lite
+
+**Done when (GarageBand / BandLab Quantize)**
+- [ ] Pure `MXMIDIQuantize` snaps note `startBeat` to 16th grid; length preserved
+- [ ] Studio Settings toggle “Quantize MIDI capture” (default **on**), separate from arrange snap
+- [ ] Drum + piano Pause/Stop commit applies quantize to absolute starts before localizing / rendering bed
+- [ ] Live pads/keys stay unquantized while playing
+- [ ] Unit tests for snap edges, length preserve, empty / bad resolution
+
+**SOTA next (Month 12+ backlog ideas for existing features)**
+- Strength / swing quantize (not hard snap only)
+- Drag fade wedges to edit (not inspector-only)
+- Nested takes × drum parts; drum step sequencer
+- Clip gain automation lane lite
+- Pitch correction / time stretch / harmonies
+- Beat browser + video+audio Reels export
+- Cloud auth / social / AI beyond local MVP
 
 ### Implementation notes (shared — Month 9)
 

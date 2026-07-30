@@ -87,6 +87,41 @@ final class MXDrumPartTests: XCTestCase {
         XCTAssertEqual(MXDrumPart.excludingMuted(notes, muted: []).map(\.note), [36, 38])
     }
 
+    func testAudibleNotesSoloIsolatesParts() {
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0, lengthBeats: 0.25),
+            MXMIDINote(note: 38, velocity: 90, startBeat: 1, lengthBeats: 0.25),
+            MXMIDINote(note: 42, velocity: 80, startBeat: 0.5, lengthBeats: 0.125),
+            MXMIDINote(note: 60, velocity: 70, startBeat: 2, lengthBeats: 1),
+        ]
+        let solo: Set<MXDrumPart> = [.snare]
+        let audible = MXDrumPart.audibleNotes(notes, muted: [], soloed: solo)
+        XCTAssertEqual(audible.map(\.note), [38])
+    }
+
+    func testAudibleNotesMuteWinsOverSolo() {
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0, lengthBeats: 0.25),
+            MXMIDINote(note: 38, velocity: 90, startBeat: 1, lengthBeats: 0.25),
+        ]
+        let audible = MXDrumPart.audibleNotes(
+            notes,
+            muted: [.kick],
+            soloed: [.kick, .snare]
+        )
+        XCTAssertEqual(audible.map(\.note), [38])
+    }
+
+    func testAudibleNotesEmptySoloIsMuteOnly() {
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0, lengthBeats: 0.25),
+            MXMIDINote(note: 38, velocity: 90, startBeat: 1, lengthBeats: 0.25),
+            MXMIDINote(note: 60, velocity: 70, startBeat: 2, lengthBeats: 1),
+        ]
+        let audible = notes.audibleDrumNotes(muted: [.snare], soloed: [])
+        XCTAssertEqual(audible.map(\.note), [36, 60])
+    }
+
     func testMutedPartsFromRawValuesIgnoresUnknown() {
         let set = MXDrumPart.mutedParts(fromRawValues: ["kick", "nope", "ride"])
         XCTAssertEqual(set, [.kick, .ride])
