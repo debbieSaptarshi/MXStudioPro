@@ -2119,9 +2119,13 @@ public struct StudioView: View {
                 Text("Input latency")
                     .font(MXFont.mediumButton())
                     .foregroundStyle(MXColor.white)
-                Text("Play a click into the mic with headphones on")
+                Text(
+                    session.headphonesConnected
+                        ? "Play the chirp into the mic with headphones on (GarageBand-style)"
+                        : "Plug in headphones first — speaker loopback causes feedback"
+                )
                     .font(MXFont.body3())
-                    .foregroundStyle(MXColor.grey)
+                    .foregroundStyle(session.headphonesConnected ? MXColor.grey : MXColor.orange)
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -2147,35 +2151,96 @@ public struct StudioView: View {
                     .fill(MXColor.layer2)
             )
 
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Manual offset")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                    Spacer()
+                    Text(String(format: "%.0f ms", session.latencyCompensationMilliseconds))
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .monospacedDigit()
+                }
+                Slider(
+                    value: Binding(
+                        get: { session.latencyCompensationMilliseconds },
+                        set: { session.setLatencyCompensationMilliseconds($0) }
+                    ),
+                    in: 0...80,
+                    step: 1
+                )
+                .tint(MXColor.accent)
+                Text("Fine-tune if auto-calibrate drifts (0–80 ms)")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey.opacity(0.8))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+
             if let summary = session.lastCalibrationSummary {
                 Text(summary)
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.lightGrey)
             }
 
-            Button {
-                session.calibrateLatency()
-            } label: {
-                HStack(spacing: 8) {
-                    if session.isCalibrating {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(MXColor.black)
+            HStack(spacing: 10) {
+                Button {
+                    session.calibrateLatency()
+                } label: {
+                    HStack(spacing: 8) {
+                        if session.isCalibrating {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(MXColor.black)
+                        }
+                        Text(session.isCalibrating ? "Calibrating…" : "Auto-calibrate")
+                            .font(MXFont.mediumButton())
+                            .foregroundStyle(MXColor.black)
                     }
-                    Text(session.isCalibrating ? "Calibrating…" : "Calibrate")
-                        .font(MXFont.mediumButton())
-                        .foregroundStyle(MXColor.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(MXColor.accent)
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(MXColor.accent)
+                .buttonStyle(.plain)
+                .disabled(
+                    session.isCalibrating
+                        || session.phase != .ready
+                        || session.isRecording
+                        || !session.headphonesConnected
                 )
+                .opacity(
+                    session.isCalibrating
+                        || session.phase != .ready
+                        || session.isRecording
+                        || !session.headphonesConnected
+                        ? 0.5 : 1
+                )
+
+                Button {
+                    session.clearLatencyCompensation()
+                } label: {
+                    Text("Reset")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                        .frame(width: 72)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!session.hasLatencyCompensation || session.isCalibrating)
+                .opacity(!session.hasLatencyCompensation || session.isCalibrating ? 0.45 : 1)
             }
-            .buttonStyle(.plain)
-            .disabled(session.isCalibrating || session.phase != .ready || session.isRecording)
-            .opacity(session.isCalibrating || session.phase != .ready || session.isRecording ? 0.5 : 1)
 
             if let error = session.calibrationError {
                 Text(error)
@@ -2183,6 +2248,14 @@ public struct StudioView: View {
                     .foregroundStyle(MXColor.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Text(
+                session.isMonitoringEnabled
+                    ? "Monitor is on — keep headphones on to avoid feedback while calibrating."
+                    : "Tip: enable Monitor after calibrating so you hear yourself aligned to the beat."
+            )
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Pre-roll buffer")
