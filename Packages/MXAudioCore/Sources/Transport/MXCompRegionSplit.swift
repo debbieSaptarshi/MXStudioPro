@@ -108,6 +108,7 @@ public enum MXCompRegionSplit: Sendable {
             if hasAfter {
                 xfSec = min(xfSec, afterSeconds)
             }
+            // Both seams: keep each X-fade ≤ half the punch so they cannot meet.
             if hasBefore && hasAfter {
                 xfSec = min(xfSec, punchSec / 2)
             }

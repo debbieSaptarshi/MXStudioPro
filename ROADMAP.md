@@ -49,6 +49,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **35** | Quick Landscape Studio Section (Figma) | **Done (MVP)** ✅ landscape compact + Quick Recording |
 | **36** | Equal-power crossfades (arrangement) | **Done (MVP)** ✅ overlapping punch X-fades |
 | **37** | Multi-row playlist folder (take lanes) | **Done (MVP)** ✅ one row per takeIndex; collapse chevron |
+| **38** | Playback strip meters (mixer) | **Done (MVP)** ✅ live peak + peak-hold beside faders |
+| **39** | Wet input monitoring for guitar pedalboard | **Next** |
 
 ### Figma anchors (shipped / in use)
 
@@ -233,7 +235,7 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
+**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters ✅ → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
@@ -330,8 +332,8 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 |------|--------|--------|
 | **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Done (MVP)** ✅ |
 | **37** | Expanded multi-row playlist folder (always-on take lanes) | **Done (MVP)** ✅ |
-| 38 | Playback strip meters (mixer + optional timeline) | **Next** |
-| 39 | Wet input monitoring for guitar pedalboard | Planned |
+| **38** | Playback strip meters (mixer + optional timeline) | **Done (MVP)** ✅ |
+| 39 | Wet input monitoring for guitar pedalboard | **Next** |
 
 ### Week 36 — Equal-power crossfades ✅
 
@@ -356,6 +358,18 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 - [x] Single-take tracks unchanged (one lane)
 
 **Week 37 notes:** `StudioSessionController.takes(onTrackID:)` returns one rep per takeIndex (prefer active). Ghosts only in expanded playlist rows; collapsed summary shows actives only. No empty lanes, no drag between lanes, no punch/activation math changes.
+
+### Week 38 — Playback strip meters ✅
+
+**Done when (Studio One / Logic / GarageBand mixer meters)**
+- [x] Mixer strips show vertical peak meters beside each fader (`PlaybackStripMeter`)
+- [x] Meters move during playback of audio clips (post-FX reverb-node taps → `trackPlaybackLevels`)
+- [x] Peak hold marker visible (`trackPlaybackPeakHolds`, ~0.995 decay)
+- [x] Mute/solo → meter goes quiet (player / chain volume already zeroed into tap path)
+- [x] Stop → meters decay / zero (`stopPlaybackMeterPolling` + `zeroPlaybackMeters`)
+- [x] Demo: play multi-track mix with mixer open → see per-track activity (`ensurePlaybackMetersRunning` on mixer appear)
+
+**Week 38 notes:** Tap on clip insert reverb (bus 0, 1024). MIDI live: tap `MXTrackChain.trackMixer`. Poll ~33 ms. No timeline lane meters, no LUFS/RMS. Input record meters unchanged.
 
 ### Implementation notes (shared — Month 9)
 
@@ -513,7 +527,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
               → W29 Checklist + loop clamp + comps ← done
                 → W30 Mixer strips + bounce FX parity ← done
                   → W31–35 Instrument Studio sections ← done
-                    → W36–39 Arrangement depth      ← next (X-fades)
+                    → W36–38 Arrangement depth done; W39 wet monitor ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.

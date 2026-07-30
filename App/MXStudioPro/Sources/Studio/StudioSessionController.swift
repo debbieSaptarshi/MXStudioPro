@@ -28,6 +28,9 @@ public final class StudioSessionController {
     /// True while peak exceeds ~−1 dBFS (linear ≈ 0.89).
     public private(set) var isInputClipping = false
     public private(set) var peakHoldLevel: Float = 0
+    /// Per-track playback peak 0…1 (post-volume estimate from player taps).
+    public private(set) var trackPlaybackLevels: [UUID: Float] = [:]
+    public private(set) var trackPlaybackPeakHolds: [UUID: Float] = [:]
     public private(set) var showClipWarning = false
     public private(set) var headphoneTip: String?
     /// First-record quiet-room checklist (GarageBand / BandLab-style onboarding).
@@ -139,6 +142,10 @@ public final class StudioSessionController {
     private var playheadObserver: MXPlayheadObserver?
     private var countInTask: Task<Void, Never>?
     private var meterTask: Task<Void, Never>?
+    private var playbackMeterTask: Task<Void, Never>?
+    /// Updated from audio taps (may be off-main).
+    nonisolated(unsafe) private var clipMeterPeaks: [UUID: Float] = [:]
+    nonisolated(unsafe) private let clipMeterLock = NSLock()
     private var wasPlayingBeforeInterruption = false
     private var autosaveTask: Task<Void, Never>?
     private var clipPlayers: [UUID: AVAudioPlayerNode] = [:]
@@ -313,6 +320,7 @@ public final class StudioSessionController {
         countInTask = nil
         meterTask?.cancel()
         meterTask = nil
+        stopPlaybackMeterPolling()
         autosaveTask?.cancel()
         autosaveTask = nil
         if isRecording {
@@ -356,6 +364,7 @@ public final class StudioSessionController {
         isInterrupted = false
         isRecordMode = false
         inputLevel = 0
+        zeroPlaybackMeters()
         phase = .idle
     }
 
@@ -385,11 +394,19 @@ public final class StudioSessionController {
         metronome?.resetCursor(toSample: 0)
         metronome?.prepareSchedule(fromSample: 0)
         isPlaying = false
+        stopPlaybackMeterPolling()
+        zeroPlaybackMeters()
         playheadBeat = 0
         playheadBar = 1
         playheadBeatInBar = 1
         playheadLabel = "001 Bar / 1 Beat"
         playheadTimeLabel = "00:00.0"
+    }
+
+    /// Ensure playback strip meters poll while mixer is open during play.
+    public func ensurePlaybackMetersRunning() {
+        guard isPlaying else { return }
+        startPlaybackMeterPolling()
     }
 
     // MARK: - Record
@@ -498,6 +515,7 @@ public final class StudioSessionController {
                 scheduleClipPlayers(fromSample: punchSample)
             }
             isPlaying = true
+            startPlaybackMeterPolling()
         } catch {
             isRecording = false
             isPunchInRecording = false
@@ -526,6 +544,8 @@ public final class StudioSessionController {
             isPlaying = false
             isRecording = false
             inputLevel = 0
+            stopPlaybackMeterPolling()
+            zeroPlaybackMeters()
 
             let punchBeat = recordingStartBeat
             let punchSample = recordingStartSample ?? take.startSample
@@ -1608,6 +1628,8 @@ public final class StudioSessionController {
         liveInstruments[trackID] = synth
         let chain = graph.addTrack(name: name, instrument: synth)
         instrumentChains[trackID] = chain
+        // Post-fader peak on track mixer for live MIDI strip meters.
+        installPlaybackMeterTap(on: chain.trackMixer, meterID: trackID)
 
         if let track = project.tracks.first(where: { $0.id == trackID }) {
             let aux = ensureReverbAux(on: graph)
@@ -1628,7 +1650,9 @@ public final class StudioSessionController {
             instrument.allNotesOff()
         }
         if let graph {
-            for chain in instrumentChains.values {
+            for (trackID, chain) in instrumentChains {
+                chain.trackMixer.removeTap(onBus: 0)
+                clearClipMeterPeak(trackID)
                 graph.removeTrack(id: chain.id)
             }
         }
@@ -1804,6 +1828,7 @@ public final class StudioSessionController {
         transport.play(fromSample: sample)
         scheduleClipPlayers(fromSample: sample)
         isPlaying = true
+        startPlaybackMeterPolling()
     }
 
     private func pausePlayback() {
@@ -1814,6 +1839,8 @@ public final class StudioSessionController {
         stopClipPlayers()
         transport?.stop()
         isPlaying = false
+        stopPlaybackMeterPolling()
+        zeroPlaybackMeters()
     }
 
     private func scheduleClipPlayers(fromSample sample: Int64) {
@@ -2041,6 +2068,8 @@ public final class StudioSessionController {
         clipDelays[clip.id] = delay
         clipDistortions[clip.id] = distortion
         clipReverbs[clip.id] = reverb
+        // Post-FX peak tap (last insert) for mixer strip meters.
+        installPlaybackMeterTap(on: reverb, meterID: clip.id)
         if let trackID = track?.id {
             applyTrackMix(trackID: trackID)
         }
@@ -2048,6 +2077,10 @@ public final class StudioSessionController {
 
     private func detachPlayer(for id: UUID) {
         guard let graph else {
+            if let reverb = clipReverbs[id] {
+                reverb.removeTap(onBus: 0)
+            }
+            clearClipMeterPeak(id)
             clipPlayers.removeValue(forKey: id)
             clipEQs.removeValue(forKey: id)
             clipDelays.removeValue(forKey: id)
@@ -2062,6 +2095,9 @@ public final class StudioSessionController {
         let distortion = clipDistortions.removeValue(forKey: id)
         let comp = clipComps.removeValue(forKey: id)
         let reverb = clipReverbs.removeValue(forKey: id)
+        // Remove meter tap before disconnecting the chain.
+        reverb?.removeTap(onBus: 0)
+        clearClipMeterPeak(id)
         player?.stop()
         let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == id }) })
         let isGuitar = track?.category == .guitar
@@ -2276,6 +2312,117 @@ public final class StudioSessionController {
                 try? await Task.sleep(nanoseconds: 33_000_000)
             }
         }
+    }
+
+    // MARK: - Playback strip meters
+
+    private func startPlaybackMeterPolling() {
+        playbackMeterTask?.cancel()
+        playbackMeterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await MainActor.run {
+                    self?.pollPlaybackMeters()
+                }
+                try? await Task.sleep(nanoseconds: 33_000_000)
+            }
+        }
+    }
+
+    private func stopPlaybackMeterPolling() {
+        playbackMeterTask?.cancel()
+        playbackMeterTask = nil
+    }
+
+    private func pollPlaybackMeters() {
+        guard isPlaying else {
+            zeroPlaybackMeters()
+            return
+        }
+        let peaks = snapshotAndClearClipMeterPeaks()
+        var levels = trackPlaybackLevels
+        var holds = trackPlaybackPeakHolds
+        for track in project.tracks {
+            var raw: Float = 0
+            for clip in track.clips {
+                raw = max(raw, peaks[clip.id] ?? 0)
+            }
+            // Live MIDI instrument peaks are keyed by track id.
+            if instrumentChains[track.id] != nil {
+                raw = max(raw, peaks[track.id] ?? 0)
+            }
+            let previous = levels[track.id] ?? 0
+            let level = max(raw, previous * 0.85)
+            levels[track.id] = level
+            holds[track.id] = max((holds[track.id] ?? 0) * 0.995, level)
+        }
+        // Drop stale track keys no longer in the project.
+        let liveIDs = Set(project.tracks.map(\.id))
+        levels = levels.filter { liveIDs.contains($0.key) }
+        holds = holds.filter { liveIDs.contains($0.key) }
+        trackPlaybackLevels = levels
+        trackPlaybackPeakHolds = holds
+    }
+
+    private func zeroPlaybackMeters() {
+        clearAllClipMeterPeaks()
+        if !trackPlaybackLevels.isEmpty {
+            trackPlaybackLevels = [:]
+        }
+        if !trackPlaybackPeakHolds.isEmpty {
+            trackPlaybackPeakHolds = [:]
+        }
+    }
+
+    private func installPlaybackMeterTap(on node: AVAudioNode, meterID: UUID) {
+        let format = node.outputFormat(forBus: 0)
+        let tapFormat: AVAudioFormat? = format.sampleRate > 0 ? format : nil
+        node.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            let peak = Self.peakLevel(in: buffer)
+            self.storeClipMeterPeak(meterID, peak)
+        }
+    }
+
+    nonisolated private func storeClipMeterPeak(_ id: UUID, _ peak: Float) {
+        clipMeterLock.lock()
+        clipMeterPeaks[id] = peak
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func clearClipMeterPeak(_ id: UUID) {
+        clipMeterLock.lock()
+        clipMeterPeaks.removeValue(forKey: id)
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func clearAllClipMeterPeaks() {
+        clipMeterLock.lock()
+        clipMeterPeaks.removeAll()
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func snapshotAndClearClipMeterPeaks() -> [UUID: Float] {
+        clipMeterLock.lock()
+        defer { clipMeterLock.unlock() }
+        let copy = clipMeterPeaks
+        clipMeterPeaks.removeAll()
+        return copy
+    }
+
+    /// Peak absolute sample across channels — same algorithm as `MXRecorder.peakLevel`.
+    nonisolated private static func peakLevel(in buffer: AVAudioPCMBuffer) -> Float {
+        guard let channels = buffer.floatChannelData else { return 0 }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return 0 }
+        var peak: Float = 0
+        let channelCount = Int(buffer.format.channelCount)
+        for ch in 0..<channelCount {
+            let data = channels[ch]
+            for i in 0..<frames {
+                peak = max(peak, abs(data[i]))
+            }
+        }
+        return min(1, peak)
     }
 
     /// Push armed-track noise gate settings onto the live monitor expander.

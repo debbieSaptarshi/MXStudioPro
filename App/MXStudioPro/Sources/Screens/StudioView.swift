@@ -1639,6 +1639,11 @@ public struct StudioView: View {
             }
         }
         .background(MXColor.surface)
+        .onAppear {
+            if session.isPlaying {
+                session.ensurePlaybackMetersRunning()
+            }
+        }
     }
 
     /// Selected / armed track first, then remaining tracks.
@@ -1987,13 +1992,19 @@ public struct StudioView: View {
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.lightGrey)
                     .monospacedDigit()
-                MixerVerticalFader(
-                    value: Binding(
-                        get: { Double(track.volume) },
-                        set: { session.setTrackVolume(Float($0), trackID: track.id) }
-                    ),
-                    tint: tint
-                )
+                HStack(alignment: .bottom, spacing: 4) {
+                    PlaybackStripMeter(
+                        level: session.trackPlaybackLevels[track.id] ?? 0,
+                        peakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
+                    )
+                    MixerVerticalFader(
+                        value: Binding(
+                            get: { Double(track.volume) },
+                            set: { session.setTrackVolume(Float($0), trackID: track.id) }
+                        ),
+                        tint: tint
+                    )
+                }
                 Text("Vol")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
@@ -2381,6 +2392,42 @@ private struct MixerVerticalFader: View {
             @unknown default: break
             }
         }
+    }
+}
+
+/// Vertical peak meter beside mixer faders (Studio One / Logic strip style).
+private struct PlaybackStripMeter: View {
+    var level: Float
+    var peakHold: Float
+    var height: CGFloat = 140
+
+    var body: some View {
+        GeometryReader { geo in
+            let clamped = CGFloat(min(max(level, 0), 1))
+            let hold = CGFloat(min(max(peakHold, 0), 1))
+            let fillHeight = max(level > 0.001 ? 2 : 0, geo.size.height * clamped)
+            let holdY = geo.size.height * (1 - hold)
+            let hot = level > 0.9
+
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(hot ? MXColor.red : MXColor.accent)
+                    .frame(height: fillHeight)
+
+                // Peak hold marker
+                if peakHold > 0.001 {
+                    Rectangle()
+                        .fill(hot ? MXColor.red : MXColor.white)
+                        .frame(width: geo.size.width, height: 2)
+                        .position(x: geo.size.width / 2, y: max(1, min(geo.size.height - 1, holdY)))
+                }
+            }
+        }
+        .frame(width: 8, height: height)
+        .accessibilityHidden(true)
     }
 }
 
