@@ -2236,15 +2236,41 @@ public final class StudioSessionController {
     }
 
     @discardableResult
-    public func addMIDINote(startBeat: Double, pitch: UInt8) -> Bool {
+    public func addMIDINote(startBeat: Double, pitch: UInt8, lengthBeats: Double? = nil) -> Bool {
         guard var clip = selectedMIDIClip() else { return false }
         let note = MXMIDINoteEdit.making(
             pitch: pitch,
             startBeat: startBeat,
-            clipLengthBeats: clip.lengthBeats
+            clipLengthBeats: clip.lengthBeats,
+            lengthBeats: lengthBeats ?? MXMIDINoteEdit.defaultLengthBeats
         )
         let next = MXMIDINoteEdit.appending(clip.midiNotes, note: note, clipLengthBeats: clip.lengthBeats)
         return commitMIDINotes(next, for: &clip, renderBed: true, recordUndo: true)
+    }
+
+    /// Paint or erase one snap cell on the selected MIDI clip (Week 68 draw mode).
+    @discardableResult
+    public func paintMIDINoteCell(
+        beat: Double,
+        pitch: UInt8,
+        snapBeats: Double,
+        erase: Bool,
+        scale: MXMIDIScale? = nil,
+        renderBed: Bool = false,
+        recordUndo: Bool = true
+    ) -> Bool {
+        guard var clip = selectedMIDIClip() else { return false }
+        let next = MXMIDINoteEdit.applyingPaintCell(
+            clip.midiNotes,
+            beat: beat,
+            pitch: pitch,
+            snapBeats: snapBeats,
+            clipLengthBeats: clip.lengthBeats,
+            erase: erase,
+            scale: scale
+        )
+        guard next != clip.midiNotes else { return false }
+        return commitMIDINotes(next, for: &clip, renderBed: renderBed, recordUndo: recordUndo)
     }
 
     @discardableResult

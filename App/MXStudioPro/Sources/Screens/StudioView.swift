@@ -415,6 +415,9 @@ public struct StudioView: View {
                     MIDIPianoRollEditorView(
                         notes: clip.midiNotes,
                         lengthBeats: clip.lengthBeats,
+                        snapBeats: session.isSnapEnabled
+                            ? session.snapResolution.beats
+                            : MXMIDIQuantize.sixteenth,
                         scaleLockEnabled: $pianoRollScaleLock,
                         scale: $pianoRollScale,
                         allowsScaleLock: pianoRollAllowsScaleLock,
@@ -462,6 +465,25 @@ public struct StudioView: View {
                         },
                         onAdd: { start, pitch in
                             _ = session.addMIDINote(startBeat: start, pitch: pitch)
+                        },
+                        onPaintCell: { beat, pitch, erase, recordUndo in
+                            let ok = session.paintMIDINoteCell(
+                                beat: beat,
+                                pitch: pitch,
+                                snapBeats: session.isSnapEnabled
+                                    ? session.snapResolution.beats
+                                    : MXMIDIQuantize.sixteenth,
+                                erase: erase,
+                                scale: (pianoRollAllowsScaleLock && pianoRollScaleLock)
+                                    ? pianoRollScale
+                                    : nil,
+                                renderBed: false,
+                                recordUndo: recordUndo
+                            )
+                            if ok && recordUndo {
+                                pianoRollDragUndoArmed = false
+                            }
+                            return ok
                         },
                         onTranspose: { ids, semitones in
                             _ = session.transposeMIDINotes(ids: ids, semitones: semitones)

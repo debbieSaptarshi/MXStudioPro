@@ -190,6 +190,85 @@ public enum MXMIDINoteEdit: Sendable {
             )
         }
     }
+
+    // MARK: - Draw / paint (Week 68 — Cubasis / FL Mobile)
+
+    /// Floor a beat onto the leading edge of a snap cell (Cubasis draw feel).
+    public static func cellStart(beat: Double, resolution: Double) -> Double {
+        guard resolution > 0 else { return max(0, beat) }
+        return (max(0, beat) / resolution).rounded(.down) * resolution
+    }
+
+    /// True when `note` overlaps the half-open cell `[cellStart, cellStart + cellLength)`.
+    public static func noteOverlapsCell(
+        _ note: MXMIDINote,
+        cellStart: Double,
+        cellLength: Double
+    ) -> Bool {
+        let end = cellStart + max(0.0625, cellLength)
+        return note.startBeat < end - 1e-9 && note.endBeat > cellStart + 1e-9
+    }
+
+    /// Paint or erase one snap cell at `beat` / `pitch` (Week 68 draw mode).
+    ///
+    /// - Paint: inserts a note of length `snapBeats` if the cell is empty for that pitch.
+    /// - Erase: removes every note of that pitch overlapping the cell.
+    /// - Optional `scale` snaps pitch before the hit-test (scale lock).
+    public static func applyingPaintCell(
+        _ notes: [MXMIDINote],
+        beat: Double,
+        pitch: UInt8,
+        snapBeats: Double,
+        clipLengthBeats: Double,
+        erase: Bool,
+        scale: MXMIDIScale? = nil
+    ) -> [MXMIDINote] {
+        let resolution = snapBeats > 0 ? snapBeats : defaultLengthBeats
+        let cell = cellStart(beat: beat, resolution: resolution)
+        guard cell < clipLengthBeats - 1e-9 else { return notes }
+        var resolvedPitch = clampPitch(pitch)
+        if let scale {
+            resolvedPitch = scale.snapPitch(resolvedPitch)
+        }
+        let cellLen = min(resolution, max(0.0625, clipLengthBeats - cell))
+
+        if erase {
+            return notes.filter {
+                !($0.note == resolvedPitch && noteOverlapsCell($0, cellStart: cell, cellLength: cellLen))
+            }
+        }
+
+        let occupied = notes.contains {
+            $0.note == resolvedPitch && noteOverlapsCell($0, cellStart: cell, cellLength: cellLen)
+        }
+        guard !occupied else { return notes }
+        let note = making(
+            pitch: resolvedPitch,
+            startBeat: cell,
+            clipLengthBeats: clipLengthBeats,
+            lengthBeats: cellLen
+        )
+        return appending(notes, note: note, clipLengthBeats: clipLengthBeats)
+    }
+
+    /// Whether any note of `pitch` already occupies the snap cell under `beat`.
+    public static func cellOccupied(
+        _ notes: [MXMIDINote],
+        beat: Double,
+        pitch: UInt8,
+        snapBeats: Double,
+        scale: MXMIDIScale? = nil
+    ) -> Bool {
+        let resolution = snapBeats > 0 ? snapBeats : defaultLengthBeats
+        let cell = cellStart(beat: beat, resolution: resolution)
+        var resolvedPitch = clampPitch(pitch)
+        if let scale {
+            resolvedPitch = scale.snapPitch(resolvedPitch)
+        }
+        return notes.contains {
+            $0.note == resolvedPitch && noteOverlapsCell($0, cellStart: cell, cellLength: resolution)
+        }
+    }
 }
 
 /// Offline render of MIDI notes through `MXSynthEngine` → PCM WAV (Piano Studio bounce bed).

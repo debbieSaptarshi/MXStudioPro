@@ -1,7 +1,7 @@
 import SwiftUI
 import MXStudioEngine
 
-/// Cubasis / GarageBand / Logic–lite piano roll editor (Weeks 55 / 58 / 62).
+/// Cubasis / GarageBand / Logic–lite piano roll editor (Weeks 55 / 58 / 62 / 68).
 ///
 /// Drag notes to change start (X) and pitch (Y). Drag the trailing edge to
 /// change length. Velocity lane under the grid edits velocity (1…127).
@@ -10,11 +10,16 @@ import MXStudioEngine
 /// batch transpose chrome (±1 / ±12), and a musical scale lock that snaps pitch
 /// on add and while dragging.
 ///
+/// Week 68 adds Cubasis / FL Mobile **draw mode**: pencil toggle paints or erases
+/// snap cells with a drag stroke (first cell sets paint vs erase polarity).
+///
 /// Tap empty space to add a note (or clear a non-empty selection). Tap a note
 /// to make it the sole selection; tap it again to delete.
 public struct MIDIPianoRollEditorView: View {
     public let notes: [MXMIDINote]
     public let lengthBeats: Double
+    /// Arrange snap cell size in beats (feeds draw-mode paint length).
+    public let snapBeats: Double
     public let allowsScaleLock: Bool
     public var onMove: (_ id: UUID, _ startBeat: Double, _ pitch: UInt8) -> Void
     public var onBatchMove: (_ ids: Set<UUID>, _ deltaStartBeats: Double, _ deltaPitch: Int) -> Void
@@ -22,6 +27,7 @@ public struct MIDIPianoRollEditorView: View {
     public var onVelocity: (_ id: UUID, _ velocity: UInt8) -> Void
     public var onMoveEnded: (() -> Void)?
     public var onAdd: (_ startBeat: Double, _ pitch: UInt8) -> Void
+    public var onPaintCell: (_ startBeat: Double, _ pitch: UInt8, _ erase: Bool, _ recordUndo: Bool) -> Bool
     public var onTranspose: (_ ids: Set<UUID>, _ semitones: Int) -> Void
     public var onDelete: (_ id: UUID) -> Void
 
@@ -29,6 +35,11 @@ public struct MIDIPianoRollEditorView: View {
     @Binding public var scale: MXMIDIScale
 
     @State private var selectedNoteIDs: Set<UUID> = []
+    @State private var isDrawMode = false
+    /// First cell of a draw stroke sets paint vs erase for the whole stroke.
+    @State private var drawStrokeErasing: Bool?
+    @State private var drawVisitedCells: Set<DrawCellKey> = []
+    @State private var drawStrokeUndoArmed = true
 
     // Batch-drag bookkeeping. We track the gesture origin note's original
     // start/pitch and the deltas already applied, then feed `onBatchMove`
@@ -42,6 +53,15 @@ public struct MIDIPianoRollEditorView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
+    private struct DrawCellKey: Hashable {
+        let startMillis: Int
+        let pitch: UInt8
+        init(startBeat: Double, pitch: UInt8) {
+            self.startMillis = Int((startBeat * 1000).rounded())
+            self.pitch = pitch
+        }
+    }
+
     private var isLandscape: Bool { verticalSizeClass == .compact }
     private var rollHeight: CGFloat { isLandscape ? 96 : 132 }
     private var velocityHeight: CGFloat { isLandscape ? 28 : 36 }
@@ -50,6 +70,9 @@ public struct MIDIPianoRollEditorView: View {
 
     private var showsScaleChrome: Bool { allowsScaleLock }
     private var scaleActive: Bool { allowsScaleLock && scaleLockEnabled }
+    private var effectiveSnapBeats: Double {
+        snapBeats > 0 ? snapBeats : MXMIDINoteEdit.defaultLengthBeats
+    }
 
     private var pitchMin: UInt8 {
         let minN = notes.map(\.note).min() ?? 48
@@ -68,6 +91,7 @@ public struct MIDIPianoRollEditorView: View {
     public init(
         notes: [MXMIDINote],
         lengthBeats: Double,
+        snapBeats: Double = MXMIDINoteEdit.defaultLengthBeats,
         scaleLockEnabled: Binding<Bool>,
         scale: Binding<MXMIDIScale>,
         allowsScaleLock: Bool = true,
@@ -77,11 +101,13 @@ public struct MIDIPianoRollEditorView: View {
         onVelocity: @escaping (_ id: UUID, _ velocity: UInt8) -> Void = { _, _ in },
         onMoveEnded: (() -> Void)? = nil,
         onAdd: @escaping (_ startBeat: Double, _ pitch: UInt8) -> Void,
+        onPaintCell: @escaping (_ startBeat: Double, _ pitch: UInt8, _ erase: Bool, _ recordUndo: Bool) -> Bool = { _, _, _, _ in false },
         onTranspose: @escaping (_ ids: Set<UUID>, _ semitones: Int) -> Void = { _, _ in },
         onDelete: @escaping (_ id: UUID) -> Void
     ) {
         self.notes = notes
         self.lengthBeats = lengthBeats
+        self.snapBeats = snapBeats
         self._scaleLockEnabled = scaleLockEnabled
         self._scale = scale
         self.allowsScaleLock = allowsScaleLock
@@ -91,6 +117,7 @@ public struct MIDIPianoRollEditorView: View {
         self.onVelocity = onVelocity
         self.onMoveEnded = onMoveEnded
         self.onAdd = onAdd
+        self.onPaintCell = onPaintCell
         self.onTranspose = onTranspose
         self.onDelete = onDelete
     }
@@ -123,14 +150,39 @@ public struct MIDIPianoRollEditorView: View {
                 .foregroundStyle(MXColor.lightGrey)
                 .lineLimit(1)
 
+            drawModeToggle
+
             Spacer(minLength: 4)
 
-            transposeControls
+            if !isDrawMode {
+                transposeControls
+            }
 
             if showsScaleChrome {
                 scaleControls
             }
         }
+    }
+
+    private var drawModeToggle: some View {
+        Button {
+            isDrawMode.toggle()
+            selectedNoteIDs.removeAll()
+            resetDrawStroke()
+        } label: {
+            Image(systemName: isDrawMode ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isDrawMode ? MXColor.white : MXColor.grey)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isDrawMode ? MXColor.orange.opacity(0.85) : MXColor.layer2.opacity(0.6))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Draw mode")
+        .accessibilityValue(isDrawMode ? "On" : "Off")
     }
 
     private var transposeControls: some View {
@@ -219,25 +271,50 @@ public struct MIDIPianoRollEditorView: View {
             let h = max(geo.size.height, 1)
             let rowH = h / CGFloat(pitchSpan)
 
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(MXColor.layer2.opacity(0.65))
+            rollGridContent(beats: beats, width: w, height: h, rowH: rowH)
+        }
+    }
 
-                ForEach(0..<Int(ceil(beats)), id: \.self) { beat in
-                    let x = CGFloat(Double(beat) / beats) * w
-                    Path { path in
-                        path.move(to: CGPoint(x: x, y: 0))
-                        path.addLine(to: CGPoint(x: x, y: h))
-                    }
-                    .stroke(MXColor.grey.opacity(beat % 4 == 0 ? 0.35 : 0.15), lineWidth: 0.5)
-                }
+    @ViewBuilder
+    private func rollGridContent(
+        beats: Double,
+        width w: CGFloat,
+        height h: CGFloat,
+        rowH: CGFloat
+    ) -> some View {
+        let grid = ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(MXColor.layer2.opacity(0.65))
 
-                ForEach(notes) { note in
-                    noteBlock(note: note, beats: beats, width: w, rowH: rowH)
+            ForEach(0..<Int(ceil(beats)), id: \.self) { beat in
+                let x = CGFloat(Double(beat) / beats) * w
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: h))
                 }
+                .stroke(MXColor.grey.opacity(beat % 4 == 0 ? 0.35 : 0.15), lineWidth: 0.5)
             }
-            .contentShape(Rectangle())
-            .onTapGesture { location in
+
+            ForEach(notes) { note in
+                noteBlock(note: note, beats: beats, width: w, rowH: rowH)
+                    .allowsHitTesting(!isDrawMode)
+            }
+        }
+        .contentShape(Rectangle())
+
+        if isDrawMode {
+            grid.gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        paintAt(location: value.location, beats: beats, width: w, rowH: rowH)
+                    }
+                    .onEnded { _ in
+                        resetDrawStroke()
+                        onMoveEnded?()
+                    }
+            )
+        } else {
+            grid.onTapGesture { location in
                 if !selectedNoteIDs.isEmpty {
                     selectedNoteIDs.removeAll()
                     return
@@ -251,6 +328,45 @@ public struct MIDIPianoRollEditorView: View {
                 onAdd(start, pitch)
             }
         }
+    }
+
+    private func paintAt(location: CGPoint, beats: Double, width w: CGFloat, rowH: CGFloat) {
+        let start = max(0, Double(location.x / w) * beats)
+        let pitchRow = min(pitchSpan - 1, max(0, Int(location.y / rowH)))
+        var pitch = MXMIDINoteEdit.clampPitch(UInt8(Int(pitchMax) - pitchRow))
+        if scaleActive {
+            pitch = scale.snapPitch(pitch)
+        }
+        let cell = MXMIDINoteEdit.cellStart(beat: start, resolution: effectiveSnapBeats)
+        let key = DrawCellKey(startBeat: cell, pitch: pitch)
+        guard !drawVisitedCells.contains(key) else { return }
+        drawVisitedCells.insert(key)
+
+        let erasing: Bool
+        if let existing = drawStrokeErasing {
+            erasing = existing
+        } else {
+            let occupied = MXMIDINoteEdit.cellOccupied(
+                notes,
+                beat: cell,
+                pitch: pitch,
+                snapBeats: effectiveSnapBeats,
+                scale: scaleActive ? scale : nil
+            )
+            erasing = occupied
+            drawStrokeErasing = occupied
+        }
+
+        let recordUndo = drawStrokeUndoArmed
+        if onPaintCell(cell, pitch, erasing, recordUndo) {
+            drawStrokeUndoArmed = false
+        }
+    }
+
+    private func resetDrawStroke() {
+        drawStrokeErasing = nil
+        drawVisitedCells.removeAll()
+        drawStrokeUndoArmed = true
     }
 
     private func noteBlock(

@@ -166,4 +166,52 @@ final class MXMIDINoteEditTests: XCTestCase {
         XCTAssertEqual(remaining.count, 1)
         XCTAssertEqual(remaining[0].id, b.id)
     }
+
+    // MARK: - Week 68 (draw / paint)
+
+    func testCellStartFloorsToGrid() {
+        XCTAssertEqual(MXMIDINoteEdit.cellStart(beat: 1.24, resolution: 0.25), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDINoteEdit.cellStart(beat: 1.0, resolution: 0.25), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDINoteEdit.cellStart(beat: 0.9, resolution: 1.0 / 3.0), 2.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDINoteEdit.cellStart(beat: -1, resolution: 0.25), 0, accuracy: 1e-9)
+    }
+
+    func testPaintCellInsertsOnce() {
+        var notes: [MXMIDINote] = []
+        notes = MXMIDINoteEdit.applyingPaintCell(
+            notes, beat: 0.1, pitch: 60, snapBeats: 0.25, clipLengthBeats: 4, erase: false
+        )
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes[0].startBeat, 0.0, accuracy: 1e-9)
+        XCTAssertEqual(notes[0].lengthBeats, 0.25, accuracy: 1e-9)
+        // Second paint on same cell is a no-op
+        let again = MXMIDINoteEdit.applyingPaintCell(
+            notes, beat: 0.2, pitch: 60, snapBeats: 0.25, clipLengthBeats: 4, erase: false
+        )
+        XCTAssertEqual(again.count, 1)
+        XCTAssertEqual(again[0].id, notes[0].id)
+    }
+
+    func testEraseCellRemovesOverlapping() {
+        let a = MXMIDINote(note: 60, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let b = MXMIDINote(note: 62, velocity: 100, startBeat: 0, lengthBeats: 0.25)
+        let erased = MXMIDINoteEdit.applyingPaintCell(
+            [a, b], beat: 0.1, pitch: 60, snapBeats: 0.25, clipLengthBeats: 4, erase: true
+        )
+        XCTAssertEqual(erased.count, 1)
+        XCTAssertEqual(erased[0].note, 62)
+    }
+
+    func testPaintRespectsScaleLock() {
+        let scale = MXMIDIScale.cMajor
+        // Pitch 61 (C#) snaps to nearest scale tone under C major.
+        let notes = MXMIDINoteEdit.applyingPaintCell(
+            [], beat: 0, pitch: 61, snapBeats: 0.25, clipLengthBeats: 4, erase: false, scale: scale
+        )
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes[0].note, scale.snapPitch(61))
+        XCTAssertTrue(MXMIDINoteEdit.cellOccupied(
+            notes, beat: 0, pitch: 61, snapBeats: 0.25, scale: scale
+        ))
+    }
 }
