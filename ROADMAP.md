@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 17 W65–66 snap SOTA **shipped** — next W67+ (zoom-adaptive grid, draw-mode piano roll, cloud).
+**Current focus:** Month 17 W65–67 snap/zoom SOTA **shipped** — next W68 piano-roll draw mode / cloud.
 
 ---
 
@@ -80,6 +80,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Done (MVP)** ✅ |
 | **65** | Triplet + dotted snap grids (1/8T, 1/16T, 1/8., 1/16.) | **Done (MVP)** ✅ |
 | **66** | Snap readout on arrange ruler + magnet chrome | **Done (MVP)** ✅ |
+| **67** | Zoom-adaptive arrange grid + pinch/± zoom | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -776,7 +777,7 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 |------|--------|--------|-----------|
 | **65** | Triplet + dotted snap grids (1/8T, 1/16T, 1/8., 1/16.) | **Done (MVP)** ✅ | Logic / Pro Tools |
 | **66** | Snap readout on arrange ruler + magnet chrome | **Done (MVP)** ✅ | Logic / Pro Tools |
-| **67** | Zoom-adaptive grid density (auto-thin subdivs) | **Planned** | Logic / Ableton |
+| **67** | Zoom-adaptive grid density (auto-thin subdivs) | **Done (MVP)** ✅ | Logic / Ableton |
 | **68** | Piano-roll draw mode lite | **Planned** | Cubasis / FL Mobile |
 
 ### Week 65 — Triplet + dotted snap grids ✅
@@ -800,12 +801,15 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 
 **Week 66 notes:** Tap still toggles snap on/off; long-press cycles resolution (GarageBand/Logic muscle memory).
 
-### Week 67 — Zoom-adaptive grid density *(planned)*
+### Week 67 — Zoom-adaptive grid density ✅
 
 **Done when (Logic / Ableton)**
-- [ ] Auto-thin subdivision lines when `beatsVisible` grows or pixels-per-beat drops below a legibility threshold
-- [ ] Prefer showing bar + beat lines first; drop 1/32 / 1/16T subdivs when too dense
-- [ ] Optional pinch-to-zoom on arrange (or stepped zoom buttons) feeding `beatsVisible`
+- [x] Pure `MXBeatGridDensity` — `visibleSubdivBeats` coarsens/hides subdivs when pixels-per-line &lt; 6; zoom clamp helpers
+- [x] `beatNet` draws coarsened subdivs (or none) based on current `pixelsPerBeat` while snap edits keep full resolution
+- [x] Arrange `beatsVisible` is session-local `@State` (4 / 8 / 16 / 32); ruler **− / +** buttons + pinch-on-ruler
+- [x] Unit tests for draw threshold, coarsen/nil, zoom clamp/steps
+
+**Week 67 notes:** Pinch lives on the ruler only so clip drag/trim stays free. Pinch settles to the nearest stop on end.
 
 ### Week 68 — Piano-roll draw mode lite *(planned)*
 
@@ -821,7 +825,7 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 - **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ← Month 17 W68
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet; real key-input sidechain + audio aux bus later
-- **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ← W67; clip gain automation later
+- **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
 - **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
 - **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
@@ -999,7 +1003,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                             → W53–56 Month 14 award-app depth ✅
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
-                                  → W65–W66 triplet/dotted snap + ruler/magnet readout ✅ ← next W67+ / cloud
+                                  → W65–W67 triplet/dotted snap + readout + zoom grid ✅ ← next W68 / cloud
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.

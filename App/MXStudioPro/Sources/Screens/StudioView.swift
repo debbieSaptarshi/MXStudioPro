@@ -27,6 +27,9 @@ public struct StudioView: View {
     @State private var pianoRollDragUndoArmed = true
     /// Suppress magnet tap after a long-press cycle (W66).
     @State private var snapMagnetLongPressConsumed = false
+    /// Arrange horizontal zoom — beats shown in the net (GarageBand / BandLab lite).
+    @State private var beatsVisible: Double = 8
+    @State private var arrangePinchBaseBeats: Double?
     /// Week 62 piano-roll scale lock (Cubasis / Logic lite).
     @State private var pianoRollScaleLock = false
     @State private var pianoRollScale = MXMIDIScale.cMajor
@@ -79,7 +82,8 @@ public struct StudioView: View {
         if tracksCollapsed || isLandscape { return 44 }
         return 135
     }
-    private let beatsVisible: Double = 8
+    private let beatsVisibleMin: Double = 4
+    private let beatsVisibleMax: Double = 32
     /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
     private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
     /// Height of one take lane inside an expanded playlist folder.
@@ -1028,6 +1032,9 @@ public struct StudioView: View {
                     }
                 }
                 .frame(height: rulerHeight)
+                .overlay(alignment: .topLeading) {
+                    arrangeZoomControls
+                }
                 .overlay(alignment: .topTrailing) {
                     // Snap-resolution readout (Logic / Pro Tools ruler chrome)
                     if session.isSnapEnabled {
@@ -1045,12 +1052,17 @@ public struct StudioView: View {
                             .accessibilityLabel("Snap grid \(session.snapResolution.displayName)")
                     }
                 }
+                .contentShape(Rectangle())
+                .gesture(arrangePinchZoomGesture)
 
-                // Subdivision grid lines at snap resolution (lighter). Drawn beneath the
-                // beat/bar lines so the stronger downbeats stay legible. Capped so dense
-                // resolutions (1/32, 1/16T) never draw hundreds of lines.
-                if session.isSnapEnabled, session.snapResolution.beats < 1.0 {
-                    let subdivBeats = session.snapResolution.beats
+                // Subdivision grid lines — zoom-adaptive density (W67). Snap still
+                // uses full resolution for edits; visual lines coarsen/hide when
+                // pixels-per-subdiv drop below legibility.
+                if session.isSnapEnabled,
+                   let subdivBeats = MXBeatGridDensity.visibleSubdivBeats(
+                       snapBeats: session.snapResolution.beats,
+                       pixelsPerBeat: Double(pixelsPerBeat)
+                   ) {
                     let rawCount = Int((beatsVisible / subdivBeats).rounded(.up))
                     let subdivCount = min(max(rawCount, 0), 128)
                     ForEach(0..<subdivCount, id: \.self) { index in
@@ -1111,6 +1123,75 @@ public struct StudioView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    /// Pinch on the arrange ruler to zoom (GarageBand / BandLab). Kept off the
+    /// clip lanes so drag/trim gestures stay responsive.
+    private var arrangePinchZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                let base = arrangePinchBaseBeats ?? beatsVisible
+                if arrangePinchBaseBeats == nil {
+                    arrangePinchBaseBeats = beatsVisible
+                }
+                // Pinch out (scale > 1) → zoom in → fewer beats visible.
+                beatsVisible = MXBeatGridDensity.clampBeatsVisible(
+                    base / Double(scale),
+                    min: beatsVisibleMin,
+                    max: beatsVisibleMax
+                )
+            }
+            .onEnded { _ in
+                let stops: [Double] = [4, 8, 16, 32]
+                let nearest = stops.min(by: { abs($0 - beatsVisible) < abs($1 - beatsVisible) }) ?? 8
+                beatsVisible = nearest
+                arrangePinchBaseBeats = nil
+            }
+    }
+
+    /// Compact +/- zoom on the arrange ruler (W67).
+    private var arrangeZoomControls: some View {
+        HStack(spacing: 2) {
+            Button {
+                beatsVisible = MXBeatGridDensity.zoomOutBeatsVisible(
+                    beatsVisible,
+                    max: beatsVisibleMax
+                )
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(MXColor.lightGrey)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(MXColor.black.opacity(0.72))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(beatsVisible >= beatsVisibleMax - 1e-9)
+            .accessibilityLabel("Zoom out arrange")
+
+            Button {
+                beatsVisible = MXBeatGridDensity.zoomInBeatsVisible(
+                    beatsVisible,
+                    min: beatsVisibleMin
+                )
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(MXColor.lightGrey)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(MXColor.black.opacity(0.72))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(beatsVisible <= beatsVisibleMin + 1e-9)
+            .accessibilityLabel("Zoom in arrange")
+        }
+        .padding(.leading, 4)
+        .padding(.top, 2)
     }
 
     @ViewBuilder
