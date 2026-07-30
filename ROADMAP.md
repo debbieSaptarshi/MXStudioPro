@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 15 (W57–60) — W57–W59 shipped; next W60 Figma pixel-pass.
+**Current focus:** Month 15 (W57–60) **complete** — next Month 16 / SOTA backlog (step swing, multi-select transpose, sidechain, cloud).
 
 ---
 
@@ -73,6 +73,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ |
 | **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ |
 | **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ |
+| **60** | Figma pixel-pass After Record + Drum Midi shells | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -651,7 +652,7 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 
 **Week 56 notes:** Hardware loopback still needs real headphones. Simulated measure remains for CI. Month 14 gate passed (local MVP).
 
-## Month 15 — SOTA polish epic *(Weeks 57–60)* **In progress**
+## Month 15 — SOTA polish epic *(Weeks 57–60)* ✅
 
 Raise shipped features to award-app bar without blocking cloud work.
 
@@ -660,7 +661,7 @@ Raise shipped features to award-app bar without blocking cloud work.
 | **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ | Cubasis / Logic |
 | **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ | GarageBand / Reels |
-| **60** | Figma pixel-pass After Record + Drum Midi shells | **Planned** | Figma `95:85026` / `95:88141` |
+| **60** | Figma pixel-pass After Record + Drum Midi shells | **Done (MVP)** ✅ | Figma `95:85026` / `95:88141` |
 
 ### Week 57 — Step pattern library + copy/paste + live cursor ✅
 
@@ -692,20 +693,41 @@ Raise shipped features to award-app bar without blocking cloud work.
 
 **Week 59 notes:** Not K-weighted / not broadcast-legal. Live LUFS is momentary (poll window), not integrated program loudness. Loudness report sheet deferred.
 
+### Week 60 — Figma pixel-pass After Record + Drum Midi ✅
+
+**Done when (Figma `95:85026` / `95:88141`)**
+- [x] Pin Studio header **64** / landscape **56**; action board **76** / **64** (parity with Record transport)
+- [x] Drum pad surface **148** portrait; step seq **200** / **140** so arrange keeps room
+- [x] Drum part rows **36** / **32**; ADD TRACK **40**; track list spacing **2**; banners align to header
+- [x] Action-board **snap magnet** toggle; expanded-part meter uses arrangement height
+
+**Week 60 notes:** No Figma MCP in cloud — parity from ROADMAP W31 tokens + Record chrome. Create hub + landscape re-audit remain optional polish.
+
+## Month 16 — Award-app depth *(Weeks 61–64)* **Planned**
+
+Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **61** | Step-seq swing independent of MIDI swing + pattern slots save/recall | **Planned** | BandLab / FL Mobile |
+| **62** | Piano-roll multi-select transpose + scale lock lite | **Planned** | Cubasis / Logic |
+| **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Planned** | Ableton / GarageBand |
+| **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Planned** | Logic / Pro Tools |
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
-- **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
-- **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library
-- **Piano roll:** Multi-select transpose; draw mode; scale lock
+- **Drums:** SFZ kit choke groups; nested takes × part columns
+- **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library ← Month 16 W61
+- **Piano roll:** Multi-select transpose; draw mode; scale lock ← Month 16 W62
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
-- **Mix:** Sidechain lite from kick to bass; shared reverb send visual; certified LUFS / loudness report sheet
-- **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
+- **Mix:** Sidechain lite from kick to bass; shared reverb send visual; certified LUFS / loudness report sheet ← Month 16 W63
+- **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation ← Month 16 W64
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
 - **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
 - **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
-- **Figma parity:** Pixel-pass Create hub + After Record (`95:85026`) + Drum Midi (`95:88141`) once shell features settle
+- **Figma parity:** Create hub + landscape 812×375 second pass
 
-**SOTA next (beyond Month 14)**
+**SOTA next (beyond Month 15)**
 - Nested takes × drum parts; SFZ kit choke
 - Pitch correction / time stretch / harmonies
 - Beat browser + video+audio Reels export
@@ -873,7 +895,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
-                              → W57–W59 step library / piano-roll / master LUFS ✅ ← next W60
+                              → W57–W60 Month 15 SOTA polish ✅ ← next Month 16 / cloud
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -899,7 +921,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
 | 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
 | 53–56 | Step velocity / clip automation / piano-roll lite / latency UX *(done)* |
-| 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass |
+| 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass *(done)* |
+| 61–64 | Step swing / multi-select transpose / sidechain / snap resolution |
 
 ---
 
