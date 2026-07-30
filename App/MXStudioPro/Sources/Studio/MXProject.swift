@@ -280,6 +280,9 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     /// Muted drum kit parts (`MXDrumPart.rawValue`). Empty = all parts audible.
     /// Orthogonal to track `isMuted` and clip `takeIndex` (Week 42).
     public var mutedDrumParts: Set<String>
+    /// Soloed drum kit parts (`MXDrumPart.rawValue`). Empty = no part solo.
+    /// When non-empty, only soloed (and not muted) parts are audible (Week 44).
+    public var soloedDrumParts: Set<String>
 
     public init(
         id: UUID = UUID(),
@@ -304,7 +307,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         deEsserEnabled: Bool = false,
         deEsserAmount: Float = 50,
         synthBankPresetID: String? = nil,
-        mutedDrumParts: Set<String> = []
+        mutedDrumParts: Set<String> = [],
+        soloedDrumParts: Set<String> = []
     ) {
         self.id = id
         self.name = name
@@ -331,6 +335,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.synthBankPresetID = synthBankPresetID
             ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
         self.mutedDrumParts = mutedDrumParts
+        self.soloedDrumParts = soloedDrumParts
     }
 
     public init(from decoder: Decoder) throws {
@@ -360,13 +365,14 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         synthBankPresetID = try c.decodeIfPresent(String.self, forKey: .synthBankPresetID)
             ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
         mutedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .mutedDrumParts) ?? []
+        soloedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .soloedDrumParts) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
-        case synthBankPresetID, mutedDrumParts
+        case synthBankPresetID, mutedDrumParts, soloedDrumParts
     }
 
     /// Typed mute set for drum part lanes (empty for non-drums / none muted).
@@ -374,8 +380,16 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         MXDrumPart.mutedParts(fromRawValues: mutedDrumParts)
     }
 
+    public var soloedDrumPartSet: Set<MXDrumPart> {
+        MXDrumPart.mutedParts(fromRawValues: soloedDrumParts)
+    }
+
     public func isDrumPartMuted(_ part: MXDrumPart) -> Bool {
         mutedDrumParts.contains(part.rawValue)
+    }
+
+    public func isDrumPartSoloed(_ part: MXDrumPart) -> Bool {
+        soloedDrumParts.contains(part.rawValue)
     }
 }
 

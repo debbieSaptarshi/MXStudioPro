@@ -1267,8 +1267,26 @@ public final class StudioSessionController {
         persistSoon()
     }
 
+    /// BandLab-style kit-part solo: when any parts are soloed, only those play.
+    public func toggleDrumPartSolo(trackID: UUID, part: MXDrumPart) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].category == .drums else { return }
+        let key = part.rawValue
+        if project.tracks[index].soloedDrumParts.contains(key) {
+            project.tracks[index].soloedDrumParts.remove(key)
+        } else {
+            project.tracks[index].soloedDrumParts.insert(key)
+        }
+        refreshDrumAudibleBeds(trackID: trackID)
+        persistSoon()
+    }
+
     public func isDrumPartMuted(trackID: UUID, part: MXDrumPart) -> Bool {
         project.tracks.first(where: { $0.id == trackID })?.isDrumPartMuted(part) ?? false
+    }
+
+    public func isDrumPartSoloed(trackID: UUID, part: MXDrumPart) -> Bool {
+        project.tracks.first(where: { $0.id == trackID })?.isDrumPartSoloed(part) ?? false
     }
 
     public func toggleSolo(trackID: UUID) {
@@ -1605,7 +1623,10 @@ public final class StudioSessionController {
         let bank = synthBankPreset(for: trackID)
         let isDrums = project.tracks[trackIndex].category == .drums
         let mutedParts = isDrums ? project.tracks[trackIndex].mutedDrumPartSet : []
-        let audibleNotes = isDrums ? localNotes.excludingMuted(mutedParts) : localNotes
+        let soloedParts = isDrums ? project.tracks[trackIndex].soloedDrumPartSet : []
+        let audibleNotes = isDrums
+            ? localNotes.audibleDrumNotes(muted: mutedParts, soloed: soloedParts)
+            : localNotes
         let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
         let filePrefix = isDrums ? "drums" : "keys"
         let fileName = "\(filePrefix)_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
@@ -1839,11 +1860,12 @@ public final class StudioSessionController {
         // Stop readers before overwriting WAVs (players may hold the file open).
         stopClipPlayers()
         let muted = track.mutedDrumPartSet
+        let soloed = track.soloedDrumPartSet
         let bank = synthBankPreset(for: trackID)
         let rate = transport?.sampleRate ?? 48_000
         for clip in track.clips where !clip.midiNotes.isEmpty {
             guard let url = audioURL(for: clip) else { continue }
-            let audible = clip.midiNotes.excludingMuted(muted)
+            let audible = clip.midiNotes.audibleDrumNotes(muted: muted, soloed: soloed)
             do {
                 try renderMIDIAudibleBed(
                     notes: audible,

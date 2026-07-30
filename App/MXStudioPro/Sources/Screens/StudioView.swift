@@ -496,6 +496,9 @@ public struct StudioView: View {
                         mutedDrumParts: isDrumPartsExpanded(track)
                             ? Set(MXDrumPart.allCases.sorted().filter { track.isDrumPartMuted($0) })
                             : [],
+                        soloedDrumParts: isDrumPartsExpanded(track)
+                            ? Set(MXDrumPart.allCases.sorted().filter { track.isDrumPartSoloed($0) })
+                            : [],
                         isDrumPartsExpanded: isDrumPartsExpanded(track),
                         showsDrumPartChevron: isDrumPartFolder(track) && !isPlaylistFolder(track),
                         onSelect: {
@@ -525,6 +528,9 @@ public struct StudioView: View {
                         },
                         onToggleDrumPartMute: { part in
                             session.toggleDrumPartMute(trackID: track.id, part: part)
+                        },
+                        onToggleDrumPartSolo: { part in
+                            session.toggleDrumPartSolo(trackID: track.id, part: part)
                         },
                         playbackLevel: session.trackPlaybackLevels[track.id] ?? 0,
                         playbackPeakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
@@ -872,9 +878,12 @@ public struct StudioView: View {
         let activeClips = track.clips.filter(\.isActive)
         let interactiveHeight = drumPartRowHeight - 6
         let partMuted = track.isDrumPartMuted(part)
+        let anySolo = !track.soloedDrumPartSet.isEmpty
+        let partSoloed = track.isDrumPartSoloed(part)
+        let partSilent = partMuted || (anySolo && !partSoloed)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(MXColor.surfaceRaised.opacity(partMuted ? 0.18 : 0.35))
+                .fill(MXColor.surfaceRaised.opacity(partSilent ? 0.18 : 0.35))
                 .contentShape(Rectangle())
                 .modifier(LaneBackgroundPointerModifier(
                     pixelsPerBeat: pixelsPerBeat,
@@ -918,9 +927,9 @@ public struct StudioView: View {
                 }
             }
         }
-        .opacity(partMuted ? 0.45 : 1)
+        .opacity(partSilent ? 0.45 : 1)
         .clipped()
-        .accessibilityLabel("\(part.shortLabel) lane\(partMuted ? ", muted" : "")")
+        .accessibilityLabel("\(part.shortLabel) lane\(partSilent ? ", silent" : "")")
     }
 
     private func playlistTakeRow(
@@ -2580,6 +2589,8 @@ private struct StudioTrackHeader: View {
     var drumPartLabels: [String] = []
     /// Currently muted drum parts (Week 42 per-part M).
     var mutedDrumParts: Set<MXDrumPart> = []
+    /// Currently soloed drum parts (Week 44 per-part S).
+    var soloedDrumParts: Set<MXDrumPart> = []
     var isDrumPartsExpanded: Bool = false
     var showsDrumPartChevron: Bool = false
     var onSelect: () -> Void
@@ -2589,6 +2600,7 @@ private struct StudioTrackHeader: View {
     var onTogglePlaylist: () -> Void
     var onToggleDrumParts: () -> Void = {}
     var onToggleDrumPartMute: (MXDrumPart) -> Void = { _ in }
+    var onToggleDrumPartSolo: (MXDrumPart) -> Void = { _ in }
     /// Live playback peak (Week 38 taps / Week 43 arrange meter).
     var playbackLevel: Float = 0
     var playbackPeakHold: Float = 0
@@ -2748,13 +2760,16 @@ private struct StudioTrackHeader: View {
         }
     }
 
-    /// Expanded drum folder: one label + part-mute row per Kick / Snare / Hats… lane.
+    /// Expanded drum folder: label + part M/S per Kick / Snare / Hats… lane.
     private var drumPartLabelsColumn: some View {
         let parts = MXDrumPart.allCases.sorted()
+        let anySolo = !soloedDrumParts.isEmpty
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(parts.enumerated()), id: \.element.id) { index, part in
                 let muted = mutedDrumParts.contains(part)
-                HStack(spacing: 4) {
+                let soloed = soloedDrumParts.contains(part)
+                let dimmed = muted || (anySolo && !soloed)
+                HStack(spacing: 3) {
                     if index == 0 {
                         Image(systemName: categoryIcon)
                             .font(.system(size: 9, weight: .semibold))
@@ -2765,7 +2780,7 @@ private struct StudioTrackHeader: View {
                     Text(part.shortLabel)
                         .font(MXFont.caption())
                         .fontWeight(.semibold)
-                        .foregroundStyle(muted ? MXColor.grey : MXColor.lightGrey)
+                        .foregroundStyle(dimmed ? MXColor.grey : MXColor.lightGrey)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Spacer(minLength: 0)
@@ -2775,7 +2790,7 @@ private struct StudioTrackHeader: View {
                         Text("M")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(muted ? MXColor.black : MXColor.lightGrey)
-                            .frame(width: 16, height: 16)
+                            .frame(width: 15, height: 15)
                             .background(
                                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(muted ? MXColor.orange : MXColor.black.opacity(0.35))
@@ -2783,9 +2798,23 @@ private struct StudioTrackHeader: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(muted ? "Unmute \(part.shortLabel)" : "Mute \(part.shortLabel)")
+                    Button {
+                        onToggleDrumPartSolo(part)
+                    } label: {
+                        Text("S")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(soloed ? MXColor.black : MXColor.lightGrey)
+                            .frame(width: 15, height: 15)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(soloed ? MXColor.accent : MXColor.black.opacity(0.35))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(soloed ? "Unsolo \(part.shortLabel)" : "Solo \(part.shortLabel)")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .opacity(muted ? 0.75 : 1)
+                .opacity(dimmed ? 0.75 : 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

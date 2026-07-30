@@ -97,6 +97,24 @@ public enum MXDrumPart: String, CaseIterable, Codable, Sendable, Identifiable, C
         }
     }
 
+    /// Apply BandLab-style part mute + solo: if any parts are soloed, keep only
+    /// those (minus mutes); otherwise apply mute only. Unmapped pitches follow
+    /// solo (kept only when no solo active) so kit columns stay the focus.
+    public static func audibleNotes(
+        _ notes: [MXMIDINote],
+        muted: Set<MXDrumPart>,
+        soloed: Set<MXDrumPart>
+    ) -> [MXMIDINote] {
+        notes.filter { note in
+            guard let part = part(forNote: note.note) else {
+                return soloed.isEmpty
+            }
+            if muted.contains(part) { return false }
+            if !soloed.isEmpty { return soloed.contains(part) }
+            return true
+        }
+    }
+
     /// Decode persisted rawValues into a typed mute set (unknown strings ignored).
     public static func mutedParts(fromRawValues values: Set<String>) -> Set<MXDrumPart> {
         Set(values.compactMap { MXDrumPart(rawValue: $0) })
@@ -150,5 +168,12 @@ extension Array where Element == MXMIDINote {
 
     public func excludingMuted(_ muted: Set<MXDrumPart>) -> [MXMIDINote] {
         MXDrumPart.excludingMuted(self, muted: muted)
+    }
+
+    public func audibleDrumNotes(
+        muted: Set<MXDrumPart>,
+        soloed: Set<MXDrumPart>
+    ) -> [MXMIDINote] {
+        MXDrumPart.audibleNotes(self, muted: muted, soloed: soloed)
     }
 }
