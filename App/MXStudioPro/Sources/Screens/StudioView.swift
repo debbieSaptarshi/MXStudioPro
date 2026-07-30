@@ -358,6 +358,8 @@ public struct StudioView: View {
                             DrumStepSequencerView(
                                 velocityGrid: $drumStepVelocityGrid,
                                 bars: $drumStepBars,
+                                swing: $session.drumStepSwing,
+                                patternSlots: $session.drumStepPatternSlots,
                                 activeStep: session.isPlaying
                                     ? MXDrumStepSequencer.stepIndex(
                                         atBeat: session.playheadBeat,

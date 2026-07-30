@@ -70,14 +70,18 @@ public enum MXDrumStepSequencer: Sendable {
     ///   - bars: Pattern length used when the grid is shorter than expected
     ///     (pads missing columns with silence conceptually by not emitting notes).
     ///   - hitLengthBeats: Note length (clamped ≥ 0.0625).
+    ///   - swing: 0…1 Logic-style off-beat delay on odd 16ths (BandLab drum swing).
+    ///     Independent of MIDI arrange quantize swing — applied only at place time.
     public static func notes(
         fromVelocityGrid velocityGrid: [[UInt8]],
         bars: Int = 1,
-        hitLengthBeats: Double = defaultHitLengthBeats
+        hitLengthBeats: Double = defaultHitLengthBeats,
+        swing: Double = 0
     ) -> [MXMIDINote] {
         let parts = rowParts
         let cols = stepCount(bars: bars)
         let length = max(0.0625, hitLengthBeats)
+        let swingAmount = min(1, max(0, swing))
         var result: [MXMIDINote] = []
         result.reserveCapacity(cols)
         for (row, part) in parts.enumerated() {
@@ -88,11 +92,17 @@ public enum MXDrumStepSequencer: Sendable {
                 guard step < steps.count else { break }
                 let vel = steps[step]
                 guard vel > 0 else { continue }
+                let straight = Double(step) * stepBeats
+                let start = MXMIDIQuantize.swungGridBeat(
+                    straight,
+                    resolution: stepBeats,
+                    swing: swingAmount
+                )
                 result.append(
                     MXMIDINote(
                         note: note,
                         velocity: min(127, max(1, vel)),
-                        startBeat: Double(step) * stepBeats,
+                        startBeat: start,
                         lengthBeats: length
                     )
                 )
@@ -105,12 +115,14 @@ public enum MXDrumStepSequencer: Sendable {
     public static func notes(
         from grid: [[Bool]],
         velocity: UInt8 = defaultVelocity,
-        hitLengthBeats: Double = defaultHitLengthBeats
+        hitLengthBeats: Double = defaultHitLengthBeats,
+        swing: Double = 0
     ) -> [MXMIDINote] {
         notes(
             fromVelocityGrid: velocityGrid(fromBool: grid, velocity: velocity),
             bars: 1,
-            hitLengthBeats: hitLengthBeats
+            hitLengthBeats: hitLengthBeats,
+            swing: swing
         )
     }
 
@@ -368,6 +380,79 @@ public enum MXDrumStepSequencer: Sendable {
             grid = replacingBar(grid, barIndex: bar, with: motif)
         }
         return grid
+    }
+
+    // MARK: - Week 61: user pattern slots (FL Mobile A–D)
+
+    /// Number of user-saveable pattern slots (FL Mobile / BandLab lite).
+    public static let patternSlotCount: Int = 4
+
+    /// Display labels for slots A…D.
+    public static var patternSlotLabels: [String] {
+        (0..<patternSlotCount).map { String(UnicodeScalar(65 + $0)!) }
+    }
+
+    /// One user-saved step pattern (velocity grid + bar count).
+    public struct PatternSlot: Codable, Equatable, Sendable {
+        public var bars: Int
+        public var velocityGrid: [[UInt8]]
+
+        public init(bars: Int, velocityGrid: [[UInt8]]) {
+            let clamped = MXDrumStepSequencer.clampBars(bars)
+            self.bars = clamped
+            self.velocityGrid = MXDrumStepSequencer.resizing(velocityGrid, toBars: clamped)
+        }
+
+        public var hasHits: Bool {
+            MXDrumStepSequencer.hasHits(velocityGrid)
+        }
+    }
+
+    /// Persistable bank of `patternSlotCount` optional slots.
+    public struct PatternSlotBank: Codable, Equatable, Sendable {
+        public var slots: [PatternSlot?]
+
+        public init(slots: [PatternSlot?] = Array(repeating: nil, count: MXDrumStepSequencer.patternSlotCount)) {
+            if slots.count == MXDrumStepSequencer.patternSlotCount {
+                self.slots = slots
+            } else {
+                var padded: [PatternSlot?] = Array(repeating: nil, count: MXDrumStepSequencer.patternSlotCount)
+                for i in 0..<min(slots.count, MXDrumStepSequencer.patternSlotCount) {
+                    padded[i] = slots[i]
+                }
+                self.slots = padded
+            }
+        }
+
+        public func slot(at index: Int) -> PatternSlot? {
+            guard index >= 0, index < slots.count else { return nil }
+            return slots[index]
+        }
+
+        /// Store a grid into a slot (empty grids clear the slot).
+        public func saving(
+            _ velocityGrid: [[UInt8]],
+            bars: Int,
+            at index: Int
+        ) -> PatternSlotBank {
+            guard index >= 0, index < MXDrumStepSequencer.patternSlotCount else { return self }
+            var next = slots
+            let clamped = MXDrumStepSequencer.clampBars(bars)
+            let resized = MXDrumStepSequencer.resizing(velocityGrid, toBars: clamped)
+            if MXDrumStepSequencer.hasHits(resized) {
+                next[index] = PatternSlot(bars: clamped, velocityGrid: resized)
+            } else {
+                next[index] = nil
+            }
+            return PatternSlotBank(slots: next)
+        }
+
+        public func clearing(at index: Int) -> PatternSlotBank {
+            guard index >= 0, index < slots.count else { return self }
+            var next = slots
+            next[index] = nil
+            return PatternSlotBank(slots: next)
+        }
     }
 
     // MARK: - Helpers

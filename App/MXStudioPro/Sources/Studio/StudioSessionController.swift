@@ -81,6 +81,30 @@ public final class StudioSessionController {
         didSet { midiQuantizeSwing = min(1, max(0, midiQuantizeSwing)) }
     }
 
+    /// UserDefaults key for drum step-seq swing (Week 61) — independent of MIDI quantize swing.
+    public static let drumStepSwingDefaultsKey = "mxstudio.drumStepSwing"
+
+    /// UserDefaults key for user pattern slots A–D (Week 61).
+    public static let drumStepPatternSlotsDefaultsKey = "mxstudio.drumStepPatternSlots"
+
+    /// BandLab / FL Mobile drum step-seq swing 0…1 (odd 16ths). Persisted; default straight.
+    /// Independent of `midiQuantizeSwing` so pad/MIDI quantize feel stays separate.
+    public var drumStepSwing: Double = 0 {
+        didSet {
+            let clamped = min(1, max(0, drumStepSwing))
+            if clamped != drumStepSwing {
+                drumStepSwing = clamped
+                return
+            }
+            UserDefaults.standard.set(clamped, forKey: Self.drumStepSwingDefaultsKey)
+        }
+    }
+
+    /// FL Mobile–style user pattern slots A–D (persisted JSON).
+    public var drumStepPatternSlots: MXDrumStepSequencer.PatternSlotBank = .init() {
+        didSet { persistDrumStepPatternSlots() }
+    }
+
     /// Prefer mono capture when recording on a vocal-category armed track.
     /// Session preference (not persisted). Guitar / import paths leave this unused.
     ///
@@ -233,6 +257,13 @@ public final class StudioSessionController {
         self.project = project
         self.preset = project.preset
         self.bpm = project.bpm
+        if UserDefaults.standard.object(forKey: Self.drumStepSwingDefaultsKey) != nil {
+            self.drumStepSwing = min(
+                1,
+                max(0, UserDefaults.standard.double(forKey: Self.drumStepSwingDefaultsKey))
+            )
+        }
+        self.drumStepPatternSlots = Self.loadDrumStepPatternSlots()
     }
 
     public convenience init(preset: StudioPreset = .vocal) {
@@ -1897,7 +1928,11 @@ public final class StudioSessionController {
             return nil
         }
 
-        let localNotes = MXDrumStepSequencer.notes(fromVelocityGrid: velocityGrid, bars: barCount)
+        let localNotes = MXDrumStepSequencer.notes(
+            fromVelocityGrid: velocityGrid,
+            bars: barCount,
+            swing: drumStepSwing
+        )
         guard !localNotes.isEmpty else { return nil }
 
         let lengthBeats = MXDrumStepSequencer.patternLengthBeats(bars: barCount)
@@ -1970,6 +2005,50 @@ public final class StudioSessionController {
     /// Whether the selected clip can feed the drum step sequencer.
     public var canLoadDrumStepPatternFromSelectedClip: Bool {
         loadDrumStepPatternFromSelectedClip() != nil
+    }
+
+    // MARK: - Week 61: step pattern slots
+
+    /// Save the current velocity grid into user slot A–D (`index` 0…3).
+    /// Empty grids clear the slot. Returns the updated bank.
+    @discardableResult
+    public func saveDrumStepPatternSlot(
+        _ velocityGrid: [[UInt8]],
+        bars: Int,
+        at index: Int
+    ) -> MXDrumStepSequencer.PatternSlotBank {
+        drumStepPatternSlots = drumStepPatternSlots.saving(velocityGrid, bars: bars, at: index)
+        return drumStepPatternSlots
+    }
+
+    /// Recall a user slot into a grid + bars tuple. `nil` when empty / out of range.
+    public func loadDrumStepPatternSlot(at index: Int) -> (grid: [[UInt8]], bars: Int)? {
+        guard let slot = drumStepPatternSlots.slot(at: index), slot.hasHits else { return nil }
+        return (slot.velocityGrid, slot.bars)
+    }
+
+    /// Clear one user pattern slot.
+    public func clearDrumStepPatternSlot(at index: Int) {
+        drumStepPatternSlots = drumStepPatternSlots.clearing(at: index)
+    }
+
+    private func persistDrumStepPatternSlots() {
+        Self.persistDrumStepPatternSlots(drumStepPatternSlots)
+    }
+
+    private static func loadDrumStepPatternSlots() -> MXDrumStepSequencer.PatternSlotBank {
+        guard let data = UserDefaults.standard.data(forKey: drumStepPatternSlotsDefaultsKey),
+              let bank = try? JSONDecoder().decode(MXDrumStepSequencer.PatternSlotBank.self, from: data)
+        else {
+            return MXDrumStepSequencer.PatternSlotBank()
+        }
+        return bank
+    }
+
+    private static func persistDrumStepPatternSlots(_ bank: MXDrumStepSequencer.PatternSlotBank) {
+        if let data = try? JSONEncoder().encode(bank) {
+            UserDefaults.standard.set(data, forKey: drumStepPatternSlotsDefaultsKey)
+        }
     }
 
     /// Re-apply capture quantize settings to the selected MIDI clip (Logic Quantize).

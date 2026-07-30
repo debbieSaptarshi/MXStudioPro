@@ -193,4 +193,63 @@ final class MXDrumStepSequencerTests: XCTestCase {
         XCTAssertEqual(disco[2][1], 90)
         XCTAssertEqual(MXDrumStepSequencer.PatternPreset.allCases.count, 4)
     }
+
+    // MARK: - Week 61
+
+    func testStepSwingDelaysOddSixteenthsIndependently() {
+        var grid = MXDrumStepSequencer.emptyVelocityGrid(bars: 1)
+        grid[0][0] = 100 // even — straight
+        grid[0][1] = 100 // odd — swung
+        grid[1][4] = 90  // even
+
+        let straight = MXDrumStepSequencer.notes(fromVelocityGrid: grid, swing: 0)
+        XCTAssertEqual(straight.map(\.startBeat).sorted(), [0, 0.25, 1.0])
+
+        let swung = MXDrumStepSequencer.notes(fromVelocityGrid: grid, swing: 1)
+        let starts = swung.map(\.startBeat).sorted()
+        XCTAssertEqual(starts[0], 0, accuracy: 1e-9)
+        // Odd 16th delayed by swing * 0.25 * 0.5 = 0.125 → 0.375
+        XCTAssertEqual(starts[1], 0.375, accuracy: 1e-9)
+        XCTAssertEqual(starts[2], 1.0, accuracy: 1e-9)
+
+        // Default swing is straight (API default).
+        let defaulted = MXDrumStepSequencer.notes(fromVelocityGrid: grid)
+        XCTAssertEqual(defaulted.map(\.startBeat).sorted(), straight.map(\.startBeat).sorted())
+    }
+
+    func testPatternSlotBankSaveRecallClear() {
+        var bank = MXDrumStepSequencer.PatternSlotBank()
+        XCTAssertEqual(bank.slots.count, 4)
+        XCTAssertNil(bank.slot(at: 0))
+
+        var grid = MXDrumStepSequencer.emptyVelocityGrid(bars: 2)
+        grid[0][0] = 110
+        grid[1][16] = 80
+        bank = bank.saving(grid, bars: 2, at: 0)
+        XCTAssertEqual(bank.slot(at: 0)?.bars, 2)
+        XCTAssertEqual(bank.slot(at: 0)?.velocityGrid[0][0], 110)
+        XCTAssertEqual(bank.slot(at: 0)?.velocityGrid[1][16], 80)
+        XCTAssertTrue(bank.slot(at: 0)?.hasHits == true)
+
+        // Empty grid clears the slot.
+        bank = bank.saving(MXDrumStepSequencer.emptyVelocityGrid(bars: 1), bars: 1, at: 0)
+        XCTAssertNil(bank.slot(at: 0))
+
+        bank = bank.saving(grid, bars: 2, at: 2)
+        XCTAssertNotNil(bank.slot(at: 2))
+        bank = bank.clearing(at: 2)
+        XCTAssertNil(bank.slot(at: 2))
+
+        // Out of range is a no-op.
+        let unchanged = bank.saving(grid, bars: 1, at: 9)
+        XCTAssertEqual(unchanged, bank)
+
+        XCTAssertEqual(MXDrumStepSequencer.patternSlotLabels, ["A", "B", "C", "D"])
+
+        // Codable round-trip.
+        let encoded = try! JSONEncoder().encode(bank.saving(grid, bars: 2, at: 1))
+        let decoded = try! JSONDecoder().decode(MXDrumStepSequencer.PatternSlotBank.self, from: encoded)
+        XCTAssertEqual(decoded.slot(at: 1)?.velocityGrid[0][0], 110)
+        XCTAssertEqual(decoded.slot(at: 1)?.bars, 2)
+    }
 }

@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 15 (W57–60) **complete** — next Month 16 / SOTA backlog (step swing, multi-select transpose, sidechain, cloud).
+**Current focus:** Month 16 Week 61 **complete** — next W62–64 (multi-select transpose, sidechain, snap resolution).
 
 ---
 
@@ -74,6 +74,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ |
 | **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ |
 | **60** | Figma pixel-pass After Record + Drum Midi shells | **Done (MVP)** ✅ |
+| **61** | Step-seq swing independent of MIDI swing + pattern slots | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -703,16 +704,27 @@ Raise shipped features to award-app bar without blocking cloud work.
 
 **Week 60 notes:** No Figma MCP in cloud — parity from ROADMAP W31 tokens + Record chrome. Create hub + landscape re-audit remain optional polish.
 
-## Month 16 — Award-app depth *(Weeks 61–64)* **Planned**
+## Month 16 — Award-app depth *(Weeks 61–64)*
 
 Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile.
 
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
-| **61** | Step-seq swing independent of MIDI swing + pattern slots save/recall | **Planned** | BandLab / FL Mobile |
+| **61** | Step-seq swing independent of MIDI swing + pattern slots save/recall | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **62** | Piano-roll multi-select transpose + scale lock lite | **Planned** | Cubasis / Logic |
 | **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Planned** | Ableton / GarageBand |
 | **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Planned** | Logic / Pro Tools |
+
+### Week 61 — Step swing + pattern slots ✅
+
+**Done when (BandLab swing + FL Mobile slots)**
+- [x] `MXDrumStepSequencer.notes(..., swing:)` delays odd 16ths via `MXMIDIQuantize.swungGridBeat`
+- [x] Session `drumStepSwing` persisted; independent of `midiQuantizeSwing`
+- [x] User pattern slots A–D save/recall/clear (`PatternSlotBank` + UserDefaults)
+- [x] Step seq UI: Swing slider + Slots menu; surface height 224/158
+- [x] Unit tests for swing delay + slot bank Codable
+
+**Week 61 notes:** Live cursor stays on the straight 16th grid (FL Mobile). Swing applies at **Add to timeline** only.
 
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
@@ -895,7 +907,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
-                              → W57–W60 Month 15 SOTA polish ✅ ← next Month 16 / cloud
+                              → W57–W60 Month 15 SOTA polish ✅
+                                → W61 step swing + slots ✅ ← next W62–64 / cloud
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -923,6 +936,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 53–56 | Step velocity / clip automation / piano-roll lite / latency UX *(done)* |
 | 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass *(done)* |
 | 61–64 | Step swing / multi-select transpose / sidechain / snap resolution |
+| 61 | Step swing + pattern slots A–D *(done)* |
 
 ---
 

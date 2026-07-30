@@ -1,15 +1,20 @@
 import SwiftUI
 import MXStudioEngine
 
-/// BandLab / FL Mobile–style drum step sequencer (Weeks 49 / 53 / 57).
+/// BandLab / FL Mobile–style drum step sequencer (Weeks 49 / 53 / 57 / 61).
 ///
 /// Rows = Kick → Ride; columns = 16ths × bars (1–4). Tap toggles hits;
 /// vertical drag on an active cell sets velocity (cell opacity). **Add to timeline**
 /// places a MIDI clip at the playhead; **Load** pulls from the selected drums clip.
-/// Week 57: pattern library, bar copy/paste, live step cursor during playback.
+/// Week 57: pattern library, bar copy/paste, live step cursor.
+/// Week 61: independent step swing + user pattern slots A–D.
 public struct DrumStepSequencerView: View {
     @Binding var velocityGrid: [[UInt8]]
     @Binding var bars: Int
+    /// Step-seq swing 0…1 (odd 16ths). Independent of MIDI quantize swing.
+    @Binding var swing: Double
+    /// Persisted user slots A–D (FL Mobile lite).
+    @Binding var patternSlots: MXDrumStepSequencer.PatternSlotBank
     /// Highlighted step column while transport plays (`nil` when stopped).
     public var activeStep: Int?
     public var onPreviewHit: ((UInt8, UInt8) -> Void)?
@@ -26,7 +31,8 @@ public struct DrumStepSequencerView: View {
     @State private var selectedBarIndex: Int = 0
 
     private var isLandscape: Bool { verticalSizeClass == .compact }
-    private var surfaceHeight: CGFloat { isLandscape ? 140 : 200 }
+    /// Includes swing slider row (Week 61); keep arrange timeline room below.
+    private var surfaceHeight: CGFloat { isLandscape ? 158 : 224 }
 
     private let parts = MXDrumStepSequencer.rowParts
     private var stepCount: Int { MXDrumStepSequencer.stepCount(bars: bars) }
@@ -34,6 +40,8 @@ public struct DrumStepSequencerView: View {
     public init(
         velocityGrid: Binding<[[UInt8]]>,
         bars: Binding<Int>,
+        swing: Binding<Double>,
+        patternSlots: Binding<MXDrumStepSequencer.PatternSlotBank>,
         activeStep: Int? = nil,
         canApply: Bool = true,
         canLoadFromClip: Bool = false,
@@ -44,6 +52,8 @@ public struct DrumStepSequencerView: View {
     ) {
         self._velocityGrid = velocityGrid
         self._bars = bars
+        self._swing = swing
+        self._patternSlots = patternSlots
         self.activeStep = activeStep
         self.canApply = canApply
         self.canLoadFromClip = canLoadFromClip
@@ -57,6 +67,7 @@ public struct DrumStepSequencerView: View {
         VStack(spacing: 0) {
             headerRow
             toolbarRow
+            swingRow
             stepGrid
                 .padding(.horizontal, isLandscape ? 6 : 10)
                 .padding(.bottom, isLandscape ? 4 : 8)
@@ -86,6 +97,7 @@ public struct DrumStepSequencerView: View {
             Spacer(minLength: 2)
 
             libraryMenu
+            slotsMenu
 
             if onLoadFromClip != nil {
                 Button("Load") {
@@ -169,6 +181,35 @@ public struct DrumStepSequencerView: View {
         .padding(.bottom, isLandscape ? 2 : 4)
     }
 
+    /// BandLab-style step swing — delays odd 16ths when placing the pattern.
+    private var swingRow: some View {
+        HStack(spacing: 8) {
+            Text("Swing")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+                .frame(width: isLandscape ? 36 : 44, alignment: .leading)
+
+            Slider(
+                value: Binding(
+                    get: { swing },
+                    set: { swing = min(1, max(0, $0)) }
+                ),
+                in: 0...1
+            )
+            .tint(MXColor.orange)
+            .accessibilityLabel("Step sequencer swing")
+            .accessibilityValue("\(Int((swing * 100).rounded())) percent")
+
+            Text("\(Int((swing * 100).rounded()))%")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.lightGrey)
+                .frame(width: 36, alignment: .trailing)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.bottom, isLandscape ? 2 : 4)
+    }
+
     private var libraryMenu: some View {
         Menu {
             ForEach(MXDrumStepSequencer.PatternPreset.allCases) { preset in
@@ -182,6 +223,38 @@ public struct DrumStepSequencerView: View {
                 .foregroundStyle(MXColor.lightGrey)
         }
         .accessibilityLabel("Step pattern library")
+    }
+
+    private var slotsMenu: some View {
+        Menu {
+            ForEach(0..<MXDrumStepSequencer.patternSlotCount, id: \.self) { index in
+                let label = MXDrumStepSequencer.patternSlotLabels[index]
+                let occupied = patternSlots.slot(at: index)?.hasHits == true
+                Button("Save to \(label)") {
+                    patternSlots = patternSlots.saving(velocityGrid, bars: bars, at: index)
+                }
+                .disabled(!MXDrumStepSequencer.hasHits(velocityGrid))
+                Button("Recall \(label)") {
+                    guard let slot = patternSlots.slot(at: index), slot.hasHits else { return }
+                    bars = slot.bars
+                    velocityGrid = slot.velocityGrid
+                }
+                .disabled(!occupied)
+                if occupied {
+                    Button("Clear \(label)", role: .destructive) {
+                        patternSlots = patternSlots.clearing(at: index)
+                    }
+                }
+                if index < MXDrumStepSequencer.patternSlotCount - 1 {
+                    Divider()
+                }
+            }
+        } label: {
+            Text("Slots")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.lightGrey)
+        }
+        .accessibilityLabel("User pattern slots")
     }
 
     private var barPicker: some View {
