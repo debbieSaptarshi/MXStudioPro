@@ -50,7 +50,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **36** | Equal-power crossfades (arrangement) | **Done (MVP)** ✅ overlapping punch X-fades |
 | **37** | Multi-row playlist folder (take lanes) | **Done (MVP)** ✅ one row per takeIndex; collapse chevron |
 | **38** | Playback strip meters (mixer) | **Done (MVP)** ✅ live peak + peak-hold beside faders |
-| **39** | Wet input monitoring for guitar pedalboard | **Next** |
+| **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ Dist→Delay→Rev on armed guitar monitor |
 
 ### Figma anchors (shipped / in use)
 
@@ -235,7 +235,7 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters ✅ → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
+**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters ✅ → wet guitar monitor ✅. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
@@ -261,7 +261,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 - [x] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
 - [x] Demo: record guitar take over a second track → hear FX → bounce *(cold Rec schedules beds; bounce soft-clip Dist)*
 
-**Week 32 notes:** Pedalboard gated on `track.category == .guitar` so vocal lanes in a Guitar project keep Dyn chain. Live monitor remains dry (hear pedals on playback/bounce). Wet input monitoring deferred.
+**Week 32 notes:** Pedalboard gated on `track.category == .guitar` so vocal lanes in a Guitar project keep Dyn chain. Wet input monitoring shipped in Week 39 (`MXMonitorGuitarFX`).
 
 ### Week 33 — Piano Studio Section ✅
 
@@ -324,7 +324,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 ---
 
-## Month 10 — Arrangement depth *(Weeks 36–39)*
+## Month 10 — Arrangement depth *(Weeks 36–39)* ✅
 
 Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab playlist comps; Studio One strip meters.
 
@@ -333,7 +333,7 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 | **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Done (MVP)** ✅ |
 | **37** | Expanded multi-row playlist folder (always-on take lanes) | **Done (MVP)** ✅ |
 | **38** | Playback strip meters (mixer + optional timeline) | **Done (MVP)** ✅ |
-| 39 | Wet input monitoring for guitar pedalboard | **Next** |
+| **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ |
 
 ### Week 36 — Equal-power crossfades ✅
 
@@ -370,6 +370,30 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 - [x] Demo: play multi-track mix with mixer open → see per-track activity (`ensurePlaybackMetersRunning` on mixer appear)
 
 **Week 38 notes:** Tap on clip insert reverb (bus 0, 1024). MIDI live: tap `MXTrackChain.trackMixer`. Poll ~33 ms. No timeline lane meters, no LUFS/RMS. Input record meters unchanged.
+
+### Week 39 — Wet guitar input monitoring ✅
+
+**Done when (BandLab / GarageBand guitar monitor)**
+- [x] Armed guitar + Monitor on → hear Dist→Delay→Rev (light EQ mid) while input armed / recording
+- [x] Changing pedalboard preset / Dist·Delay·Rev·EQ updates live monitor without restarting Rec
+- [x] Vocal armed → dry monitor + optional noise gate (no guitar inserts)
+- [x] Monitor off → silence (detach all monitor nodes)
+- [x] Speaker path still prefers Monitor off (existing feedback policy)
+- [x] Recorded WAV remains dry DI (write tap on `inputNode`; FX only on parallel monitor + playback/bounce)
+
+**Week 39 notes:** `MXMonitorGuitarFX` on `MXRecorder`; wet path `input → EQ → Dist → Delay → Rev → monitorMixer → master`. `syncMonitorChain()` pushes armed-track pedal params. Headphones tip mentions pedalboard. AU chain adds some monitor latency vs dry DI.
+
+### Month 10 gate ✅
+
+Equal-power X-fades → playlist folder → strip meters → wet guitar monitor. Arrangement depth MVP complete.
+
+### Month 11 — Next (Planned)
+
+| Focus | Status |
+|-------|--------|
+| Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Planned** |
+| Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
+| Optional record orientation lock; Record landscape chrome | **Planned** |
 
 ### Implementation notes (shared — Month 9)
 
@@ -453,7 +477,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Phone-vocal / Reels quality
 - **HPF on take**
 - **Reels Vocal preset chain**
-- Noise gate / light denoise ✅ Week 27 bounce + Week 28 live/monitor expander (`syncMonitorNoiseGate`)
+- Noise gate / light denoise ✅ Week 27 bounce + Week 28 live/monitor expander (`syncMonitorChain` / vocal gate)
+- Wet guitar monitor ✅ Week 39 `MXMonitorGuitarFX` parallel pedalboard (dry DI write)
 - De-esser ✅ Week 28 (live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount)
 - Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)

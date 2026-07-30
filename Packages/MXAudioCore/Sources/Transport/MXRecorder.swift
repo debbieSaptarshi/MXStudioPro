@@ -3,6 +3,61 @@ import AVFoundation
 import Foundation
 import MXAudioDSP
 
+/// Live guitar monitor pedalboard settings (BandLab / GarageBand amp-path lite).
+/// Applied on the parallel monitor graph only — write tap stays dry DI.
+public struct MXMonitorGuitarFX: Equatable, Sendable {
+    public var enabled: Bool
+    public var distortionMix: Float // 0…100
+    public var delayMix: Float
+    public var delayTime: Float // seconds
+    public var reverbMix: Float
+    public var eqMidGain: Float // −12…+12 dB
+
+    public init(
+        enabled: Bool,
+        distortionMix: Float,
+        delayMix: Float,
+        delayTime: Float,
+        reverbMix: Float,
+        eqMidGain: Float
+    ) {
+        self.enabled = enabled
+        self.distortionMix = distortionMix
+        self.delayMix = delayMix
+        self.delayTime = delayTime
+        self.reverbMix = reverbMix
+        self.eqMidGain = eqMidGain
+    }
+
+    public static let disabled = MXMonitorGuitarFX(
+        enabled: false,
+        distortionMix: 0,
+        delayMix: 0,
+        delayTime: 0.3,
+        reverbMix: 0,
+        eqMidGain: 0
+    )
+
+    /// Clamp mix / gain / time into the ranges used by the pedalboard UI.
+    public static func clamped(
+        enabled: Bool,
+        distortionMix: Float,
+        delayMix: Float,
+        delayTime: Float,
+        reverbMix: Float,
+        eqMidGain: Float
+    ) -> MXMonitorGuitarFX {
+        MXMonitorGuitarFX(
+            enabled: enabled,
+            distortionMix: min(max(distortionMix, 0), 100),
+            delayMix: min(max(delayMix, 0), 100),
+            delayTime: min(max(delayTime, 0.01), 2),
+            reverbMix: min(max(reverbMix, 0), 100),
+            eqMidGain: min(max(eqMidGain, -12), 12)
+        )
+    }
+}
+
 /// Captures the input node to disk, aligned to the transport.
 ///
 /// Frames are written as they arrive rather than buffered to the end, so an
@@ -70,6 +125,19 @@ public final class MXRecorder: @unchecked Sendable {
         didSet { configureMonitorGate() }
     }
 
+    /// Wet guitar pedalboard on the monitor path (Dist→Delay→Rev). Off for vocals.
+    /// Topology rebuilds when `enabled` flips; param-only changes reconfigure in place.
+    public var monitorGuitarFX: MXMonitorGuitarFX = .disabled {
+        didSet {
+            if oldValue.enabled != monitorGuitarFX.enabled {
+                if monitorAttached { detachMonitoring() }
+                updateMonitoring()
+            } else if monitorGuitarFX.enabled {
+                configureMonitorGuitarFX()
+            }
+        }
+    }
+
     /// Milliseconds of input kept in a ring buffer while armed (pre-roll).
     /// 0 disables. Typical phone-vocal value: 250–500 ms.
     public var preRollMilliseconds: Double = 250 {
@@ -78,6 +146,10 @@ public final class MXRecorder: @unchecked Sendable {
 
     private let monitorMixer = AVAudioMixerNode()
     private var monitorGate: AVAudioUnitEffect?
+    private var monitorEQ: AVAudioUnitEQ?
+    private var monitorDistortion: AVAudioUnitDistortion?
+    private var monitorDelay: AVAudioUnitDelay?
+    private var monitorReverb: AVAudioUnitReverb?
     private var monitorAttached = false
     /// When true, Monitor may route input→master even before Rec (armed / record mode).
     private var liveInputArmed = false
@@ -503,7 +575,7 @@ public final class MXRecorder: @unchecked Sendable {
         graph.engine.inputNode.removeTap(onBus: 0)
     }
 
-    // MARK: - Monitoring (+ optional live noise gate)
+    // MARK: - Monitoring (+ optional live noise gate / guitar pedalboard)
 
     private func updateMonitoring() {
         // Allow Monitor in record mode before Rec (liveInputArmed), or while writing a take.
@@ -513,7 +585,12 @@ public final class MXRecorder: @unchecked Sendable {
         }
         if isMonitoringEnabled {
             if monitorAttached {
-                configureMonitorGate()
+                // Params-only refresh for the active topology.
+                if monitorGuitarFX.enabled {
+                    configureMonitorGuitarFX()
+                } else {
+                    configureMonitorGate()
+                }
                 return
             }
             let input = graph.engine.inputNode
@@ -523,16 +600,43 @@ public final class MXRecorder: @unchecked Sendable {
             }
             guard format.channelCount > 0, format.sampleRate > 0 else { return }
 
-            let gate = makeMonitorGate()
-            monitorGate = gate
-            graph.attachUtilityNode(gate)
-            graph.attachUtilityNode(monitorMixer)
-            // input → gate → monitorMixer → master
-            graph.connect(input, to: gate, format: format)
-            graph.connect(gate, to: monitorMixer, format: format)
-            graph.connect(monitorMixer, to: graph.masterBus, format: nil)
-            monitorAttached = true
-            configureMonitorGate()
+            // Write tap stays on inputNode (dry DI). Monitor is a parallel graph fan-out.
+            if monitorGuitarFX.enabled {
+                // Guitar wet: input → EQ → Distortion → Delay → Reverb → monitorMixer → master
+                // No dynamics gate on this path (GarageBand amp hears pedals; gate is vocal).
+                let eq = AVAudioUnitEQ(numberOfBands: 3)
+                let distortion = AVAudioUnitDistortion()
+                let delay = AVAudioUnitDelay()
+                let reverb = AVAudioUnitReverb()
+                monitorEQ = eq
+                monitorDistortion = distortion
+                monitorDelay = delay
+                monitorReverb = reverb
+                graph.attachUtilityNode(eq)
+                graph.attachUtilityNode(distortion)
+                graph.attachUtilityNode(delay)
+                graph.attachUtilityNode(reverb)
+                graph.attachUtilityNode(monitorMixer)
+                graph.connect(input, to: eq, format: format)
+                graph.connect(eq, to: distortion, format: format)
+                graph.connect(distortion, to: delay, format: format)
+                graph.connect(delay, to: reverb, format: format)
+                graph.connect(reverb, to: monitorMixer, format: format)
+                graph.connect(monitorMixer, to: graph.masterBus, format: nil)
+                monitorAttached = true
+                configureMonitorGuitarFX()
+            } else {
+                // Vocal / dry: input → gate → monitorMixer → master
+                let gate = makeMonitorGate()
+                monitorGate = gate
+                graph.attachUtilityNode(gate)
+                graph.attachUtilityNode(monitorMixer)
+                graph.connect(input, to: gate, format: format)
+                graph.connect(gate, to: monitorMixer, format: format)
+                graph.connect(monitorMixer, to: graph.masterBus, format: nil)
+                monitorAttached = true
+                configureMonitorGate()
+            }
         } else {
             detachMonitoring()
         }
@@ -564,11 +668,72 @@ public final class MXRecorder: @unchecked Sendable {
         gate.bypass = !monitorGateEnabled
     }
 
+    /// Match StudioSessionController guitar insert style (HPF + mid, multiBrokenSpeaker, mediumRoom).
+    private func configureMonitorGuitarFX() {
+        guard monitorGuitarFX.enabled else { return }
+        let fx = monitorGuitarFX
+
+        if let eq = monitorEQ {
+            let hpf = eq.bands[0]
+            hpf.filterType = .highPass
+            hpf.frequency = 100
+            hpf.bandwidth = 0.5
+            hpf.bypass = false
+
+            if eq.bands.count > 1 {
+                let mid = eq.bands[1]
+                mid.filterType = .parametric
+                mid.frequency = 1_200
+                mid.bandwidth = 1.0
+                mid.gain = fx.eqMidGain
+                mid.bypass = abs(mid.gain) < 0.05
+            }
+            if eq.bands.count > 2 {
+                eq.bands[2].bypass = true
+            }
+            eq.globalGain = 0
+        }
+
+        if let distortion = monitorDistortion {
+            distortion.loadFactoryPreset(.multiBrokenSpeaker)
+            distortion.preGain = -3
+            distortion.wetDryMix = fx.distortionMix
+        }
+
+        if let delay = monitorDelay {
+            delay.delayTime = TimeInterval(max(fx.delayTime, 0.01))
+            delay.feedback = 35
+            delay.lowPassCutoff = 12_000
+            delay.wetDryMix = fx.delayMix
+        }
+
+        if let reverb = monitorReverb {
+            reverb.loadFactoryPreset(.mediumRoom)
+            reverb.wetDryMix = fx.reverbMix
+        }
+    }
+
     private func detachMonitoring() {
         guard monitorAttached else { return }
         if let gate = monitorGate {
             graph.detachUtilityNode(gate)
             monitorGate = nil
+        }
+        if let eq = monitorEQ {
+            graph.detachUtilityNode(eq)
+            monitorEQ = nil
+        }
+        if let distortion = monitorDistortion {
+            graph.detachUtilityNode(distortion)
+            monitorDistortion = nil
+        }
+        if let delay = monitorDelay {
+            graph.detachUtilityNode(delay)
+            monitorDelay = nil
+        }
+        if let reverb = monitorReverb {
+            graph.detachUtilityNode(reverb)
+            monitorReverb = nil
         }
         graph.detachUtilityNode(monitorMixer)
         monitorAttached = false

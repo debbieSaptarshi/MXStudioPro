@@ -57,8 +57,9 @@ public final class StudioSessionController {
 
     public var isMonitoringEnabled: Bool = false {
         didSet {
+            // Sync topology (guitar wet vs vocal dry) before attaching monitor path.
+            syncMonitorChain()
             recorder?.isMonitoringEnabled = isMonitoringEnabled
-            syncMonitorNoiseGate()
         }
     }
 
@@ -1275,6 +1276,7 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].reverbMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1318,6 +1320,7 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].eqMidGain = min(max(gain, -12), 12)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1328,6 +1331,7 @@ public final class StudioSessionController {
             project.tracks[index].delayTime = min(max(time, 0.01), 1)
         }
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1335,6 +1339,7 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].distortionMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1349,6 +1354,7 @@ public final class StudioSessionController {
         project.tracks[index].reverbMix = preset.reverbMix
         project.tracks[index].eqMidGain = preset.eqMidGain
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -2374,6 +2380,8 @@ public final class StudioSessionController {
     }
 
     private func installPlaybackMeterTap(on node: AVAudioNode, meterID: UUID) {
+        // Avoid AVAudioEngine "tap already installed" if a prior detach was skipped.
+        node.removeTap(onBus: 0)
         let format = node.outputFormat(forBus: 0)
         let tapFormat: AVAudioFormat? = format.sampleRate > 0 ? format : nil
         node.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
@@ -2425,13 +2433,31 @@ public final class StudioSessionController {
         return min(1, peak)
     }
 
-    /// Push armed-track noise gate settings onto the live monitor expander.
-    private func syncMonitorNoiseGate() {
+    /// Push armed-track monitor chain: wet guitar pedalboard or dry vocal + optional gate.
+    private func syncMonitorChain() {
         guard let recorder else { return }
         let track = armedTrack
-        let vocalGate = track?.category == .vocal && track?.noiseGateEnabled == true
-        recorder.monitorGateEnabled = vocalGate
-        recorder.monitorGateThreshold = track?.noiseGateThreshold ?? 0.02
+        if let track, track.category == .guitar {
+            recorder.monitorGuitarFX = MXMonitorGuitarFX.clamped(
+                enabled: true,
+                distortionMix: track.distortionMix,
+                delayMix: track.delayMix,
+                delayTime: track.delayTime,
+                reverbMix: track.reverbMix,
+                eqMidGain: track.eqMidGain
+            )
+            recorder.monitorGateEnabled = false
+        } else {
+            recorder.monitorGuitarFX = .disabled
+            let vocalGate = track?.category == .vocal && track?.noiseGateEnabled == true
+            recorder.monitorGateEnabled = vocalGate
+            recorder.monitorGateThreshold = track?.noiseGateThreshold ?? 0.02
+        }
+    }
+
+    /// Compatibility wrapper — prefer `syncMonitorChain()`.
+    private func syncMonitorNoiseGate() {
+        syncMonitorChain()
     }
 
     private func scheduleClipWarningClear() {
@@ -2484,8 +2510,9 @@ public final class StudioSessionController {
         #else
         isMonitoringEnabled = false
         #endif
+        // Chain first so guitar wet / vocal dry is set before attach.
+        syncMonitorChain()
         recorder?.isMonitoringEnabled = isMonitoringEnabled
-        syncMonitorNoiseGate()
     }
 
     private static func currentRouteHasHeadphones() -> Bool {
@@ -2506,8 +2533,8 @@ public final class StudioSessionController {
         if hasHeadphones {
             if isGuitar {
                 headphoneTip = isMonitoringEnabled
-                    ? "Monitoring on — phone mic or Lightning/USB DI; keep amp quiet if mic’d."
-                    : "Headphones connected — turn on Monitor to hear your DI / mic input."
+                    ? "Hearing pedalboard (Dist→Delay→Rev). DI records dry; FX on monitor & playback."
+                    : "Headphones connected — turn on Monitor to hear your pedalboard / DI."
             } else {
                 headphoneTip = isMonitoringEnabled
                     ? nil
@@ -2518,7 +2545,7 @@ public final class StudioSessionController {
                 isMonitoringEnabled = false
             }
             headphoneTip = isGuitar
-                ? "Speaker monitoring stays off (feedback). Plug in headphones for DI / mic monitor."
+                ? "Speaker monitoring stays off (feedback). Plug in headphones for pedalboard / DI monitor."
                 : "Monitoring stays off on speaker to avoid feedback."
         }
         #else
