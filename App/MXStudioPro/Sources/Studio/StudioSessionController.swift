@@ -1679,7 +1679,8 @@ public final class StudioSessionController {
         persistSoon()
     }
 
-    /// Aux reverb send (0…100). MIDI and audio tracks route through the shared aux bus.
+    /// Aux reverb send (0…100). MIDI live instruments + audio/MIDI bed clips
+    /// route through the shared reverb aux (BandLab / Logic send bus).
     public func setTrackReverbSend(_ mix: Float, trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         let clamped = MXAuxSend.clampPercent(mix)
@@ -1690,9 +1691,9 @@ public final class StudioSessionController {
            let aux = reverbAux,
            let graph {
             graph.setSend(MXAuxSend.linearGain(percent: clamped), from: chain, to: aux)
-        } else if track.kind == .audio {
-            applyAudioAuxSend(trackID: trackID)
         }
+        // Audio clips and rendered MIDI beds share the clip-player aux path.
+        applyAudioAuxSend(trackID: trackID)
         persistSoon()
     }
 
@@ -3653,9 +3654,7 @@ public final class StudioSessionController {
     }
 
     private func applyAudioAuxSend(trackID: UUID) {
-        guard let track = project.tracks.first(where: { $0.id == trackID }),
-              track.kind == .audio
-        else { return }
+        guard let track = project.tracks.first(where: { $0.id == trackID }) else { return }
         let sendLevel = MXAuxSend.linearGain(percent: track.reverbSend)
         let wantsAuxSend = sendLevel > 0
         var rebuilt = false
