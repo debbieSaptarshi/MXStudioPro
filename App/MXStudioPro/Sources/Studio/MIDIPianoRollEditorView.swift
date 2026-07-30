@@ -1,4 +1,5 @@
 import SwiftUI
+import MXStudioEngine
 
 /// Cubasis / GarageBand / Logic–lite piano roll editor (Weeks 55 / 58).
 ///
