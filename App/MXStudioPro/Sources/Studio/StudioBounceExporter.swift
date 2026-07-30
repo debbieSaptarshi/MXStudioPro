@@ -16,6 +16,39 @@ public enum StudioBounceExporter {
         public var m4aURL: URL
         public var durationSeconds: Double
         public var loudnessMode: LoudnessMode
+        /// Approx integrated LUFS after normalize/limit (Week 71 report). Not K-weighted certified.
+        public var integratedLUFS: Float
+        /// Sample-peak dBFS of the bounced mix (approx true-peak).
+        public var truePeakDBFS: Float
+        /// Target LUFS when Reels mode was applied; otherwise `nil`.
+        public var targetLUFS: Float?
+
+        public init(
+            wavURL: URL,
+            m4aURL: URL,
+            durationSeconds: Double,
+            loudnessMode: LoudnessMode,
+            integratedLUFS: Float = -.infinity,
+            truePeakDBFS: Float = -.infinity,
+            targetLUFS: Float? = nil
+        ) {
+            self.wavURL = wavURL
+            self.m4aURL = m4aURL
+            self.durationSeconds = durationSeconds
+            self.loudnessMode = loudnessMode
+            self.integratedLUFS = integratedLUFS
+            self.truePeakDBFS = truePeakDBFS
+            self.targetLUFS = targetLUFS
+        }
+
+        /// Convenience loudness report for the export UI.
+        public var loudnessReport: MXLoudness.Report {
+            MXLoudness.Report(
+                integratedLUFS: integratedLUFS,
+                truePeakDBFS: truePeakDBFS,
+                targetLUFS: targetLUFS
+            )
+        }
     }
 
     /// One per-track stem from `bounceStems` (Ableton / BandLab stem export lite).
@@ -149,11 +182,22 @@ public enum StudioBounceExporter {
         try writeWAV(left: left, right: right, sampleRate: sampleRate, to: wavURL)
         try writeM4A(left: left, right: right, sampleRate: sampleRate, to: m4aURL)
 
+        let target: Float? = appliedMode == .reelsLUFS ? -14 : nil
+        let loudness = MXLoudness.report(
+            left: left,
+            right: right,
+            sampleRate: sampleRate,
+            targetLUFS: target
+        )
+
         return Result(
             wavURL: wavURL,
             m4aURL: m4aURL,
             durationSeconds: totalSeconds,
-            loudnessMode: appliedMode
+            loudnessMode: appliedMode,
+            integratedLUFS: loudness.integratedLUFS,
+            truePeakDBFS: loudness.truePeakDBFS,
+            targetLUFS: target
         )
     }
 

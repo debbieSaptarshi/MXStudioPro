@@ -82,6 +82,45 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertEqual(MXLoudness.loudnessFromMeanSquare(0), -.infinity)
     }
 
+    // MARK: - Week 71 report
+
+    func testReportFiniteForTone() {
+        let (left, right) = makeStereoTone(amplitude: 0.25, seconds: 3)
+        let report = MXLoudness.report(left: left, right: right, sampleRate: sampleRate)
+        XCTAssertTrue(report.integratedLUFS.isFinite, "expected finite LUFS, got \(report.integratedLUFS)")
+        XCTAssertGreaterThan(report.integratedLUFS, -60)
+        XCTAssertLessThan(report.integratedLUFS, 0)
+        XCTAssertTrue(report.truePeakDBFS.isFinite)
+        XCTAssertLessThan(report.truePeakDBFS, 0)
+        XCTAssertEqual(report.sampleRate, sampleRate)
+        XCTAssertNil(report.targetLUFS)
+        XCTAssertNil(report.headroomLU)
+
+        let expectedPeak = max(MXAudioAnalysis.peakDB(left), MXAudioAnalysis.peakDB(right))
+        XCTAssertEqual(report.truePeakDBFS, expectedPeak, accuracy: 1e-5)
+    }
+
+    func testReportHeadroomAgainstTarget() {
+        let (left, right) = makeStereoTone(amplitude: 0.25, seconds: 3)
+        let target: Float = -14
+        let report = MXLoudness.report(left: left, right: right, sampleRate: sampleRate, targetLUFS: target)
+        XCTAssertEqual(report.targetLUFS, target)
+        XCTAssertTrue(report.integratedLUFS.isFinite)
+        let headroom = report.headroomLU
+        XCTAssertNotNil(headroom)
+        XCTAssertEqual(headroom!, target - report.integratedLUFS, accuracy: 1e-5)
+    }
+
+    func testReportSilenceNonFiniteLUFS() {
+        let silence = [Float](repeating: 0, count: Int(3 * sampleRate))
+        let report = MXLoudness.report(left: silence, right: silence, sampleRate: sampleRate, targetLUFS: -14)
+        XCTAssertEqual(report.integratedLUFS, -.infinity)
+        XCTAssertNil(report.headroomLU, "headroom should be nil when measured LUFS is non-finite")
+        XCTAssertEqual(report.targetLUFS, -14)
+        // Sample peak of digital silence → very low dBFS via MXAudioAnalysis floor.
+        XCTAssertLessThan(report.truePeakDBFS, -100)
+    }
+
     // MARK: - Fixtures
 
     private func makeStereoTone(amplitude: Float, seconds: Double, hz: Float = 440) -> ([Float], [Float]) {

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import MXStudioEngine
 
 /// BandLab-style export / publish sheet (Week 21).
 struct StudioExportSheet: View {
@@ -53,7 +54,8 @@ struct StudioExportSheet: View {
                         primaryTitle: "Share files",
                         primaryAction: presentShare,
                         secondaryTitle: "Done",
-                        secondaryAction: onDismiss
+                        secondaryAction: onDismiss,
+                        loudnessReport: lastBounce.map(\.loudnessReport)
                     )
                 case .publishSuccess:
                     successContent(
@@ -299,7 +301,8 @@ struct StudioExportSheet: View {
         primaryTitle: String,
         primaryAction: @escaping () -> Void,
         secondaryTitle: String?,
-        secondaryAction: (() -> Void)?
+        secondaryAction: (() -> Void)?,
+        loudnessReport: MXLoudness.Report? = nil
     ) -> some View {
         VStack(spacing: 24) {
             Spacer()
@@ -314,6 +317,9 @@ struct StudioExportSheet: View {
                     .font(MXFont.body2())
                     .foregroundStyle(MXColor.grey)
                     .multilineTextAlignment(.center)
+                if let report = loudnessReport {
+                    loudnessReportCard(report)
+                }
             }
             Spacer()
             VStack(spacing: 10) {
@@ -344,6 +350,76 @@ struct StudioExportSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }
+    }
+
+    /// Week 71 — YouTube / Reels-style loudness readout after bounce (approx, not certified).
+    private func loudnessReportCard(_ report: MXLoudness.Report) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Loudness report")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            HStack {
+                Text("Integrated")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.lightGrey)
+                Spacer()
+                Text(report.integratedLUFS.isFinite
+                     ? String(format: "%.1f LUFS", report.integratedLUFS)
+                     : "—")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.white)
+                    .monospacedDigit()
+            }
+            if let target = report.targetLUFS {
+                HStack {
+                    Text("Target")
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.lightGrey)
+                    Spacer()
+                    Text(String(format: "%.0f LUFS", target))
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.white)
+                        .monospacedDigit()
+                }
+                if let headroom = report.headroomLU, headroom.isFinite {
+                    HStack {
+                        Text("Headroom")
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.lightGrey)
+                        Spacer()
+                        Text(String(format: "%+.1f LU", headroom))
+                            .font(MXFont.body3())
+                            .foregroundStyle(headroom >= 0 ? MXColor.accent : MXColor.orange)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            HStack {
+                Text("True peak")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.lightGrey)
+                Spacer()
+                Text(report.truePeakDBFS.isFinite
+                     ? String(format: "%.1f dBFS", report.truePeakDBFS)
+                     : "—")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.white)
+                    .monospacedDigit()
+            }
+            Text("Approx LUFS · not broadcast-certified")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey.opacity(0.75))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.layer2)
+        )
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loudness report")
     }
 
     private func errorContent(message: String, retry: RetryAction) -> some View {

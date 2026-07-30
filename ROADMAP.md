@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 18 W70 **time-stretch lite** shipping — next W71 LUFS report, W72 cloud spine.
+**Current focus:** Month 18 W71 **LUFS report sheet** shipping — next W72 cloud auth spine.
 
 ---
 
@@ -83,6 +83,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **67** | Zoom-adaptive arrange grid + pinch/± zoom | **Done (MVP)** ✅ |
 | **68** | Piano-roll draw mode lite | **Done (MVP)** ✅ |
 | **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ |
+| **70** | Time-stretch clip lite | **Done (MVP)** ✅ |
+| **71** | LUFS report sheet after bounce | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -830,8 +832,8 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
 | **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ | GarageBand / CapCut |
-| **70** | Time-stretch clip lite | **Planned** | Ableton / BandLab |
-| **71** | Certified LUFS report sheet after bounce | **Planned** | Reels / YouTube Loudness |
+| **70** | Time-stretch clip lite | **Done (MVP)** ✅ | Ableton / BandLab |
+| **71** | LUFS report sheet after bounce | **Done (MVP)** ✅ | Reels / YouTube Loudness |
 | **72** | Cloud auth sync spine (beyond local MVP) | **Planned** | BandLab |
 
 ### Week 69 — Pitch correction lite ✅
@@ -844,13 +846,33 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 
 **Week 69 notes:** Not Flex Pitch note blobs / formant preserve / live AUTimePitch. Bounce inherits baked file automatically.
 
-### Week 70 — Time-stretch clip lite *(next)*
+### Week 70 — Time-stretch clip lite ✅
 
 **Done when (Ableton warp / BandLab stretch lite)**
-- [ ] Pure `MXTimeStretch` duration-preserving or length-retarget resample / WSOLA-lite
-- [ ] Clip inspector or trim gesture: stretch clip `lengthBeats` without changing pitch (or rate-change MVP)
-- [ ] Live schedule + bounce honor stretch
-- [ ] Unit tests for identity ratio + length change
+- [x] Pure `MXTimeStretch` WSOLA-lite — factor 0.5…2.0 pitch-preserving OLA; identity near 1.0
+- [x] Session `applyTimeStretch(toLengthBeats:)` bakes new WAV; updates lengthBeats, fades, clip automation
+- [x] Clip inspector: stretch length slider (0.5×…2×) + Apply Time Stretch
+- [x] Unit tests: identity, 1.5× longer, 0.75× shorter, empty safe
+
+**Week 70 notes:** No warp markers / transient mode / live AUTimePitch. MIDI clips excluded (stretch notes separately later).
+
+### Week 71 — LUFS report sheet after bounce ✅
+
+**Done when (Reels / YouTube loudness report lite)**
+- [x] `MXLoudness.Report` — integrated LUFS + sample-peak dBFS + optional target headroom
+- [x] Bounce `Result` carries measured LUFS / peak / target after normalize
+- [x] Export success UI shows Loudness report card (Integrated, Target, Headroom, True peak)
+- [x] Unit tests for report tone / headroom / silence
+
+**Week 71 notes:** Labeled “Approx LUFS · not broadcast-certified” — still mean-square gated MVP, not K-weighted ITU meter. Stems bounce does not yet attach per-stem reports.
+
+### Week 72 — Cloud auth sync spine *(next)*
+
+**Done when (BandLab account sync lite)**
+- [ ] Auth session can mark cloud-linked vs local-only
+- [ ] Stub sync queue / last-synced timestamp persisted
+- [ ] Settings or Profile shows sync status; guest remains local
+- [ ] No secrets in repo; real backend remains operator-configured
 
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
@@ -860,11 +882,11 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
 - **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
-- **Export:** Video + audio Reels export; loudness report sheet after bounce ← W71
-- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ← W70; harmonies; beat browser
+- **Export:** Video + audio Reels export; loudness report sheet after bounce ✅ W71
+- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies; beat browser
 - **Social/AI:** Cloud auth sync ← W72; real model API for AI compose; live Discover catalog
 - **Figma parity:** Create hub + landscape 812×375 second pass
-- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; true-peak (dBTP) in export report; sidechain on bounce path; audio→aux reverb bus
+- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; true-peak (dBTP) inter-sample later; sidechain on bounce path; audio→aux reverb bus; K-weighted LUFS upgrade
 
 **SOTA next (Month 18 / beyond)**
 - Nested takes × drum parts; SFZ kit choke

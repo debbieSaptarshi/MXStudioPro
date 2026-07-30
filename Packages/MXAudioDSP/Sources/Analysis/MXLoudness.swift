@@ -135,6 +135,59 @@ public enum MXLoudness {
         applyGain(ceiling / peak, left: &left, right: &right)
     }
 
+    // MARK: - Report (Week 71)
+
+    /// Post-bounce loudness report: integrated LUFS, sample-peak dBFS, optional target.
+    ///
+    /// `truePeakDBFS` is **approx true-peak / sample peak** — `MXAudioAnalysis.peakDB`
+    /// of the louder channel (max of L/R). Not inter-sample true peak (ITU-R BS.1770).
+    public struct Report: Sendable, Equatable {
+        public var integratedLUFS: Float
+        /// Approx true-peak / sample peak in dBFS (max of L/R sample peak).
+        public var truePeakDBFS: Float
+        public var targetLUFS: Float?
+        public var sampleRate: Double
+
+        public init(integratedLUFS: Float,
+                    truePeakDBFS: Float,
+                    targetLUFS: Float? = nil,
+                    sampleRate: Double = 48_000) {
+            self.integratedLUFS = integratedLUFS
+            self.truePeakDBFS = truePeakDBFS
+            self.targetLUFS = targetLUFS
+            self.sampleRate = sampleRate
+        }
+
+        /// Headroom in LU relative to target (`target - measured`).
+        /// Nil if no target or non-finite measured LUFS.
+        public var headroomLU: Float? {
+            guard let targetLUFS, integratedLUFS.isFinite else { return nil }
+            return targetLUFS - integratedLUFS
+        }
+    }
+
+    /// Build a bounce/export loudness report from mono or stereo float buffers.
+    ///
+    /// - Parameters:
+    ///   - left: Left (or mono) channel samples.
+    ///   - right: Optional right channel; when `nil`, `left` is treated as mono.
+    ///   - sampleRate: Sample rate of the buffers.
+    ///   - targetLUFS: Optional export target (e.g. −14 for Reels).
+    /// - Returns: Report with integrated LUFS and sample-peak dBFS (approx true-peak).
+    public static func report(left: [Float],
+                              right: [Float]? = nil,
+                              sampleRate: Double = 48_000,
+                              targetLUFS: Float? = nil) -> Report {
+        let integrated = integratedLUFS(left: left, right: right, sampleRate: sampleRate)
+        let leftPeakDB = MXAudioAnalysis.peakDB(left)
+        let rightPeakDB = right.map { MXAudioAnalysis.peakDB($0) } ?? -.infinity
+        let truePeak = max(leftPeakDB, rightPeakDB)
+        return Report(integratedLUFS: integrated,
+                      truePeakDBFS: truePeak,
+                      targetLUFS: targetLUFS,
+                      sampleRate: sampleRate)
+    }
+
     // MARK: - Live / momentary (Week 59)
 
     /// Momentary loudness from a short buffer (GarageBand / Reels live meter lite).
