@@ -43,4 +43,34 @@ final class MXMIDIQuantizeTests: XCTestCase {
         let q = MXMIDIQuantize.quantizeStarts(notes)
         XCTAssertEqual(q[0].startBeat, 0, accuracy: 1e-9)
     }
+
+    func testStrengthZeroIsIdentity() {
+        let notes = [MXMIDINote(note: 36, velocity: 100, startBeat: 1.07, lengthBeats: 0.4)]
+        let q = MXMIDIQuantize.quantizeStarts(notes, strength: 0)
+        XCTAssertEqual(q[0].startBeat, 1.07, accuracy: 1e-9)
+    }
+
+    func testStrengthHalfBlendsTowardGrid() {
+        // 1.07 snaps to 1.0; half strength → 1.035
+        let notes = [MXMIDINote(note: 36, velocity: 100, startBeat: 1.07, lengthBeats: 0.25)]
+        let q = MXMIDIQuantize.quantizeStarts(notes, strength: 0.5)
+        XCTAssertEqual(q[0].startBeat, 1.035, accuracy: 1e-9)
+    }
+
+    func testSwingDelaysOddSixteenths() {
+        // Beat 0.25 is odd 16th index 1 → delayed by swing * 0.25 * 0.5
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0.0, lengthBeats: 0.2),
+            MXMIDINote(note: 38, velocity: 100, startBeat: 0.25, lengthBeats: 0.2),
+        ]
+        let q = MXMIDIQuantize.quantizeStarts(notes, strength: 1, swing: 1)
+        XCTAssertEqual(q[0].startBeat, 0.0, accuracy: 1e-9)
+        XCTAssertEqual(q[1].startBeat, 0.25 + 0.125, accuracy: 1e-9)
+    }
+
+    func testSwungGridBeatHelper() {
+        XCTAssertEqual(MXMIDIQuantize.swungGridBeat(0.26, swing: 0), 0.25, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.swungGridBeat(0.26, swing: 1), 0.375, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.swungGridBeat(0.01, swing: 1), 0.0, accuracy: 1e-9)
+    }
 }

@@ -72,6 +72,14 @@ public final class StudioSessionController {
     /// Snap MIDI note starts to 16ths when committing a pad/keys performance.
     /// Session preference (not persisted). Independent of arrange `isSnapEnabled`.
     public var isMIDIQuantizeEnabled: Bool = true
+    /// GarageBand-style quantize strength 0…1 (blend original → grid). Default full snap.
+    public var midiQuantizeStrength: Double = 1 {
+        didSet { midiQuantizeStrength = min(1, max(0, midiQuantizeStrength)) }
+    }
+    /// Logic-style swing 0…1 applied to odd 16ths when quantizing. Default straight.
+    public var midiQuantizeSwing: Double = 0 {
+        didSet { midiQuantizeSwing = min(1, max(0, midiQuantizeSwing)) }
+    }
 
     /// Prefer mono capture when recording on a vocal-category armed track.
     /// Session preference (not persisted). Guitar / import paths leave this unused.
@@ -1240,22 +1248,20 @@ public final class StudioSessionController {
         } else {
             audible = clip.lengthBeats * 60.0 / max(project.bpm, 1)
         }
-        var changed = false
+        var nextIn = clip.fadeInSeconds
+        var nextOut = clip.fadeOutSeconds
         if let fadeIn = fadeInSeconds {
-            let next = min(max(0, fadeIn), max(0, audible))
-            if abs(next - clip.fadeInSeconds) > 1e-4 {
-                clip.fadeInSeconds = next
-                changed = true
-            }
+            nextIn = min(max(0, fadeIn), max(0, audible))
         }
         if let fadeOut = fadeOutSeconds {
-            let next = min(max(0, fadeOut), max(0, audible))
-            if abs(next - clip.fadeOutSeconds) > 1e-4 {
-                clip.fadeOutSeconds = next
-                changed = true
-            }
+            nextOut = min(max(0, fadeOut), max(0, audible))
         }
+        let changed =
+            abs(nextIn - clip.fadeInSeconds) > 1e-4 || abs(nextOut - clip.fadeOutSeconds) > 1e-4
         guard changed else { return }
+        pushUndoSnapshot()
+        clip.fadeInSeconds = nextIn
+        clip.fadeOutSeconds = nextOut
         replaceClip(clip)
         persistSoon()
         if transport?.isPlaying == true, let sample = transport?.currentSample {
@@ -1595,9 +1601,14 @@ public final class StudioSessionController {
 
     /// Audition a kit hit without performance capture (step-sequencer cell preview).
     public func previewNote(_ note: UInt8, velocity: UInt8 = 100) {
-        activeMIDIInstrument()?.noteOn(note, velocity: velocity)
-        // Brief one-shot: drums don't need a held note-off gate for preview.
-        activeMIDIInstrument()?.noteOff(note)
+        guard let instrument = activeMIDIInstrument() else { return }
+        instrument.noteOn(note, velocity: velocity)
+        // Hold briefly so the drum envelope can speak (immediate noteOff is silent).
+        let held = note
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            instrument.noteOff(held)
+        }
     }
 
     public func allNotesOff() {
@@ -1683,7 +1694,11 @@ public final class StudioSessionController {
 
         // Quantize absolute starts so the clip lands on the grid (GarageBand-style).
         if isMIDIQuantizeEnabled {
-            notes = MXMIDIQuantize.quantizeStarts(notes)
+            notes = MXMIDIQuantize.quantizeStarts(
+                notes,
+                strength: midiQuantizeStrength,
+                swing: midiQuantizeSwing
+            )
         }
 
         let startBeat = notes.map(\.startBeat).min() ?? 0
@@ -1797,6 +1812,75 @@ public final class StudioSessionController {
         selectedClipID = clip.id
         persistSoon()
         return clip.id
+    }
+
+    /// Re-apply capture quantize settings to the selected MIDI clip (Logic Quantize).
+    /// Updates `midiNotes`, re-renders the audible WAV bed, and keeps length/start.
+    @discardableResult
+    public func requantizeSelectedMIDIClip() -> Bool {
+        guard let id = selectedClipID, var clip = clip(id) else { return false }
+        guard !clip.midiNotes.isEmpty else { return false }
+        guard let trackIndex = project.tracks.firstIndex(where: { $0.id == clip.trackID }),
+              project.tracks[trackIndex].kind == .midi
+        else { return false }
+
+        let quantized = MXMIDIQuantize.quantizeStarts(
+            clip.midiNotes,
+            strength: midiQuantizeStrength,
+            swing: midiQuantizeSwing
+        )
+        let identical = zip(clip.midiNotes, quantized).allSatisfy {
+            abs($0.startBeat - $1.startBeat) < 1e-9
+                && abs($0.lengthBeats - $1.lengthBeats) < 1e-9
+        }
+        guard !identical else { return false }
+
+        pushUndoSnapshot()
+        clip.midiNotes = quantized
+        // Expand length if swing pushes a note past the clip end.
+        let endBeat = quantized.map(\.endBeat).max() ?? clip.lengthBeats
+        if endBeat > clip.lengthBeats {
+            clip.lengthBeats = endBeat
+            clip.sourceDurationSeconds = endBeat * 60.0 / max(bpm, 1)
+        }
+
+        let bank = synthBankPreset(for: clip.trackID)
+        let isDrums = project.tracks[trackIndex].category == .drums
+        let audible: [MXMIDINote]
+        if isDrums {
+            audible = quantized.audibleDrumNotes(
+                muted: project.tracks[trackIndex].mutedDrumPartSet,
+                soloed: project.tracks[trackIndex].soloedDrumPartSet
+            )
+        } else {
+            audible = quantized
+        }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let prefix = isDrums ? "drums" : "keys"
+        let fileName = "\(prefix)_q_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            stopClipPlayers()
+            try renderMIDIAudibleBed(
+                notes: audible,
+                to: url,
+                preset: bank.preset,
+                lengthBeats: clip.lengthBeats
+            )
+            clip.audioFileName = fileName
+        } catch {
+            recordError = "Quantize failed: \(error.localizedDescription)"
+            return false
+        }
+
+        replaceClip(clip)
+        attachPlayer(for: clip)
+        persistSoon()
+        if isPlaying, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+        return true
     }
 
     @discardableResult

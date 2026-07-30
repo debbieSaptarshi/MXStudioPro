@@ -3201,13 +3201,14 @@ private struct InteractiveStudioClip: View {
                 }
                 .frame(width: displayWidth, height: clipHeight)
 
-                fadeInHandle
-                fadeOutHandle
-
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(MXColor.white.opacity(0.06))
                     .frame(width: displayWidth, height: clipHeight)
                     .allowsHitTesting(false)
+
+                // Fade drag knobs above chrome so they stay hittable (Logic / Pro Tools).
+                fadeInHandle
+                fadeOutHandle
             }
         }
         .frame(width: displayWidth, height: clipHeight, alignment: .leading)
