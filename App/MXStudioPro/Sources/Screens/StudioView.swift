@@ -116,6 +116,13 @@ public struct StudioView: View {
             session.start()
             selectedTrackID = session.project.armedTrack?.id ?? session.project.tracks.first?.id
             if isLandscape { tracksCollapsed = true }
+            MXOrientationLock.applyForRecordMode(session.isRecordMode)
+        }
+        .onChange(of: session.isRecordMode) { _, isRecordMode in
+            MXOrientationLock.applyForRecordMode(isRecordMode)
+        }
+        .onDisappear {
+            MXOrientationLock.unlock()
         }
         .onChange(of: verticalSizeClass) { _, _ in
             // Landscape defaults to Hide Tracks for denser Figma 812×375 arrange.
@@ -1567,6 +1574,15 @@ public struct StudioView: View {
                     } else {
                         session.setLoopToSelectionOrBar()
                     }
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
+                    title: "Lock portrait while recording",
+                    subtitle: "Keeps Rec chrome upright; off allows landscape record",
+                    isOn: MXOrientationLock.prefersPortraitWhileRecording
+                ) {
+                    MXOrientationLock.prefersPortraitWhileRecording.toggle()
+                    MXOrientationLock.applyForRecordMode(session.isRecordMode)
                 }
                 if session.selectedClipID != nil {
                     Divider().overlay(MXColor.layer2)

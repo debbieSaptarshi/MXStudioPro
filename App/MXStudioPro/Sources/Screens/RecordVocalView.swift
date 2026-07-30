@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Record Vocal / Audio screen (Figma 95:83675) — working features over pixel-perfect layout.
+/// Record Vocal / Audio screen (Figma 95:83675 / landscape 95:81418).
 struct RecordVocalView: View {
     @Bindable var session: StudioSessionController
     var onClose: () -> Void
     /// Opens the Studio Track FX / Pedalboard sheet (wired from `StudioView`).
     var onOpenFX: (() -> Void)? = nil
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    /// Compact landscape record chrome (Figma Recording landscape `95:81418`).
+    private var isLandscape: Bool { verticalSizeClass == .compact }
 
     private var armedTrack: MXSessionTrack? {
         session.project.armedTrack ?? session.project.tracks.first
@@ -21,7 +26,8 @@ struct RecordVocalView: View {
                 liveWaveform
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 captureQualityStrip
-                if let track = armedTrack {
+                // Landscape: hide mixer strip — meter + Monitor cover levels (GarageBand densify).
+                if !isLandscape, let track = armedTrack {
                     mixerStrip(track: track)
                 }
                 detailsStrip
@@ -54,19 +60,23 @@ struct RecordVocalView: View {
     }
 
     private var recordHeader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: isLandscape ? 10 : 16) {
             HStack(spacing: 4) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(isGuitarCapture ? "Pedalboard" : "No Fx")
                         .font(MXFont.smallButton())
                         .foregroundStyle(MXColor.white)
-                    Text(armedTrack?.name ?? (isGuitarCapture ? "Guitar" : "Vocal/Audio"))
-                        .font(MXFont.caption())
+                    if !isLandscape {
+                        Text(armedTrack?.name ?? (isGuitarCapture ? "Guitar" : "Vocal/Audio"))
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                    }
+                }
+                if !isLandscape {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(MXColor.grey)
                 }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(MXColor.grey)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -77,7 +87,7 @@ struct RecordVocalView: View {
                     Text(isGuitarCapture ? "Pedals" : "EQ")
                         .font(MXFont.mediumButton())
                         .foregroundStyle(MXColor.white)
-                        .padding(10)
+                        .padding(isLandscape ? 8 : 10)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(MXColor.layer2)
@@ -86,14 +96,16 @@ struct RecordVocalView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isGuitarCapture ? "Pedalboard" : "Track FX")
 
-                metalIcon("square.and.arrow.up")
-                metalIcon("ellipsis")
+                if !isLandscape {
+                    metalIcon("square.and.arrow.up")
+                    metalIcon("ellipsis")
+                }
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(MXColor.white)
                         .frame(width: 20, height: 20)
-                        .padding(10)
+                        .padding(isLandscape ? 8 : 10)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(MXColor.layer2)
@@ -107,8 +119,8 @@ struct RecordVocalView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, isLandscape ? 12 : 16)
+        .padding(.vertical, isLandscape ? 6 : 12)
         .background(MXColor.surfaceRaised)
     }
 
@@ -261,7 +273,7 @@ struct RecordVocalView: View {
                     }
 
                     LiveInputWaveform(level: session.inputLevel, isActive: session.isRecording)
-                        .frame(height: min(160, geo.size.height * 0.45))
+                        .frame(height: min(isLandscape ? 120 : 160, geo.size.height * (isLandscape ? 0.7 : 0.45)))
                         .padding(.horizontal, 8)
 
                     // Playhead
@@ -292,7 +304,7 @@ struct RecordVocalView: View {
     // MARK: - Capture quality
 
     private var captureQualityStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: isLandscape ? 0 : 8) {
             HStack(spacing: 12) {
                 Toggle(isOn: $session.isHighPassEnabled) {
                     Text(isGuitarCapture ? "Cut rumble (DI)" : "Cut rumble")
@@ -311,20 +323,23 @@ struct RecordVocalView: View {
                 Spacer(minLength: 0)
             }
 
-            if let tip = session.headphoneTip {
-                Text(tip)
-                    .font(MXFont.caption())
-                    .foregroundStyle(MXColor.grey)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if isGuitarCapture {
-                Text("Input: phone mic or Lightning/USB DI — same record path.")
-                    .font(MXFont.caption())
-                    .foregroundStyle(MXColor.grey)
-                    .fixedSize(horizontal: false, vertical: true)
+            // Landscape: hide tip copy — toggles only (Figma densify).
+            if !isLandscape {
+                if let tip = session.headphoneTip {
+                    Text(tip)
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if isGuitarCapture {
+                    Text("Input: phone mic or Lightning/USB DI — same record path.")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, isLandscape ? 12 : 16)
+        .padding(.vertical, isLandscape ? 6 : 10)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
     }
@@ -461,12 +476,13 @@ struct RecordVocalView: View {
     // MARK: - Details + transport (shared look)
 
     private var detailsStrip: some View {
-        HStack(spacing: 0) {
-            detail(String(format: "%03d", session.playheadBar), "Bar")
+        let vPad: CGFloat = isLandscape ? 8 : 16
+        return HStack(spacing: 0) {
+            detail(String(format: "%03d", session.playheadBar), "Bar", verticalPadding: vPad)
             divider
-            detail("\(session.playheadBeatInBar)", "Beat")
+            detail("\(session.playheadBeatInBar)", "Beat", verticalPadding: vPad)
             divider
-            VStack(spacing: 4) {
+            VStack(spacing: isLandscape ? 2 : 4) {
                 Text("\(session.project.timeSignatureNumerator)/\(session.project.timeSignatureDenominator)")
                     .font(MXFont.studioReadout())
                     .foregroundStyle(MXColor.lightGrey)
@@ -475,9 +491,9 @@ struct RecordVocalView: View {
                     .foregroundStyle(MXColor.grey)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, vPad)
             divider
-            VStack(spacing: 4) {
+            VStack(spacing: isLandscape ? 2 : 4) {
                 HStack {
                     Button { session.nudgeBPM(-1) } label: {
                         Image(systemName: "minus")
@@ -504,15 +520,15 @@ struct RecordVocalView: View {
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
             }
-            .frame(width: 125)
-            .padding(.vertical, 16)
+            .frame(width: isLandscape ? 110 : 125)
+            .padding(.vertical, vPad)
         }
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
     }
 
-    private func detail(_ value: String, _ label: String) -> some View {
+    private func detail(_ value: String, _ label: String, verticalPadding: CGFloat = 16) -> some View {
         VStack(spacing: 4) {
             Text(value)
                 .font(MXFont.studioReadout())
@@ -522,7 +538,7 @@ struct RecordVocalView: View {
                 .foregroundStyle(MXColor.grey)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(.vertical, verticalPadding)
     }
 
     private var divider: some View {
@@ -530,11 +546,17 @@ struct RecordVocalView: View {
     }
 
     private var actionBoard: some View {
-        HStack {
+        let recOuter: CGFloat = isLandscape ? 40 : 52
+        let recInner: CGFloat = isLandscape ? 22 : 28
+        let stopInner: CGFloat = isLandscape ? 16 : 22
+        let pad: CGFloat = isLandscape ? 7 : 10
+        return HStack {
             HStack(spacing: 2) {
-                transportIcon("arrow.uturn.backward") {}
-                transportIcon("arrow.uturn.forward") {}
-                transportIcon("chevron.backward.2") { session.stop() }
+                if !isLandscape {
+                    transportIcon("arrow.uturn.backward") {}
+                    transportIcon("arrow.uturn.forward") {}
+                }
+                transportIcon("chevron.backward.2", pad: pad) { session.stop() }
             }
             .padding(2)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MXColor.black))
@@ -545,23 +567,24 @@ struct RecordVocalView: View {
                 session.toggleRecord()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: isLandscape ? 12 : 16, style: .continuous)
                         .fill(MXColor.layer2)
-                        .frame(width: 52, height: 52)
+                        .frame(width: recOuter, height: recOuter)
                     if session.isRecording {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.red)
-                            .frame(width: 22, height: 22)
+                            .frame(width: stopInner, height: stopInner)
                     } else {
                         Circle()
                             .fill(MXColor.red)
-                            .frame(width: 28, height: 28)
+                            .frame(width: recInner, height: recInner)
                     }
                 }
                 .padding(4)
                 .background(Capsule(style: .continuous).fill(MXColor.black))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(session.isRecording ? "Stop recording" : "Record")
 
             Spacer()
 
@@ -571,7 +594,7 @@ struct RecordVocalView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(MXColor.white)
                         .frame(width: 20, height: 20)
-                        .padding(10)
+                        .padding(pad)
                         .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(MXColor.layer2))
                 }
                 .buttonStyle(.plain)
@@ -582,7 +605,7 @@ struct RecordVocalView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(session.isMetronomeEnabled ? MXColor.accent : MXColor.white)
                         .frame(width: 20, height: 20)
-                        .padding(10)
+                        .padding(pad)
                         .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(MXColor.layer2))
                         .overlay {
                             if session.isMetronomeEnabled {
@@ -593,23 +616,25 @@ struct RecordVocalView: View {
                 }
                 .buttonStyle(.plain)
 
-                transportIcon("slider.horizontal.3") {}
+                if !isLandscape {
+                    transportIcon("slider.horizontal.3") {}
+                }
             }
             .padding(2)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MXColor.black))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isLandscape ? 12 : 16)
+        .padding(.vertical, isLandscape ? 4 : 8)
         .background(MXColor.surfaceRaised)
     }
 
-    private func transportIcon(_ systemName: String, action: @escaping () -> Void) -> some View {
+    private func transportIcon(_ systemName: String, pad: CGFloat = 10, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(MXColor.white)
                 .frame(width: 20, height: 20)
-                .padding(10)
+                .padding(pad)
                 .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(MXColor.layer2))
         }
         .buttonStyle(.plain)

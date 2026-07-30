@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct MXStudioProApp: App {
+    @UIApplicationDelegateAdaptor(MXAppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             RootView()

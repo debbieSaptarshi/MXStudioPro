@@ -52,6 +52,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **38** | Playback strip meters (mixer) | **Done (MVP)** ✅ live peak + peak-hold beside faders |
 | **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ Dist→Delay→Rev on armed guitar monitor |
 | **40** | Per-part drum lanes (Kick/Snare/Hats…) | **Done (MVP)** ✅ BandLab-style part columns |
+| **41** | Record orientation lock + landscape chrome | **Done (MVP)** ✅ opt-in portrait lock; densified Rec |
 
 ### Figma anchors (shipped / in use)
 
@@ -397,7 +398,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 | Week | Focus | Status |
 |------|--------|--------|
 | **40** | Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Done (MVP)** ✅ |
-| **41** | Optional record orientation lock; Record landscape chrome | **Planned** |
+| **41** | Optional record orientation lock; Record landscape chrome | **Done (MVP)** ✅ |
 | — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
 
 ### Week 40 — Per-part drum lanes ✅
@@ -414,11 +415,21 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 
 **Week 40 notes:** Parts are arrange UI only — not separate WAVs, not per-part mute. Playlist takes remain orthogonal (`takeIndex`). Deferred: step sequencer, SFZ kit choke, nested takes×parts.
 
+### Week 41 — Record orientation lock + landscape chrome ✅
+
+**Done when (GarageBand densify + opt-in lock)**
+- [x] Settings: “Lock portrait while recording” (UserDefaults, default **off**)
+- [x] Lock on → record stays portrait via `MXOrientationLock` + `MXAppDelegate` mask; exit unlocks Studio rotate
+- [x] Lock off → landscape record densifies chrome (Figma `95:81418`): waveform dominant, mixer/tips hidden, compact header/details/Rec
+- [x] Quick Recording uses same chrome/lock path (`RecordVocalView`)
+- [x] Studio arrange landscape + piano/pads unchanged when not in record
+
+**Week 41 notes:** Unlock on `StudioView.onDisappear` to avoid mask leaks. Preference change while recording re-applies immediately. Cloud/backend remains Month 11+ parallel work.
+
 ### Month 11 remaining
 
 | Focus | Status |
 |-------|--------|
-| Optional record orientation lock; Record landscape chrome | **Planned** |
 | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
 
 ### Implementation notes (shared — Month 9)
