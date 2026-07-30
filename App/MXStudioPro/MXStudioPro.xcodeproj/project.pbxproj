@@ -43,6 +43,8 @@
 		C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */; };
 		C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003D /* MXDemoTemplates.swift */; };
 		C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */; };
+		C1A00101AAAA000100000061 /* MetalLiveWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */; };
+		C1A00101AAAA000100000063 /* MetalWaveform.metal in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000062 /* MetalWaveform.metal */; };
 		C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */; };
 		C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000041 /* DemoTemplatesView.swift */; };
 		C1A00101AAAA000100000042 /* LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000043 /* LearnView.swift */; };
@@ -91,6 +93,8 @@
 		C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIStudioImporter.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003D /* MXDemoTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDemoTemplates.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietRoomChecklist.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalLiveWaveformView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000062 /* MetalWaveform.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MetalWaveform.metal; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDiscoverStudioBridge.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000041 /* DemoTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTemplatesView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000043 /* LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnView.swift; sourceTree = "<group>"; };
@@ -156,6 +160,8 @@
 				DBAC61729A0CC859DDB133F9 /* MXComponents.swift */,
 				C1A00101AAAA000100000015 /* MXHeader.swift */,
 				C1A00101AAAA000100000016 /* MXInput.swift */,
+				C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */,
+				C1A00101AAAA000100000062 /* MetalWaveform.metal */,
 				C1A00101AAAA000100000017 /* MXSocialFeed.swift */,
 				C1A00101AAAA000100000012 /* MXToggle.swift */,
 			);
@@ -347,6 +353,8 @@
 				C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */,
 				C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */,
 				C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */,
+				C1A00101AAAA000100000061 /* MetalLiveWaveformView.swift in Sources */,
+				C1A00101AAAA000100000063 /* MetalWaveform.metal in Sources */,
 				C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */,
 				C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */,
 				C1A00101AAAA000100000042 /* LearnView.swift in Sources */,

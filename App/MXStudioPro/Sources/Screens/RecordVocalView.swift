@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Record Vocal / Audio screen (Figma 95:83675) — working features over pixel-perfect layout.
+/// Record Vocal / Audio screen — Figma `95:83675` / track focus `95:91592`.
 struct RecordVocalView: View {
     @Bindable var session: StudioSessionController
     var onClose: () -> Void
     /// Opens the Studio Track FX / Pedalboard sheet (wired from `StudioView`).
     var onOpenFX: (() -> Void)? = nil
+
+    /// Figma Box Bottom Pop-up: 8pt pad + 70pt track card.
+    private let mixerStripHeight: CGFloat = 86
+    /// Figma Studio Details row.
+    private let detailsStripHeight: CGFloat = 70
 
     private var armedTrack: MXSessionTrack? {
         session.project.armedTrack ?? session.project.tracks.first
@@ -13,20 +18,40 @@ struct RecordVocalView: View {
 
     var body: some View {
         ZStack {
+            // Figma `95:91592` Bottom Actions stack:
+            // Header 68 → Net ~420 → Box Bottom Pop-up 86 → Details 70 → Transport 76.
             VStack(spacing: 0) {
                 recordHeader
+                    .frame(height: 68)
+
                 if session.showClipWarning {
                     clipWarningBanner
                 }
-                liveWaveform
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                captureQualityStrip
+
+                // Net fills leftover height; toggles overlay top so mixer stays flush under Net.
+                ZStack(alignment: .top) {
+                    liveWaveform
+                    captureQualityOverlay
+                        .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+
                 if let track = armedTrack {
                     mixerStrip(track: track)
+                        .frame(height: mixerStripHeight)
+                        .clipped()
                 }
+
                 detailsStrip
+                    .frame(height: detailsStripHeight)
+                    .clipped()
+
                 actionBoard
+                    .frame(height: 76)
+                    .clipped()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(MXColor.surface.ignoresSafeArea())
 
             if session.showQuietRoomTip {
@@ -104,7 +129,7 @@ struct RecordVocalView: View {
             )
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MXColor.surfaceRaised)
     }
 
@@ -242,53 +267,96 @@ struct RecordVocalView: View {
 
     private var liveWaveform: some View {
         GeometryReader { geo in
-            HStack(spacing: 8) {
-                ZStack {
-                    MXColor.surface
+            // Figma Track Signal ≈ 157pt tall, vertically centered in Net.
+            let signalHeight = min(157, max(120, geo.size.height * 0.38))
+            ZStack {
+                // Soft depth behind the Metal wave
+                LinearGradient(
+                    colors: [
+                        MXColor.surface,
+                        Color(hex: 0x14181C),
+                        MXColor.surface
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
 
-                    // Beat grid backdrop
-                    HStack(spacing: 0) {
-                        ForEach(0..<8, id: \.self) { beat in
-                            Rectangle()
-                                .fill(beat % 4 == 0 ? MXColor.layer2.opacity(0.8) : MXColor.layer2.opacity(0.35))
-                                .frame(width: 1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-
-                    LiveInputWaveform(level: session.inputLevel, isActive: session.isRecording)
-                        .frame(height: min(160, geo.size.height * 0.45))
-                        .padding(.horizontal, 8)
-
-                    // Playhead
-                    Rectangle()
-                        .fill(MXColor.white)
-                        .frame(width: 1.5)
-                        .offset(x: playheadOffset(width: max(geo.size.width - 28, 1)) - max(geo.size.width - 28, 1) / 2)
-
-                    VStack {
-                        Spacer()
-                        statusCaption
-                            .padding(.bottom, 12)
+                // Beat grid backdrop
+                HStack(spacing: 0) {
+                    ForEach(0..<8, id: \.self) { beat in
+                        Rectangle()
+                            .fill(beat % 4 == 0 ? MXColor.layer2.opacity(0.8) : MXColor.layer2.opacity(0.35))
+                            .frame(width: 1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
-                InputPeakMeter(
+                // Ambient glow plate under the signal
+                Capsule(style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                (session.isInputClipping ? MXColor.red : MXColor.accent).opacity(0.18),
+                                MXColor.teal.opacity(0.06),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: max(geo.size.width * 0.55, 80)
+                        )
+                    )
+                    .frame(height: signalHeight * 1.35)
+                    .blur(radius: 18)
+
+                MetalLiveWaveformView(
                     level: session.inputLevel,
-                    peakHold: session.peakHoldLevel,
-                    isClipping: session.isInputClipping
+                    isActive: session.isRecording || session.isCountingIn || session.isRecordMode,
+                    isClipping: session.isInputClipping,
+                    beatPulse: session.isCountingIn || session.isMetronomeEnabled
+                        ? Float(max(0, 1.0 - (session.playheadBeat.truncatingRemainder(dividingBy: 1.0)) * 2.2))
+                        : 0
                 )
-                .frame(width: 12)
-                .padding(.vertical, 16)
-                .padding(.trailing, 8)
+                .frame(height: max(signalHeight, geo.size.height * 0.42))
+                .padding(.horizontal, 2)
+                .allowsHitTesting(false)
+
+                // Playhead
+                HStack(spacing: 0) {
+                    Spacer()
+                        .frame(width: playheadOffset(width: max(geo.size.width, 1)))
+                    Rectangle()
+                        .fill(MXColor.white)
+                        .frame(width: 1.5)
+                    Spacer(minLength: 0)
+                }
+
+                VStack {
+                    Spacer()
+                    statusCaption
+                        .padding(.bottom, 10)
+                }
+
+                // Peak meter — practical for record; sits at Net trailing edge.
+                HStack {
+                    Spacer()
+                    InputPeakMeter(
+                        level: session.inputLevel,
+                        peakHold: session.peakHoldLevel,
+                        isClipping: session.isInputClipping
+                    )
+                    .frame(width: 8)
+                    .padding(.vertical, 20)
+                    .padding(.trailing, 6)
+                }
             }
         }
     }
 
-    // MARK: - Capture quality
+    // MARK: - Capture quality (overlay on waveform so Figma stack stays Net → Mixer → Details)
 
-    private var captureQualityStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var captureQualityOverlay: some View {
+        // Kept as product affordance; pinned to Net top so Figma Net→Mixer stack stays flush.
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 12) {
                 Toggle(isOn: $session.isHighPassEnabled) {
                     Text("Cut rumble")
@@ -311,13 +379,19 @@ struct RecordVocalView: View {
                 Text(tip)
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(MXColor.surfaceRaised)
-        .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [MXColor.surface.opacity(0.9), MXColor.surface.opacity(0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 
     private var statusCaption: some View {
@@ -347,43 +421,52 @@ struct RecordVocalView: View {
     // MARK: - Mixer strip
 
     private func mixerStrip(track: MXSessionTrack) -> some View {
+        // Figma Box Bottom Pop-up (`158:109232`): 70pt track card in 8pt pad.
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                    Image(systemName: session.preset == .guitar ? "guitars.fill" : "mic.fill")
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(MXColor.accent)
-                    Text(track.name.uppercased())
+                        .frame(width: 16, height: 16)
+                    Text(track.name)
                         .font(MXFont.studioTrackName())
                         .foregroundStyle(MXColor.white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .textCase(.uppercase)
                 }
 
-                HStack(spacing: 6) {
-                    Text("VOL")
+                HStack(spacing: 0) {
+                    Text("Vol")
                         .font(MXFont.caption())
                         .foregroundStyle(MXColor.grey)
-                        .frame(width: 28, alignment: .leading)
+                        .textCase(.uppercase)
+                        .frame(width: 24, alignment: .leading)
 
-                    Slider(
+                    CompactVolumeBar(
                         value: Binding(
                             get: { Double(track.volume) },
                             set: { session.setTrackVolume(Float($0), trackID: track.id) }
-                        ),
-                        in: 0...1
+                        )
                     )
-                    .tint(MXColor.accent)
+                    .frame(height: 8)
+                    .frame(maxWidth: .infinity)
 
                     Text("\(Int(((track.volume - 1) * 24).rounded()))")
                         .font(MXFont.caption())
                         .foregroundStyle(MXColor.grey)
-                        .frame(width: 28, alignment: .trailing)
+                        .frame(width: 16, alignment: .trailing)
+                        .monospacedDigit()
                 }
             }
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-            Rectangle().fill(MXColor.layer2).frame(width: 1)
+            Rectangle()
+                .fill(MXColor.layer2)
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
 
             VStack(spacing: 4) {
                 muteSolo("M", active: track.isMuted) {
@@ -394,25 +477,33 @@ struct RecordVocalView: View {
                 }
             }
             .padding(12)
+            .frame(maxHeight: .infinity)
 
-            Rectangle().fill(MXColor.layer2).frame(width: 1)
+            Rectangle()
+                .fill(MXColor.layer2)
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
 
-            VStack(spacing: 4) {
+            VStack(spacing: 0) {
                 PanKnob(
                     value: Binding(
                         get: { track.pan },
                         set: { session.setTrackPan($0, trackID: track.id) }
-                    )
+                    ),
+                    size: 32
                 )
                 HStack {
                     Text("L").font(MXFont.caption()).foregroundStyle(MXColor.grey)
-                    Spacer()
+                    Spacer(minLength: 0)
                     Text("R").font(MXFont.caption()).foregroundStyle(MXColor.grey)
                 }
-                .frame(width: 40)
+                .frame(width: 32)
             }
             .padding(12)
+            .frame(maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 70)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(MXColor.surfaceRaised)
@@ -422,6 +513,7 @@ struct RecordVocalView: View {
                 )
         )
         .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(MXColor.surface)
     }
 
@@ -448,15 +540,19 @@ struct RecordVocalView: View {
                 Text("\(session.project.timeSignatureNumerator)/\(session.project.timeSignatureDenominator)")
                     .font(MXFont.studioReadout())
                     .foregroundStyle(MXColor.lightGrey)
-                Text(session.musicalKey)
-                    .font(MXFont.caption())
-                    .foregroundStyle(MXColor.grey)
+                HStack(spacing: 2) {
+                    Text(session.musicalKey)
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(MXColor.grey)
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             divider
             VStack(spacing: 4) {
-                HStack {
+                HStack(spacing: 8) {
                     Button { session.nudgeBPM(-1) } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 10, weight: .bold))
@@ -478,13 +574,14 @@ struct RecordVocalView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Text("BPM")
+                Text(session.countInBars > 0 ? "Count \(session.countInBars)" : "Keep")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
             }
             .frame(width: 125)
-            .padding(.vertical, 16)
+            .frame(maxHeight: .infinity)
         }
+        .frame(height: detailsStripHeight)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
@@ -499,12 +596,14 @@ struct RecordVocalView: View {
                 .font(MXFont.caption())
                 .foregroundStyle(MXColor.grey)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var divider: some View {
-        Rectangle().fill(MXColor.layer2).frame(width: 1)
+        Rectangle()
+            .fill(MXColor.layer2)
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
     }
 
     private var actionBoard: some View {
@@ -577,7 +676,7 @@ struct RecordVocalView: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MXColor.black))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MXColor.surfaceRaised)
     }
 
@@ -591,37 +690,6 @@ struct RecordVocalView: View {
                 .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(MXColor.layer2))
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Live waveform
-
-private struct LiveInputWaveform: View {
-    var level: Float
-    var isActive: Bool
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isActive)) { timeline in
-            Canvas { context, size in
-                let mid = size.height / 2
-                let bars = 72
-                let step = size.width / CGFloat(bars)
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let base = CGFloat(max(0.05, level))
-
-                for i in 0..<bars {
-                    let phase = Double(i) * 0.35 + t * 8
-                    let wobble = abs(sin(phase)) * 0.55 + abs(sin(phase * 1.7)) * 0.45
-                    let h = max(4, base * size.height * 0.95 * CGFloat(wobble))
-                    let x = CGFloat(i) * step
-                    let rect = CGRect(x: x, y: mid - h / 2, width: max(1.5, step * 0.55), height: h)
-                    context.fill(
-                        Path(roundedRect: rect, cornerRadius: 1),
-                        with: .color(MXColor.accent)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -654,6 +722,45 @@ private struct InputPeakMeter: View {
                     .position(x: geo.size.width / 2, y: max(1, min(geo.size.height - 1, holdY)))
             }
         }
+    }
+}
+
+// MARK: - Compact volume (Figma Box Bottom Pop-up 8pt track)
+
+private struct CompactVolumeBar: View {
+    @Binding var value: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let clamped = min(max(value, 0), 1)
+            let fillW = max(4, geo.size.width * clamped)
+            let thumbX = fillW
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.black)
+                    .frame(height: 8)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.accent)
+                    .frame(width: fillW, height: 8)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.surface)
+                    .frame(width: 6, height: 6)
+                    .position(x: min(max(3, thumbX - 3), geo.size.width - 3), y: 4)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        value = min(max(Double(drag.location.x / max(geo.size.width, 1)), 0), 1)
+                    }
+            )
+        }
+        .frame(height: 8)
+        .accessibilityLabel("Volume")
+        .accessibilityValue("\(Int((value * 100).rounded())) percent")
     }
 }
 
