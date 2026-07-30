@@ -1185,6 +1185,27 @@ public final class StudioSessionController {
         }
         clip.startBeat = snappedStart
         clip.lengthBeats = max(0.25, rightEdge - snappedStart)
+        let audible: Double
+        if let dur = clip.sourceDurationSeconds {
+            audible = dur
+        } else {
+            audible = clip.lengthBeats * 60.0 / max(project.bpm, 1)
+        }
+        let fades = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: clip.fadeInSeconds,
+            fadeOut: clip.fadeOutSeconds,
+            duration: audible
+        )
+        clip.fadeInSeconds = fades.fadeIn
+        clip.fadeOutSeconds = fades.fadeOut
+        clip.volumeAutomation = MXVolumeAutomation.clampingBeats(
+            clip.volumeAutomation,
+            lengthBeats: clip.lengthBeats
+        )
+        clip.panAutomation = MXPanAutomation.clampingBeats(
+            clip.panAutomation,
+            lengthBeats: clip.lengthBeats
+        )
         replaceClip(clip)
         persistSoon()
         if transport.isPlaying {
@@ -1205,8 +1226,21 @@ public final class StudioSessionController {
         let endSec = transport.tempoMap.seconds(forBeat: snappedEnd)
         let audible = max(0.05, endSec - startSec)
         clip.sourceDurationSeconds = audible
-        clip.fadeInSeconds = min(clip.fadeInSeconds, audible)
-        clip.fadeOutSeconds = min(clip.fadeOutSeconds, audible)
+        let fades = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: clip.fadeInSeconds,
+            fadeOut: clip.fadeOutSeconds,
+            duration: audible
+        )
+        clip.fadeInSeconds = fades.fadeIn
+        clip.fadeOutSeconds = fades.fadeOut
+        clip.volumeAutomation = MXVolumeAutomation.clampingBeats(
+            clip.volumeAutomation,
+            lengthBeats: clip.lengthBeats
+        )
+        clip.panAutomation = MXPanAutomation.clampingBeats(
+            clip.panAutomation,
+            lengthBeats: clip.lengthBeats
+        )
         replaceClip(clip)
         persistSoon()
         if transport.isPlaying {
@@ -1233,11 +1267,16 @@ public final class StudioSessionController {
         } else if let player = clipPlayers[clipID],
                   let track = project.tracks.first(where: { $0.id == clip.trackID }) {
             let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
-            player.volume = track.volume * clip.gain * auto
+            let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
+            let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
+            player.volume = track.volume * clip.gain * auto * clipAuto
+            player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
         }
     }
 
     /// Fade-in / fade-out in seconds (Logic / Ableton style clip fades).
+    /// Meet-in-middle: when both sides would exceed audible length, the side being
+    /// edited is preferred and the other shrinks.
     public func setClipFades(fadeInSeconds: Double?, fadeOutSeconds: Double?, clipID: UUID) {
         guard var clip = clip(clipID) else { return }
         let audible: Double
@@ -1251,12 +1290,27 @@ public final class StudioSessionController {
         }
         var nextIn = clip.fadeInSeconds
         var nextOut = clip.fadeOutSeconds
+        var prefer: MXClipFadeGeometry.FadeEdge?
         if let fadeIn = fadeInSeconds {
-            nextIn = min(max(0, fadeIn), max(0, audible))
+            nextIn = max(0, fadeIn)
+            prefer = .fadeIn
         }
         if let fadeOut = fadeOutSeconds {
-            nextOut = min(max(0, fadeOut), max(0, audible))
+            nextOut = max(0, fadeOut)
+            prefer = fadeInSeconds != nil ? prefer : .fadeOut
         }
+        // Both set in one call (e.g. inspector) → proportional shrink.
+        if fadeInSeconds != nil, fadeOutSeconds != nil {
+            prefer = nil
+        }
+        let fades = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: nextIn,
+            fadeOut: nextOut,
+            duration: max(0, audible),
+            prefer: prefer
+        )
+        nextIn = fades.fadeIn
+        nextOut = fades.fadeOut
         let changed =
             abs(nextIn - clip.fadeInSeconds) > 1e-4 || abs(nextOut - clip.fadeOutSeconds) > 1e-4
         guard changed else { return }
@@ -2274,8 +2328,10 @@ public final class StudioSessionController {
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
                 let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
-                player.volume = track.volume * clip.gain * auto
-                player.pan = track.pan
+                let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
+                let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
+                player.volume = track.volume * clip.gain * auto * clipAuto
+                player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
                 let clipEnd = transport.tempoMap.sample(
@@ -2674,8 +2730,10 @@ public final class StudioSessionController {
         for clip in track.clips {
             guard let player = clipPlayers[clip.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            player.volume = audible ? track.volume * clip.gain * autoGain : 0
-            player.pan = track.pan
+            let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
+            let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
+            player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto : 0
+            player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
         }
         // Solo/mute changes should refresh all tracks' audible state
         if anySolo || track.isMuted {
@@ -2683,7 +2741,14 @@ public final class StudioSessionController {
                 let otherAudible = !other.isMuted && (!anySolo || other.isSolo)
                 let otherAuto = MXVolumeAutomation.value(atBeat: playheadBeat, points: other.volumeAutomation)
                 for clip in other.clips {
-                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain * otherAuto : 0
+                    let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
+                    clipPlayers[clip.id]?.volume = otherAudible
+                        ? other.volume * clip.gain * otherAuto * clipAuto
+                        : 0
+                    if let player = clipPlayers[clip.id] {
+                        let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
+                        player.pan = MXPanAutomation.combined(trackPan: other.pan, clipOffset: panOffset)
+                    }
                 }
             }
         }
@@ -2711,7 +2776,10 @@ public final class StudioSessionController {
             let audible = !track.isMuted && (!anySolo || track.isSolo)
             for clip in track.clips {
                 guard let player = clipPlayers[clip.id] else { continue }
-                player.volume = audible ? track.volume * clip.gain * autoGain : 0
+                let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
+                let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
+                player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto : 0
+                player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
             }
             if track.kind == .midi, let chain = instrumentChains[track.id] {
                 chain.volume = audible ? track.volume * autoGain : 0
@@ -2765,6 +2833,108 @@ public final class StudioSessionController {
             MXAutomationPoint(beat: 0, value: 1),
             MXAutomationPoint(beat: 4, value: 1),
         ]
+        persistSoon()
+    }
+
+    // MARK: - Clip-relative automation (Week 54)
+
+    public func upsertClipVolumeAutomation(clipID: UUID, beat: Double, value: Float) {
+        guard var clip = clip(clipID) else { return }
+        let local = min(clip.lengthBeats, max(0, beat))
+        pushUndoSnapshot()
+        clip.volumeAutomation = MXVolumeAutomation.upserting(
+            clip.volumeAutomation,
+            beat: local,
+            value: value
+        )
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func moveClipVolumeAutomationPoint(clipID: UUID, pointID: UUID, beat: Double, value: Float) {
+        guard var clip = clip(clipID) else { return }
+        let local = min(clip.lengthBeats, max(0, beat))
+        pushUndoSnapshot()
+        clip.volumeAutomation = MXVolumeAutomation.moving(
+            clip.volumeAutomation,
+            id: pointID,
+            beat: local,
+            value: value
+        )
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func removeClipVolumeAutomationPoint(clipID: UUID, pointID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        pushUndoSnapshot()
+        clip.volumeAutomation = MXVolumeAutomation.removing(clip.volumeAutomation, id: pointID)
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func upsertClipPanAutomation(clipID: UUID, beat: Double, value: Float) {
+        guard var clip = clip(clipID) else { return }
+        let local = min(clip.lengthBeats, max(0, beat))
+        pushUndoSnapshot()
+        clip.panAutomation = MXPanAutomation.upserting(
+            clip.panAutomation,
+            beat: local,
+            value: value
+        )
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func moveClipPanAutomationPoint(clipID: UUID, pointID: UUID, beat: Double, value: Float) {
+        guard var clip = clip(clipID) else { return }
+        let local = min(clip.lengthBeats, max(0, beat))
+        pushUndoSnapshot()
+        clip.panAutomation = MXPanAutomation.moving(
+            clip.panAutomation,
+            id: pointID,
+            beat: local,
+            value: value
+        )
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func removeClipPanAutomationPoint(clipID: UUID, pointID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        pushUndoSnapshot()
+        clip.panAutomation = MXPanAutomation.removing(clip.panAutomation, id: pointID)
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func ensureDefaultClipVolumeAutomation(clipID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        guard clip.volumeAutomation.isEmpty else { return }
+        pushUndoSnapshot()
+        clip.volumeAutomation = [
+            MXAutomationPoint(beat: 0, value: 1),
+            MXAutomationPoint(beat: max(0.25, clip.lengthBeats), value: 1),
+        ]
+        replaceClip(clip)
+        persistSoon()
+    }
+
+    public func ensureDefaultClipPanAutomation(clipID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        guard clip.panAutomation.isEmpty else { return }
+        pushUndoSnapshot()
+        clip.panAutomation = [
+            MXAutomationPoint(beat: 0, value: 0),
+            MXAutomationPoint(beat: max(0.25, clip.lengthBeats), value: 0),
+        ]
+        replaceClip(clip)
         persistSoon()
     }
 

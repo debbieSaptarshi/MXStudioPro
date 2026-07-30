@@ -274,8 +274,10 @@ public enum StudioBounceExporter {
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
         let baseGain = track.volume * clip.gain
-        let pan = track.pan
-        let hasAutomation = !track.volumeAutomation.isEmpty
+        let trackPan = track.pan
+        let hasTrackAutomation = !track.volumeAutomation.isEmpty
+        let hasClipVolAutomation = !clip.volumeAutomation.isEmpty
+        let hasClipPanAutomation = !clip.panAutomation.isEmpty
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
@@ -388,10 +390,17 @@ public enum StudioBounceExporter {
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
             let beat = Double(di) / max(sampleRate, 1) * bpm / 60.0
-            let autoGain = hasAutomation
+            let trackAuto = hasTrackAutomation
                 ? MXVolumeAutomation.value(atBeat: beat, points: track.volumeAutomation)
                 : MXVolumeAutomation.unity
-            let gain = baseGain * autoGain
+            let clipAuto = hasClipVolAutomation
+                ? clip.volumeAutomationGain(atProjectBeat: beat)
+                : MXVolumeAutomation.unity
+            let panOffset = hasClipPanAutomation
+                ? clip.panAutomationOffset(atProjectBeat: beat)
+                : MXPanAutomation.center
+            let pan = MXPanAutomation.combined(trackPan: trackPan, clipOffset: panOffset)
+            let gain = baseGain * trackAuto * clipAuto
             let leftGain = gain * min(1, max(0, 1 - pan))
             let rightGain = gain * min(1, max(0, 1 + pan))
             left[di] += mono * leftGain

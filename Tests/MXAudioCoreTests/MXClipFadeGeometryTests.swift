@@ -28,4 +28,39 @@ final class MXClipFadeGeometryTests: XCTestCase {
         let midOut = MXClipFadeGeometry.fadeOutGain(0.5)
         XCTAssertEqual(midIn * midIn + midOut * midOut, 1, accuracy: 1e-4)
     }
+
+    func testMeetInMiddleProportional() {
+        let result = MXClipFadeGeometry.meetInMiddle(fadeIn: 0.8, fadeOut: 0.8, duration: 1.0)
+        XCTAssertEqual(result.fadeIn + result.fadeOut, 1.0, accuracy: 1e-9)
+        XCTAssertEqual(result.fadeIn, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(result.fadeOut, 0.5, accuracy: 1e-9)
+    }
+
+    func testMeetInMiddlePreferFadeIn() {
+        let result = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: 0.9,
+            fadeOut: 0.9,
+            duration: 1.0,
+            prefer: .fadeIn
+        )
+        XCTAssertEqual(result.fadeIn, 0.9, accuracy: 1e-9)
+        XCTAssertEqual(result.fadeOut, 0.1, accuracy: 1e-9)
+    }
+
+    func testMeetInMiddlePreferFadeOut() {
+        let result = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: 0.7,
+            fadeOut: 0.8,
+            duration: 1.0,
+            prefer: .fadeOut
+        )
+        XCTAssertEqual(result.fadeOut, 0.8, accuracy: 1e-9)
+        XCTAssertEqual(result.fadeIn, 0.2, accuracy: 1e-9)
+    }
+
+    func testMeetInMiddleNoOverflowUnchanged() {
+        let result = MXClipFadeGeometry.meetInMiddle(fadeIn: 0.2, fadeOut: 0.3, duration: 1.0)
+        XCTAssertEqual(result.fadeIn, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(result.fadeOut, 0.3, accuracy: 1e-9)
+    }
 }
