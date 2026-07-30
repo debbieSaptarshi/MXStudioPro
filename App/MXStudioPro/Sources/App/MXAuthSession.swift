@@ -14,6 +14,8 @@ public final class MXAuthSession {
     public private(set) var email: String?
     public private(set) var displayName: String?
     public private(set) var userID: String?
+    /// Week 72 — signed-in accounts are cloud-linked; guests stay local-only.
+    public private(set) var cloudLinked: Bool = false
 
     /// After login, reopen Create / Studio for this preset if set.
     public var pendingCreatePreset: StudioPreset?
@@ -28,6 +30,7 @@ public final class MXAuthSession {
         static let email = "mxstudio.auth.email"
         static let displayName = "mxstudio.auth.displayName"
         static let userID = "mxstudio.auth.userID"
+        static let cloudLinked = "mxstudio.auth.cloudLinked"
         static let pendingPreset = "mxstudio.auth.pendingPreset"
         static let pendingResume = "mxstudio.auth.pendingResume"
     }
@@ -47,6 +50,12 @@ public final class MXAuthSession {
         email = defaults.string(forKey: Keys.email)
         displayName = defaults.string(forKey: Keys.displayName)
         userID = defaults.string(forKey: Keys.userID)
+        if defaults.object(forKey: Keys.cloudLinked) != nil {
+            cloudLinked = defaults.bool(forKey: Keys.cloudLinked) && mode == .signedIn
+        } else {
+            // Back-compat: signed-in sessions become cloud-linked.
+            cloudLinked = mode == .signedIn
+        }
         if let presetRaw = defaults.string(forKey: Keys.pendingPreset) {
             pendingCreatePreset = StudioPreset(rawValue: presetRaw)
         }
@@ -55,14 +64,17 @@ public final class MXAuthSession {
 
     public func enterGuest() {
         mode = .guest
+        cloudLinked = false
         // Keep email cleared for guest; identity reserved for signed-in.
         persist()
+        MXCloudSyncSpine.shared.clearForGuest()
     }
 
     public func signIn(email rawEmail: String, displayName: String? = nil, userID: String? = nil) {
         let trimmed = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty, trimmed.contains("@") else { return }
         mode = .signedIn
+        cloudLinked = true
         email = trimmed
         self.displayName = displayName ?? trimmed.split(separator: "@").first.map(String.init) ?? "Creator"
         if let userID {
@@ -78,6 +90,7 @@ public final class MXAuthSession {
 
     public func signInWithApple(userID: String, email: String?, fullName: String?) {
         mode = .signedIn
+        cloudLinked = true
         self.userID = userID
         if let email, !email.isEmpty {
             self.email = email.lowercased()
@@ -94,11 +107,13 @@ public final class MXAuthSession {
 
     public func signOut() {
         mode = .guest
+        cloudLinked = false
         email = nil
         displayName = nil
         userID = nil
         clearPendingResume()
         persist()
+        MXCloudSyncSpine.shared.clearForGuest()
     }
 
     public func stashResume(preset: StudioPreset?, resumeStudio: Bool) {
@@ -124,5 +139,6 @@ public final class MXAuthSession {
         defaults.set(email, forKey: Keys.email)
         defaults.set(displayName, forKey: Keys.displayName)
         defaults.set(userID, forKey: Keys.userID)
+        defaults.set(cloudLinked, forKey: Keys.cloudLinked)
     }
 }

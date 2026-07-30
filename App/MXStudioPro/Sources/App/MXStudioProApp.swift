@@ -378,6 +378,11 @@ struct RootView: View {
         let projectID = MXProjectStore.shared.lastOpenedProjectID
         auth.clearPendingResume()
 
+        // Week 72 — kick a stub cloud sync for linked accounts (no network).
+        if auth.cloudLinked {
+            _ = MXCloudSyncSpine.shared.syncNow(cloudLinked: true)
+        }
+
         tab = .create
         if resumeStudio {
             if let projectID {

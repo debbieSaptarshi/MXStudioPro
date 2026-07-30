@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 18 W71 **LUFS report sheet** shipping — next W72 cloud auth spine.
+**Current focus:** Month 18 (W69–72) **complete** — next Month 19 SOTA polish (harmonies, beat browser, real sidechain, K-weighted LUFS).
 
 ---
 
@@ -85,6 +85,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ |
 | **70** | Time-stretch clip lite | **Done (MVP)** ✅ |
 | **71** | LUFS report sheet after bounce | **Done (MVP)** ✅ |
+| **72** | Cloud auth sync spine (stub) | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -834,7 +835,7 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 | **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ | GarageBand / CapCut |
 | **70** | Time-stretch clip lite | **Done (MVP)** ✅ | Ableton / BandLab |
 | **71** | LUFS report sheet after bounce | **Done (MVP)** ✅ | Reels / YouTube Loudness |
-| **72** | Cloud auth sync spine (beyond local MVP) | **Planned** | BandLab |
+| **72** | Cloud auth sync spine (beyond local MVP) | **Done (MVP)** ✅ | BandLab |
 
 ### Week 69 — Pitch correction lite ✅
 
@@ -866,13 +867,26 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 
 **Week 71 notes:** Labeled “Approx LUFS · not broadcast-certified” — still mean-square gated MVP, not K-weighted ITU meter. Stems bounce does not yet attach per-stem reports.
 
-### Week 72 — Cloud auth sync spine *(next)*
+### Week 72 — Cloud auth sync spine ✅
 
 **Done when (BandLab account sync lite)**
-- [ ] Auth session can mark cloud-linked vs local-only
-- [ ] Stub sync queue / last-synced timestamp persisted
-- [ ] Settings or Profile shows sync status; guest remains local
-- [ ] No secrets in repo; real backend remains operator-configured
+- [x] `MXAuthSession.cloudLinked` — signed-in true; guest/sign-out false; persisted
+- [x] `MXCloudSyncSpine` — status idle/syncing/offline/error + `lastSyncedAt`; stub `syncNow` (no network/secrets)
+- [x] Profile (`MyMixView`) shows sync row + Sync now; guest shows Local only
+- [x] `finishSignIn` kicks stub sync for linked accounts
+
+**Week 72 notes:** Stub only — no remote API. Real backend / Keychain tokens remain operator work.
+
+## Month 19 — Award-app SOTA *(Weeks 73–76)* **Planned**
+
+Raise shipped DAW features toward award-winning mobile music apps (BandLab, GarageBand, Cubasis, Logic Remote bars).
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **73** | Vocal harmonies lite (1–2 voice stack bake) | **Planned** | CapCut / BandLab |
+| **74** | Beat browser + one-shot pack import | **Planned** | BandLab / Loopcloud |
+| **75** | Real key-input sidechain + bounce duck parity | **Planned** | Ableton / Logic |
+| **76** | K-weighted LUFS upgrade + inter-sample true peak | **Planned** | ITU BS.1770 / YouTube |
 
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
@@ -883,10 +897,10 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
 - **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
 - **Export:** Video + audio Reels export; loudness report sheet after bounce ✅ W71
-- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies; beat browser
-- **Social/AI:** Cloud auth sync ← W72; real model API for AI compose; live Discover catalog
-- **Figma parity:** Create hub + landscape 812×375 second pass
-- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; true-peak (dBTP) inter-sample later; sidechain on bounce path; audio→aux reverb bus; K-weighted LUFS upgrade
+- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ← W73; beat browser ← W74
+- **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
+- **Figma parity:** Create hub + landscape 812×375 second pass; After Record chrome re-audit vs `95:85026`
+- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; inter-sample true-peak ← W76; sidechain on bounce path ← W75; audio→aux reverb bus; K-weighted LUFS ← W76; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels export
 
 **SOTA next (Month 18 / beyond)**
 - Nested takes × drum parts; SFZ kit choke
@@ -1066,7 +1080,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
-                                    → W69–W72 Month 18 wow + cloud ← W69 done; next W70
+                                    → W69–W72 Month 18 wow + cloud ✅ ← next Month 19
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -1095,7 +1109,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass *(done)* |
 | 61–64 | Step swing / multi-select / sidechain / snap resolution *(done)* |
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
-| 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine |
+| 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
+| 73–76 | Harmonies / beat browser / real sidechain / K-weighted LUFS |
 
 ---
 

@@ -6,6 +6,7 @@ struct MyMixView: View {
     var onLogin: () -> Void
 
     @State private var auth = MXAuthSession.shared
+    @State private var cloudSync = MXCloudSyncSpine.shared
     @State private var items: [MyMixItem] = []
     @State private var social = MXSocialStore.shared
     @State private var mixCount = 0
@@ -75,6 +76,9 @@ struct MyMixView: View {
                 }
                 .font(MXFont.smallButton())
                 .foregroundStyle(MXColor.grey)
+
+                // Week 72 — BandLab-style cloud sync status (stub, no network).
+                cloudSyncRow
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 14) {
@@ -88,11 +92,54 @@ struct MyMixView: View {
                                 .foregroundStyle(MXColor.grey)
                         }
                     }
+                    Text("Local only — projects stay on this device.")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey.opacity(0.85))
                     MXButton("Sign in", systemImage: "person.crop.circle", kind: .prime, size: .big, icon: .leading) {
                         onLogin()
                     }
                 }
             }
+        }
+    }
+
+    private var cloudSyncRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: auth.cloudLinked ? "icloud" : "icloud.slash")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(auth.cloudLinked ? MXColor.accent : MXColor.grey)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(auth.cloudLinked ? "Cloud sync" : "Local only")
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.white)
+                    Text(cloudSync.statusLine(cloudLinked: auth.cloudLinked))
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                if auth.cloudLinked {
+                    Button {
+                        _ = cloudSync.syncNow(cloudLinked: auth.cloudLinked)
+                    } label: {
+                        Text(cloudSync.status == .syncing ? "…" : "Sync now")
+                            .font(MXFont.smallButton())
+                            .foregroundStyle(MXColor.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(cloudSync.status == .syncing)
+                    .accessibilityLabel("Sync now")
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+            Text("Stub sync — no remote backend yet")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey.opacity(0.7))
         }
     }
 
