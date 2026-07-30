@@ -1642,6 +1642,38 @@ public final class StudioSessionController {
         calibrationError = nil
     }
 
+    /// Manual latency offset in milliseconds (GarageBand-style fine tune). Clamped 0…80 ms.
+    public func setLatencyCompensationMilliseconds(_ ms: Double) {
+        let sr = calibrator?.sampleRate
+            ?? (project.sampleRate > 0 ? project.sampleRate : 48_000)
+        let frames = Int((max(0, min(80, ms)) / 1_000 * sr).rounded())
+        if let calibrator {
+            calibrator.setCompensationFrames(frames)
+        } else {
+            UserDefaults.standard.set(max(0, frames), forKey: MXLatencyCalibrator.compensationFramesDefaultsKey)
+        }
+        lastCalibrationSummary = frames > 0
+            ? String(format: "Manual %.1f ms · %d frames", Double(frames) / sr * 1_000, frames)
+            : nil
+        calibrationError = nil
+    }
+
+    /// Clear persisted compensation (BandLab reset).
+    public func clearLatencyCompensation() {
+        if let calibrator {
+            calibrator.setCompensationFrames(0)
+        } else {
+            UserDefaults.standard.set(0, forKey: MXLatencyCalibrator.compensationFramesDefaultsKey)
+        }
+        lastCalibrationSummary = nil
+        calibrationError = nil
+    }
+
+    /// True when headphones / BT audio is the current output route.
+    public var headphonesConnected: Bool {
+        Self.currentRouteHasHeadphones()
+    }
+
     // MARK: - Live MIDI instrument
 
     public func noteOn(_ note: UInt8, velocity: UInt8 = 100) {

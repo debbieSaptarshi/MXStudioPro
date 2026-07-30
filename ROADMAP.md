@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 14 (W53–56) — W53–W55 shipped; next W56 latency calibration UX.
+**Current focus:** Month 14 (W53–56) **complete** — next Month 15 / SOTA backlog (pattern library, note-length drag, cloud).
 
 ---
 
@@ -69,6 +69,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **53** | Step seq velocity + multi-bar + load from clip | **Done (MVP)** ✅ |
 | **54** | Clip-relative vol/pan automation + meet-in-middle fades | **Done (MVP)** ✅ |
 | **55** | Piano-roll lite (edit note start/pitch) | **Done (MVP)** ✅ |
+| **56** | Latency calibration UX + monitor polish | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -595,7 +596,7 @@ Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cub
 
 ---
 
-## Month 14 — Award-app DAW depth *(Weeks 53–56)* **In progress**
+## Month 14 — Award-app DAW depth *(Weeks 53–56)* ✅
 
 Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile, CapCut/Reels.
 
@@ -604,7 +605,7 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 | **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **54** | Clip-relative volume + pan automation; meet-in-middle fade clamp | **Done (MVP)** ✅ | Logic / Ableton |
 | **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Done (MVP)** ✅ | Cubasis / GarageBand |
-| **56** | Latency calibration UX + input monitoring polish | **Planned** | GarageBand / BandLab |
+| **56** | Latency calibration UX + input monitoring polish | **Done (MVP)** ✅ | GarageBand / BandLab |
 
 ### Week 53 — Step seq velocity + multi-bar + load from clip ✅
 
@@ -636,6 +637,27 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 - [x] Clip inspector **Edit Piano Roll** opens the editor for MIDI clips
 
 **Week 55 notes:** Note length resize and multi-select deferred. Drum clips share the same editor.
+
+### Week 56 — Latency calibration UX + monitor polish ✅
+
+**Done when (GarageBand / BandLab)**
+- [x] Studio Settings: auto-calibrate gated on headphones; applied ms readout
+- [x] Manual 0–80 ms offset slider + Reset; persist via `MXLatencyCalibrator`
+- [x] Monitor tip tied to calibration; clear error / unstable σ warning retained
+- [x] Engine chirp loopback path already trims takes via compensation frames
+
+**Week 56 notes:** Hardware loopback still needs real headphones. Simulated measure remains for CI. Month 14 gate passed (local MVP).
+
+## Month 15 — SOTA polish epic *(Weeks 57–60)* **Planned**
+
+Raise shipped features to award-app bar without blocking cloud work.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **57** | Step pattern library + copy/paste bars + live step cursor | **Planned** | BandLab / FL Mobile |
+| **58** | Piano-roll note length drag + velocity lane | **Planned** | Cubasis / Logic |
+| **59** | Master bus limiter + live LUFS meter | **Planned** | GarageBand / Reels |
+| **60** | Figma pixel-pass After Record + Drum Midi shells | **Planned** | Figma `95:85026` / `95:88141` |
 
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
@@ -817,7 +839,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                       → W40–44 Drum depth + capture chrome ← done
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
-                            → W53–55 ✅ → W56 latency calibration UX ← next
+                            → W53–56 Month 14 award-app depth ✅ ← next: Month 15 / SOTA backlog
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -842,7 +864,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 40–44 | Drum part lanes + mute/solo + record chrome + timeline meters |
 | 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
 | 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
-| 53–56 | Step velocity / clip automation / piano-roll lite / latency UX |
+| 53–56 | Step velocity / clip automation / piano-roll lite / latency UX *(done)* |
 
 ---
 
