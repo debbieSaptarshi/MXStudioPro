@@ -1583,8 +1583,10 @@ public final class StudioSessionController {
         }
         let lengthBeats = max(0.25, endBeat - startBeat)
         let bank = synthBankPreset(for: trackID)
+        let isDrums = project.tracks[trackIndex].category == .drums
         let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
-        let fileName = "keys_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let filePrefix = isDrums ? "drums" : "keys"
+        let fileName = "\(filePrefix)_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
         let url = audioDir.appendingPathComponent(fileName)
         do {
             try MXMIDIClipRenderer.writeWAV(
@@ -1595,14 +1597,16 @@ public final class StudioSessionController {
                 sampleRate: transport?.sampleRate ?? 48_000
             )
         } catch {
-            recordError = "Keys capture failed: \(error.localizedDescription)"
+            let label = isDrums ? "Drums" : "Keys"
+            recordError = "\(label) capture failed: \(error.localizedDescription)"
             return
         }
 
         pushUndoSnapshot()
+        let clipLabel = isDrums ? "Drums" : "Keys"
         let clip = MXClip(
             trackID: trackID,
-            name: "Keys \(project.tracks[trackIndex].clips.count + 1)",
+            name: "\(clipLabel) \(project.tracks[trackIndex].clips.count + 1)",
             startBeat: startBeat,
             lengthBeats: lengthBeats,
             audioFileName: fileName,

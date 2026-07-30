@@ -25,26 +25,8 @@ public struct DrumPadView: View {
     private static let hardVelocity: UInt8 = 127
     private static let flashNanoseconds: UInt64 = 120_000_000
 
-    private struct PadDef: Identifiable {
-        let note: UInt8
-        let label: String
-        var id: UInt8 { note }
-    }
-
-    private let pads: [[PadDef]] = [
-        [
-            PadDef(note: 36, label: "Kick"),
-            PadDef(note: 38, label: "Snare"),
-            PadDef(note: 39, label: "Clap"),
-            PadDef(note: 42, label: "Closed HH"),
-        ],
-        [
-            PadDef(note: 46, label: "Open HH"),
-            PadDef(note: 45, label: "Tom"),
-            PadDef(note: 37, label: "Perc"),
-            PadDef(note: 51, label: "Ride"),
-        ],
-    ]
+    /// Shared GM pad map (`MXDrumPart`) — keep in sync with per-part arrange lanes.
+    private var pads: [[MXDrumPart.Pad]] { MXDrumPart.padGrid }
 
     @State private var activePads: Set<UInt8> = []
     /// Pads already fired for the current drag so velocity isn't retriggered every frame.
@@ -104,7 +86,7 @@ public struct DrumPadView: View {
         }
     }
 
-    private func padCell(_ pad: PadDef, width: CGFloat, height: CGFloat) -> some View {
+    private func padCell(_ pad: MXDrumPart.Pad, width: CGFloat, height: CGFloat) -> some View {
         let active = activePads.contains(pad.note)
         return Text(pad.label)
             .font(MXFont.caption())
