@@ -324,7 +324,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 ---
 
-## Month 10 — Arrangement depth *(Weeks 36–39)* ✅
+## Month 10 — Arrangement depth *(Weeks 36–39)* ✅ ✅
 
 Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab playlist comps; Studio One strip meters.
 
