@@ -14,6 +14,7 @@ public struct StudioView: View {
     @State private var showAddTrackSheet = false
     @State private var showAIComposeSheet = false
     @State private var showBeatBrowserSheet = false
+    @State private var showPackBrowserSheet = false
     @State private var showMixerSheet = false
     @State private var showFXSheet = false
     @State private var showSettingsSheet = false
@@ -244,6 +245,15 @@ public struct StudioView: View {
                 onImported: { trackID in
                     selectedTrackID = trackID
                 }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showPackBrowserSheet) {
+            PackBrowserView(
+                session: session,
+                onClose: { showPackBrowserSheet = false }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -2000,6 +2010,19 @@ public struct StudioView: View {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 350_000_000)
                     showBeatBrowserSheet = true
+                }
+            }
+
+            addTrackOption(
+                title: "Packs",
+                subtitle: "Bundled kits & sounds (Loopcloud lite)",
+                systemImage: "square.stack.3d.up.fill",
+                tint: MXColor.accent
+            ) {
+                showAddTrackSheet = false
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    showPackBrowserSheet = true
                 }
             }
 

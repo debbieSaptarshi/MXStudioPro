@@ -1137,6 +1137,29 @@ public final class StudioSessionController {
         return MXTempoDetect.estimateBPM(mono: mono, sampleRate: sampleRate)
     }
 
+    // MARK: - MXPacks (Week 79)
+
+    /// Application Support pack library installer (thin wrapper).
+    public func makePackInstaller() throws -> MXPackInstaller {
+        try MXPackInstaller(libraryRoot: MXPackInstaller.defaultLibraryRoot())
+    }
+
+    /// List packs already installed under Application Support.
+    public func installedPacks() -> [MXInstalledPack] {
+        (try? makePackInstaller())?.installedPacks() ?? []
+    }
+
+    public func isPackInstalled(id: String) -> Bool {
+        (try? makePackInstaller())?.isInstalled(id: id) ?? false
+    }
+
+    /// Materialize a bundled catalog pack and install it into the library.
+    @discardableResult
+    public func installBundledPack(id: String) throws -> MXInstalledPack {
+        let installer = try makePackInstaller()
+        return try MXBundledPackCatalog.install(id: id, into: installer)
+    }
+
     /// Import a BandLab/Loopcloud-style beat catalog item as a new track (Week 74).
     ///
     /// Writes procedural PCM into the project Audio folder. Does **not** run

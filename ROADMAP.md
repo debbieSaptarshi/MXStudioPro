@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 20 (W77–80) — clip gain automation, Reels video+audio, MXPacks, Figma Create hub.
+**Current focus:** Month 20 (W77–80) — clip gain ✅, Reels A+V ✅, MXPacks ✅, Figma Create hub ← W80.
 
 ---
 
@@ -92,6 +92,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **76** | K-weighted LUFS + inter-sample true peak | **Done (MVP)** ✅ |
 | **77** | Clip gain automation Rel/Abs | **Done (MVP)** ✅ |
 | **78** | Video + audio Reels export lite | **Done (MVP)** ✅ |
+| **79** | MXPacks bundled catalog + install path | **Done (MVP)** ✅ |
+| **80** | Figma Create hub + landscape second pass | **Planned** |
 
 ### Figma anchors (shipped / in use)
 
@@ -945,7 +947,7 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 |------|--------|--------|-----------|
 | **77** | Clip gain automation lane (arrange + bounce) | **Done (MVP)** ✅ | Logic / Ableton |
 | **78** | Video + audio Reels export lite | **Done (MVP)** ✅ | CapCut / Instagram |
-| **79** | MXPacks bundled catalog + install path | **Planned** | BandLab / Loopcloud |
+| **79** | MXPacks bundled catalog + install path | **Done (MVP)** ✅ | BandLab / Loopcloud |
 | **80** | Figma Create hub + landscape second pass | **Planned** | Figma `96:72447` / `97:113250` |
 
 ### Week 77 — Clip gain automation Rel/Abs ✅
@@ -970,6 +972,18 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 
 **Week 78 notes:** Still-frame video only — not camera footage, stickers, animated waveform, or Instagram Graph upload.
 
+### Week 79 — MXPacks bundled catalog + install path ✅
+
+**Done when (BandLab / Loopcloud sound packs lite)**
+- [x] `MXBundledPackCatalog` — 3 first-party stubs (Kit / Keys / Samples); `LicenseRef-MXStudio-Proprietary`, tier `.bundled`
+- [x] Materialize minimal on-disk pack (`manifest.json` + entry JSON) + install via `MXPackInstaller`
+- [x] `PackBrowserView` sheet — Installed / Install; Studio **+** → **Packs** (near Beats)
+- [x] Session `installBundledPack` / `installedPacks` thin helpers (Application Support)
+- [x] Unit tests: catalog non-empty, manifests validate, install into temp library root
+- [x] EngineLink `@_exported import MXPacks`
+
+**Week 79 notes:** Procedural/placeholder entry files only — not licensed Loopcloud downloads or real SFZ/WAV kits. Create hub Sampler tile still disabled.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better; input latency auto-calibrate UX polish beyond W56
 - **Drums:** SFZ kit choke groups; nested takes × part columns; pad velocity curves
@@ -981,14 +995,14 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 - **Export:** Loudness report ✅ W71/W76; video + audio Reels ✅ W78; stem loudness cards; AAX/WAV 24-bit option; animated waveform video
 - **Wow:** Pitch correct ✅ W69; time-stretch ✅ W70; harmonies ✅ W73; beat browser ✅ W74; formant-aware pitch; warp markers
 - **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
-- **Packs:** Procedural beats ✅ W74; MXPacks download/install ← W79; licensed one-shot packs
+- **Packs:** Procedural beats ✅ W74; MXPacks bundled catalog + install ✅ W79; licensed one-shot / download packs
 - **Figma parity:** Create hub + landscape 812×375 second pass ← W80; After Record chrome re-audit vs `95:85026`
 - **SOTA polish candidates:** Take-lane crossfade dial; audio→aux reverb bus; SFZ kit choke; nested takes×parts; Bezier automation; offline render progress HUD; Haptic metronome accents
 
 **SOTA next (Month 20 remaining)**
-- MXPacks catalog; Figma Create hub / landscape second pass
+- Figma Create hub / landscape second pass ← W80
 - Audio→aux reverb bus; Bezier automation
-- Formant-aware pitch / warp markers; freeze track; animated Reels waveform
+- Formant-aware pitch / warp markers; freeze track; animated Reels waveform; licensed pack downloads
 
 ## Month 18 implementation notes
 
@@ -1192,7 +1206,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
 | 73–76 | Harmonies ✅ / beat browser ✅ / sidechain bounce ✅ / K-weighted LUFS ✅ |
-| 77–80 | Clip gain Rel/Abs ✅ / Reels A+V ✅ / MXPacks / Figma Create hub |
+| 77–80 | Clip gain Rel/Abs ✅ / Reels A+V ✅ / MXPacks ✅ / Figma Create hub |
 
 ---
 
