@@ -229,6 +229,147 @@ public enum MXDrumStepSequencer: Sendable {
         grid.contains { row in row.contains(true) }
     }
 
+    // MARK: - Week 57: live cursor + bar copy/paste
+
+    /// Absolute step index for a project beat on a looping pattern of `bars` bars.
+    ///
+    /// Returns `nil` for non-finite / negative beats. Uses floor division so the
+    /// cursor stays on a column for the full 16th (Ableton Push / FL Mobile feel).
+    public static func stepIndex(atBeat beat: Double, bars: Int = 1) -> Int? {
+        guard beat.isFinite, beat >= 0 else { return nil }
+        let cols = stepCount(bars: bars)
+        guard cols > 0 else { return nil }
+        let raw = Int(floor(beat / stepBeats))
+        let mod = raw % cols
+        return mod >= 0 ? mod : mod + cols
+    }
+
+    /// Extract one bar (16 columns) from a multi-bar velocity grid.
+    ///
+    /// Out-of-range `barIndex` yields an empty 1-bar grid.
+    public static func extractBar(
+        _ velocityGrid: [[UInt8]],
+        barIndex: Int
+    ) -> [[UInt8]] {
+        let normalized = normalize(
+            velocityGrid,
+            bars: inferredBars(fromColumnCount: velocityGrid.first?.count ?? stepsPerBar)
+        )
+        let bars = inferredBars(fromColumnCount: normalized.first?.count ?? stepsPerBar)
+        guard barIndex >= 0, barIndex < bars else {
+            return emptyVelocityGrid(bars: 1)
+        }
+        let start = barIndex * stepsPerBar
+        let end = start + stepsPerBar
+        return normalized.map { row in Array(row[start..<min(end, row.count)]) }
+    }
+
+    /// Replace one bar in a multi-bar grid with a 1-bar (or truncated/padded) source.
+    public static func replacingBar(
+        _ velocityGrid: [[UInt8]],
+        barIndex: Int,
+        with barGrid: [[UInt8]]
+    ) -> [[UInt8]] {
+        let bars = inferredBars(fromColumnCount: velocityGrid.first?.count ?? stepsPerBar)
+        var next = normalize(velocityGrid, bars: bars)
+        guard barIndex >= 0, barIndex < bars else { return next }
+        let source = resizing(barGrid, toBars: 1)
+        let start = barIndex * stepsPerBar
+        for row in 0..<next.count {
+            guard row < source.count else { break }
+            for col in 0..<stepsPerBar {
+                let dest = start + col
+                guard dest < next[row].count else { break }
+                next[row][dest] = col < source[row].count ? source[row][col] : 0
+            }
+        }
+        return next
+    }
+
+    /// Copy bar `fromBar` onto bar `toBar` within the same grid.
+    public static func copyingBar(
+        _ velocityGrid: [[UInt8]],
+        from fromBar: Int,
+        to toBar: Int
+    ) -> [[UInt8]] {
+        let slice = extractBar(velocityGrid, barIndex: fromBar)
+        return replacingBar(velocityGrid, barIndex: toBar, with: slice)
+    }
+
+    // MARK: - Week 57: pattern library (BandLab / FL Mobile presets)
+
+    /// Built-in 1-bar drum motifs. Applied across N bars by repetition.
+    public enum PatternPreset: String, CaseIterable, Sendable, Identifiable {
+        case fourOnFloor
+        case boomBap
+        case halfTime
+        case discoHats
+
+        public var id: String { rawValue }
+
+        public var displayName: String {
+            switch self {
+            case .fourOnFloor: return "Four-on-floor"
+            case .boomBap: return "Boom-bap"
+            case .halfTime: return "Half-time"
+            case .discoHats: return "Disco hats"
+            }
+        }
+    }
+
+    /// One-bar velocity motif for a library preset (Kick→Ride rows).
+    public static func patternMotif(_ preset: PatternPreset) -> [[UInt8]] {
+        var grid = emptyVelocityGrid(bars: 1)
+        let kick = 0
+        let snare = 1
+        let hats = 2
+        switch preset {
+        case .fourOnFloor:
+            // Kick on every beat; snare on 2 & 4; closed hats on 8ths.
+            for step in [0, 4, 8, 12] { grid[kick][step] = 110 }
+            for step in [4, 12] { grid[snare][step] = 100 }
+            for step in stride(from: 0, to: 16, by: 2) { grid[hats][step] = 80 }
+        case .boomBap:
+            // Classic hip-hop: kick 1 + & of 2; snare 2 & 4; hats on 8ths soft.
+            grid[kick][0] = 115
+            grid[kick][7] = 90
+            grid[kick][10] = 100
+            grid[snare][4] = 110
+            grid[snare][12] = 105
+            for step in stride(from: 0, to: 16, by: 2) { grid[hats][step] = 70 }
+            grid[hats][3] = 55
+            grid[hats][11] = 55
+        case .halfTime:
+            // Sparse: kick on 1; snare on 3; hats on quarters.
+            grid[kick][0] = 120
+            grid[kick][8] = 70
+            grid[snare][8] = 110
+            for step in [0, 4, 8, 12] { grid[hats][step] = 65 }
+        case .discoHats:
+            // Four-on-floor kick + offbeat open-hat feel (closed hats on &s).
+            for step in [0, 4, 8, 12] { grid[kick][step] = 105 }
+            for step in [4, 12] { grid[snare][step] = 95 }
+            for step in stride(from: 1, to: 16, by: 2) { grid[hats][step] = 90 }
+            for step in stride(from: 0, to: 16, by: 2) { grid[hats][step] = 50 }
+        }
+        return grid
+    }
+
+    /// Fill `bars` by tiling the preset’s 1-bar motif (BandLab pattern apply).
+    public static func pattern(
+        _ preset: PatternPreset,
+        bars: Int = 1
+    ) -> [[UInt8]] {
+        let motif = patternMotif(preset)
+        let barCount = clampBars(bars)
+        guard barCount > 1 else { return motif }
+        var grid = emptyVelocityGrid(bars: barCount)
+        for bar in 0..<barCount {
+            grid = replacingBar(grid, barIndex: bar, with: motif)
+        }
+        return grid
+    }
+
     // MARK: - Helpers
 
     public static func boolGrid(from velocityGrid: [[UInt8]]) -> [[Bool]] {

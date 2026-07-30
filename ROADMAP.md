@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 14 (W53–56) **complete** — next Month 15 / SOTA backlog (pattern library, note-length drag, cloud).
+**Current focus:** Month 15 (W57–60) — W57 shipped; next W58 piano-roll length + velocity.
 
 ---
 
@@ -68,8 +68,9 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **52** | Track volume automation lane lite | **Done (MVP)** ✅ |
 | **53** | Step seq velocity + multi-bar + load from clip | **Done (MVP)** ✅ |
 | **54** | Clip-relative vol/pan automation + meet-in-middle fades | **Done (MVP)** ✅ |
-| **55** | Piano-roll lite (edit note start/pitch) | **Done (MVP)** ✅ |
-| **56** | Latency calibration UX + monitor polish | **Done (MVP)** ✅ |
+| **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Done (MVP)** ✅ |
+| **56** | Latency calibration UX + input monitoring polish | **Done (MVP)** ✅ |
+| **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -648,21 +649,31 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 
 **Week 56 notes:** Hardware loopback still needs real headphones. Simulated measure remains for CI. Month 14 gate passed (local MVP).
 
-## Month 15 — SOTA polish epic *(Weeks 57–60)* **Planned**
+## Month 15 — SOTA polish epic *(Weeks 57–60)* **In progress**
 
 Raise shipped features to award-app bar without blocking cloud work.
 
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
-| **57** | Step pattern library + copy/paste bars + live step cursor | **Planned** | BandLab / FL Mobile |
+| **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **58** | Piano-roll note length drag + velocity lane | **Planned** | Cubasis / Logic |
 | **59** | Master bus limiter + live LUFS meter | **Planned** | GarageBand / Reels |
 | **60** | Figma pixel-pass After Record + Drum Midi shells | **Planned** | Figma `95:85026` / `95:88141` |
 
+### Week 57 — Step pattern library + copy/paste + live cursor ✅
+
+**Done when (BandLab / FL Mobile / Ableton Push)**
+- [x] Pattern **Library** menu: Four-on-floor, Boom-bap, Half-time, Disco hats → fill grid (tile across bars)
+- [x] **Copy** / **Paste** one bar into selected bar index (`extractBar` / `replacingBar`)
+- [x] Live step **cursor** highlights current 16th while transport plays (`stepIndex(atBeat:bars:)`)
+- [x] Unit tests: step wrap, extract/replace/copy bar, preset motifs + multi-bar tile
+
+**Week 57 notes:** Clipboard is session-local (`@State`). Cursor wraps over pattern length independent of arrange loop. Swing-on-steps still deferred.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
-- **Step seq:** Pattern library / copy-paste bars; live step cursor during playback
+- **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library
 - **Piano roll:** Note length drag handles; velocity lane; multi-select transpose
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual; sidechain lite from kick to bass
@@ -839,7 +850,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                       → W40–44 Drum depth + capture chrome ← done
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
-                            → W53–56 Month 14 award-app depth ✅ ← next: Month 15 / SOTA backlog
+                            → W53–56 Month 14 award-app depth ✅
+                              → W57 step library / copy-paste / cursor ✅ ← next W58–60
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.

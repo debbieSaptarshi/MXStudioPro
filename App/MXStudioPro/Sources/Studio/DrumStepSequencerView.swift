@@ -1,14 +1,17 @@
 import SwiftUI
 import MXStudioEngine
 
-/// BandLab / FL Mobile–style drum step sequencer (Weeks 49 / 53).
+/// BandLab / FL Mobile–style drum step sequencer (Weeks 49 / 53 / 57).
 ///
 /// Rows = Kick → Ride; columns = 16ths × bars (1–4). Tap toggles hits;
 /// vertical drag on an active cell sets velocity (cell opacity). **Add to timeline**
 /// places a MIDI clip at the playhead; **Load** pulls from the selected drums clip.
+/// Week 57: pattern library, bar copy/paste, live step cursor during playback.
 public struct DrumStepSequencerView: View {
     @Binding var velocityGrid: [[UInt8]]
     @Binding var bars: Int
+    /// Highlighted step column while transport plays (`nil` when stopped).
+    public var activeStep: Int?
     public var onPreviewHit: ((UInt8, UInt8) -> Void)?
     public var onApply: () -> Void
     public var onClear: () -> Void
@@ -18,8 +21,12 @@ public struct DrumStepSequencerView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
+    /// Clipboard for one-bar copy/paste (session-local, not persisted).
+    @State private var copiedBar: [[UInt8]]?
+    @State private var selectedBarIndex: Int = 0
+
     private var isLandscape: Bool { verticalSizeClass == .compact }
-    private var surfaceHeight: CGFloat { isLandscape ? 148 : 228 }
+    private var surfaceHeight: CGFloat { isLandscape ? 168 : 248 }
 
     private let parts = MXDrumStepSequencer.rowParts
     private var stepCount: Int { MXDrumStepSequencer.stepCount(bars: bars) }
@@ -27,6 +34,7 @@ public struct DrumStepSequencerView: View {
     public init(
         velocityGrid: Binding<[[UInt8]]>,
         bars: Binding<Int>,
+        activeStep: Int? = nil,
         canApply: Bool = true,
         canLoadFromClip: Bool = false,
         onPreviewHit: ((UInt8, UInt8) -> Void)? = nil,
@@ -36,6 +44,7 @@ public struct DrumStepSequencerView: View {
     ) {
         self._velocityGrid = velocityGrid
         self._bars = bars
+        self.activeStep = activeStep
         self.canApply = canApply
         self.canLoadFromClip = canLoadFromClip
         self.onPreviewHit = onPreviewHit
@@ -47,6 +56,7 @@ public struct DrumStepSequencerView: View {
     public var body: some View {
         VStack(spacing: 0) {
             headerRow
+            toolbarRow
             stepGrid
                 .padding(.horizontal, isLandscape ? 6 : 10)
                 .padding(.bottom, isLandscape ? 4 : 8)
@@ -57,6 +67,9 @@ public struct DrumStepSequencerView: View {
             let clamped = MXDrumStepSequencer.clampBars(newBars)
             if clamped != newBars { bars = clamped }
             velocityGrid = MXDrumStepSequencer.resizing(velocityGrid, toBars: clamped)
+            if selectedBarIndex >= clamped {
+                selectedBarIndex = max(0, clamped - 1)
+            }
         }
     }
 
@@ -71,6 +84,8 @@ public struct DrumStepSequencerView: View {
             barPicker
 
             Spacer(minLength: 2)
+
+            libraryMenu
 
             if onLoadFromClip != nil {
                 Button("Load") {
@@ -101,6 +116,72 @@ public struct DrumStepSequencerView: View {
         }
         .padding(.horizontal, isLandscape ? 8 : 12)
         .padding(.vertical, isLandscape ? 4 : 6)
+    }
+
+    private var toolbarRow: some View {
+        HStack(spacing: 6) {
+            Text("Bar")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+
+            ForEach(0..<bars, id: \.self) { index in
+                Button {
+                    selectedBarIndex = index
+                } label: {
+                    Text("\(index + 1)")
+                        .font(MXFont.caption())
+                        .foregroundStyle(selectedBarIndex == index ? MXColor.orange : MXColor.grey)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(selectedBarIndex == index ? MXColor.orange.opacity(0.18) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select bar \(index + 1)")
+                .accessibilityAddTraits(selectedBarIndex == index ? .isSelected : [])
+            }
+
+            Spacer(minLength: 2)
+
+            Button("Copy") {
+                copiedBar = MXDrumStepSequencer.extractBar(velocityGrid, barIndex: selectedBarIndex)
+            }
+            .font(MXFont.caption())
+            .foregroundStyle(MXColor.lightGrey)
+            .accessibilityLabel("Copy bar \(selectedBarIndex + 1)")
+
+            Button("Paste") {
+                guard let copiedBar else { return }
+                velocityGrid = MXDrumStepSequencer.replacingBar(
+                    velocityGrid,
+                    barIndex: selectedBarIndex,
+                    with: copiedBar
+                )
+            }
+            .font(MXFont.caption())
+            .foregroundStyle(copiedBar != nil ? MXColor.lightGrey : MXColor.grey)
+            .disabled(copiedBar == nil)
+            .accessibilityLabel("Paste into bar \(selectedBarIndex + 1)")
+        }
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.bottom, isLandscape ? 2 : 4)
+    }
+
+    private var libraryMenu: some View {
+        Menu {
+            ForEach(MXDrumStepSequencer.PatternPreset.allCases) { preset in
+                Button(preset.displayName) {
+                    velocityGrid = MXDrumStepSequencer.pattern(preset, bars: bars)
+                }
+            }
+        } label: {
+            Text("Library")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.lightGrey)
+        }
+        .accessibilityLabel("Step pattern library")
     }
 
     private var barPicker: some View {
@@ -177,6 +258,7 @@ public struct DrumStepSequencerView: View {
         let on = vel > 0
         let beatAccent = step % 4 == 0
         let barAccent = step % MXDrumStepSequencer.stepsPerBar == 0
+        let isCursor = activeStep == step
         let fillOpacity = on ? Double(vel) / 127.0 : 0
         return RoundedRectangle(cornerRadius: 3, style: .continuous)
             .fill(
@@ -187,12 +269,23 @@ public struct DrumStepSequencerView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .strokeBorder(
-                        on
-                            ? MXColor.orange.opacity(0.9)
-                            : MXColor.grey.opacity(barAccent ? 0.45 : (beatAccent ? 0.35 : 0.15)),
-                        lineWidth: barAccent ? 1 : 0.5
+                        isCursor
+                            ? MXColor.white.opacity(0.95)
+                            : (on
+                                ? MXColor.orange.opacity(0.9)
+                                : MXColor.grey.opacity(barAccent ? 0.45 : (beatAccent ? 0.35 : 0.15))),
+                        lineWidth: isCursor ? 1.5 : (barAccent ? 1 : 0.5)
                     )
             )
+            .overlay(alignment: .top) {
+                if isCursor {
+                    Capsule()
+                        .fill(MXColor.white.opacity(0.9))
+                        .frame(width: max(2, width * 0.35), height: 2)
+                        .padding(.top, 1)
+                        .accessibilityHidden(true)
+                }
+            }
             .frame(width: width, height: height)
             .contentShape(Rectangle())
             .gesture(
@@ -214,7 +307,12 @@ public struct DrumStepSequencerView: View {
                 toggle(row: row, step: step, part: part)
             }
             .accessibilityLabel("\(part.shortLabel) step \(step + 1)")
-            .accessibilityValue(on ? "Velocity \(vel)" : "Off")
+            .accessibilityValue(
+                [
+                    on ? "Velocity \(vel)" : "Off",
+                    isCursor ? "Playhead" : nil
+                ].compactMap { $0 }.joined(separator: ", ")
+            )
             .accessibilityAddTraits(.isButton)
     }
 

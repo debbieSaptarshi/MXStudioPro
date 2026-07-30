@@ -354,6 +354,12 @@ public struct StudioView: View {
                             DrumStepSequencerView(
                                 velocityGrid: $drumStepVelocityGrid,
                                 bars: $drumStepBars,
+                                activeStep: session.isPlaying
+                                    ? MXDrumStepSequencer.stepIndex(
+                                        atBeat: session.playheadBeat,
+                                        bars: drumStepBars
+                                    )
+                                    : nil,
                                 canApply: session.phase == .ready,
                                 canLoadFromClip: session.canLoadDrumStepPatternFromSelectedClip,
                                 onPreviewHit: { note, vel in

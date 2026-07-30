@@ -129,4 +129,68 @@ final class MXDrumStepSequencerTests: XCTestCase {
         XCTAssertEqual(MXDrumStepSequencer.clampBars(3), 3)
         XCTAssertEqual(MXDrumStepSequencer.clampBars(9), 4)
     }
+
+    // MARK: - Week 57
+
+    func testStepIndexAtBeatLoopsAcrossBars() {
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 0, bars: 1), 0)
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 0.24, bars: 1), 0)
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 0.25, bars: 1), 1)
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 3.99, bars: 1), 15)
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 4.0, bars: 1), 0) // wrap 1 bar
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 4.0, bars: 2), 16) // into bar 2
+        XCTAssertEqual(MXDrumStepSequencer.stepIndex(atBeat: 8.0, bars: 2), 0)
+        XCTAssertNil(MXDrumStepSequencer.stepIndex(atBeat: -1, bars: 1))
+        XCTAssertNil(MXDrumStepSequencer.stepIndex(atBeat: .nan, bars: 1))
+    }
+
+    func testExtractAndReplaceBar() {
+        var grid = MXDrumStepSequencer.emptyVelocityGrid(bars: 2)
+        grid[0][0] = 100
+        grid[1][16] = 80 // bar 2 snare
+        let bar0 = MXDrumStepSequencer.extractBar(grid, barIndex: 0)
+        XCTAssertEqual(bar0[0].count, 16)
+        XCTAssertEqual(bar0[0][0], 100)
+        XCTAssertEqual(bar0[1][0], 0)
+
+        let bar1 = MXDrumStepSequencer.extractBar(grid, barIndex: 1)
+        XCTAssertEqual(bar1[1][0], 80)
+
+        let pasted = MXDrumStepSequencer.replacingBar(grid, barIndex: 1, with: bar0)
+        XCTAssertEqual(pasted[0][16], 100)
+        XCTAssertEqual(pasted[1][16], 0)
+
+        let copied = MXDrumStepSequencer.copyingBar(grid, from: 1, to: 0)
+        XCTAssertEqual(copied[1][0], 80)
+        XCTAssertEqual(copied[0][0], 0)
+
+        let oob = MXDrumStepSequencer.extractBar(grid, barIndex: 9)
+        XCTAssertFalse(MXDrumStepSequencer.hasHits(oob))
+    }
+
+    func testPatternLibraryPresets() {
+        let four = MXDrumStepSequencer.pattern(.fourOnFloor, bars: 1)
+        XCTAssertTrue(MXDrumStepSequencer.hasHits(four))
+        XCTAssertEqual(four[0][0], 110)
+        XCTAssertEqual(four[0][4], 110)
+        XCTAssertEqual(four[1][4], 100)
+        XCTAssertEqual(four[2][0], 80)
+
+        let twoBars = MXDrumStepSequencer.pattern(.fourOnFloor, bars: 2)
+        XCTAssertEqual(twoBars[0].count, 32)
+        XCTAssertEqual(twoBars[0][16], 110)
+        XCTAssertEqual(twoBars[1][20], 100)
+
+        let boom = MXDrumStepSequencer.patternMotif(.boomBap)
+        XCTAssertEqual(boom[0][0], 115)
+        XCTAssertEqual(boom[1][4], 110)
+
+        let half = MXDrumStepSequencer.patternMotif(.halfTime)
+        XCTAssertEqual(half[0][0], 120)
+        XCTAssertEqual(half[1][8], 110)
+
+        let disco = MXDrumStepSequencer.patternMotif(.discoHats)
+        XCTAssertEqual(disco[2][1], 90)
+        XCTAssertEqual(MXDrumStepSequencer.PatternPreset.allCases.count, 4)
+    }
 }
