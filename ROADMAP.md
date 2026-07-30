@@ -54,6 +54,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **40** | Per-part drum lanes (Kick/Snare/Hats…) | **Done (MVP)** ✅ BandLab-style part columns |
 | **41** | Record orientation lock + landscape chrome | **Done (MVP)** ✅ opt-in portrait lock; densified Rec |
 | **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ mute re-renders WAV beds |
+| **43** | Arrange timeline strip meters | **Done (MVP)** ✅ header meters reuse W38 peaks |
 
 ### Figma anchors (shipped / in use)
 
@@ -401,6 +402,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 | **40** | Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Done (MVP)** ✅ |
 | **41** | Optional record orientation lock; Record landscape chrome | **Done (MVP)** ✅ |
 | **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ |
+| **43** | Arrange timeline strip meters | **Done (MVP)** ✅ |
 | — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
 
 ### Week 40 — Per-part drum lanes ✅
@@ -442,12 +444,24 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 
 **Week 42 notes:** Parts remain one shared performance clip (no per-part WAVs). Playlist takes still win over part columns when ≥2 takes. Deferred: nested takes×parts, per-part solo, step sequencer, SFZ choke.
 
+### Week 43 — Arrange timeline strip meters ✅
+
+**Done when (Logic / Pro Tools / BandLab arrange meters)**
+- [x] Each expanded arrange track header shows a live vertical peak meter during playback
+- [x] Same levels as mixer (`trackPlaybackLevels` / peak-hold) — no new AVAudio taps
+- [x] Mute/solo quiet the meter; stop/pause decay/zero via existing poll
+- [x] Playlist / drum-part folders: one meter per parent track (not per sub-row)
+- [x] Collapsed Hide Tracks rail: no meter (layout unchanged)
+- [x] Input record meters unchanged
+
+**Week 43 notes:** Slim 5 pt meter beside M/S in `StudioTrackHeader`. Reuses Week 38 post-FX / trackMixer taps.
+
 ### Month 11 remaining
 
 | Focus | Status |
 |-------|--------|
 | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
-| Optional: nested takes×drum parts; timeline strip meters | Backlog |
+| Optional: nested takes×drum parts; per-part solo | Backlog |
 
 ### Implementation notes (shared — Month 9)
 

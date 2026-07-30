@@ -525,7 +525,9 @@ public struct StudioView: View {
                         },
                         onToggleDrumPartMute: { part in
                             session.toggleDrumPartMute(trackID: track.id, part: part)
-                        }
+                        },
+                        playbackLevel: session.trackPlaybackLevels[track.id] ?? 0,
+                        playbackPeakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
                     )
                     .frame(height: trackArrangementHeight(for: track))
                     .clipped()
@@ -2528,11 +2530,12 @@ private struct MixerVerticalFader: View {
     }
 }
 
-/// Vertical peak meter beside mixer faders (Studio One / Logic strip style).
+/// Vertical peak meter beside mixer faders / arrange headers (Studio One / Logic strip style).
 private struct PlaybackStripMeter: View {
     var level: Float
     var peakHold: Float
     var height: CGFloat = 140
+    var width: CGFloat = 8
 
     var body: some View {
         GeometryReader { geo in
@@ -2559,7 +2562,7 @@ private struct PlaybackStripMeter: View {
                 }
             }
         }
-        .frame(width: 8, height: height)
+        .frame(width: width, height: height)
         .accessibilityHidden(true)
     }
 }
@@ -2586,6 +2589,9 @@ private struct StudioTrackHeader: View {
     var onTogglePlaylist: () -> Void
     var onToggleDrumParts: () -> Void = {}
     var onToggleDrumPartMute: (MXDrumPart) -> Void = { _ in }
+    /// Live playback peak (Week 38 taps / Week 43 arrange meter).
+    var playbackLevel: Float = 0
+    var playbackPeakHold: Float = 0
 
     private var categoryTint: Color {
         switch track.category {
@@ -2641,6 +2647,13 @@ private struct StudioTrackHeader: View {
                 } else {
                     trackSummaryColumn
                 }
+
+                PlaybackStripMeter(
+                    level: playbackLevel,
+                    peakHold: playbackPeakHold,
+                    height: isDrumPartsExpanded ? 72 : 48,
+                    width: 5
+                )
 
                 VStack(spacing: 3) {
                     muteSoloButton("M", active: track.isMuted, action: onMute)
