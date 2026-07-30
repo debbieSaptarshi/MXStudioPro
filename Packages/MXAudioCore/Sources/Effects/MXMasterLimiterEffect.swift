@@ -33,15 +33,14 @@ public final class MXMasterLimiterEffect: MXEffect, @unchecked Sendable {
         set {
             bypassed = newValue
             // Bypass by opening the dynamics wide so it passes audio unchanged.
-            if let au = dynamics.audioUnit {
-                if newValue {
-                    AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, 0, 0)
-                    AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 40, 0)
-                    AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionRatio, kAudioUnitScope_Global, 0, 1, 0)
-                    AudioUnitSetParameter(au, kDynamicsProcessorParam_OverallGain, kAudioUnitScope_Global, 0, 0, 0)
-                } else {
-                    Self.configureBrickwall(dynamics)
-                }
+            let au = dynamics.audioUnit
+            if newValue {
+                AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, 0, 0)
+                AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 40, 0)
+                AudioUnitSetParameter(au, kDynamicsProcessorParam_ExpansionRatio, kAudioUnitScope_Global, 0, 1, 0)
+                AudioUnitSetParameter(au, kDynamicsProcessorParam_OverallGain, kAudioUnitScope_Global, 0, 0, 0)
+            } else {
+                Self.configureBrickwall(dynamics)
             }
         }
     }
@@ -59,7 +58,7 @@ public final class MXMasterLimiterEffect: MXEffect, @unchecked Sendable {
     }
 
     private static func configureBrickwall(_ unit: AVAudioUnitEffect) {
-        guard let au = unit.audioUnit else { return }
+        let au = unit.audioUnit
         // Near-ceiling threshold + tiny headroom ≈ soft brickwall.
         AudioUnitSetParameter(au, kDynamicsProcessorParam_Threshold, kAudioUnitScope_Global, 0, -1.5, 0)
         AudioUnitSetParameter(au, kDynamicsProcessorParam_HeadRoom, kAudioUnitScope_Global, 0, 0.5, 0)
