@@ -51,6 +51,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **37** | Multi-row playlist folder (take lanes) | **Done (MVP)** ✅ one row per takeIndex; collapse chevron |
 | **38** | Playback strip meters (mixer) | **Done (MVP)** ✅ live peak + peak-hold beside faders |
 | **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ Dist→Delay→Rev on armed guitar monitor |
+| **40** | Per-part drum lanes (Kick/Snare/Hats…) | **Done (MVP)** ✅ BandLab-style part columns |
 
 ### Figma anchors (shipped / in use)
 
@@ -387,13 +388,38 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 
 Equal-power X-fades → playlist folder → strip meters → wet guitar monitor. Arrangement depth MVP complete.
 
-### Month 11 — Next (Planned)
+---
+
+## Month 11 — Drum depth + capture chrome *(Weeks 40+)*
+
+Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit Designer.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **40** | Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Done (MVP)** ✅ |
+| **41** | Optional record orientation lock; Record landscape chrome | **Planned** |
+| — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
+
+### Week 40 — Per-part drum lanes ✅
+
+**Done when (BandLab / GarageBand kit columns)**
+- [x] Drum tracks expand into fixed Kick / Snare / Hats / Toms / Perc / Ride rows
+- [x] Pad hits map to parts via shared `MXDrumPart` (same map as `DrumPadView`)
+- [x] One performance clip still owns the WAV bed; each row filters `midiNotes` for that part
+- [x] Empty part columns show faint clip shell (aligned); header lists part labels
+- [x] Chevron collapses part folder to summary lane (session-local `@State`)
+- [x] Multi-take playlist folder (≥2 takes) still wins over part columns
+- [x] Capture names clips `Drums N` / `drums_*.wav`
+- [x] Unit tests for pad→part mapping + note filter
+
+**Week 40 notes:** Parts are arrange UI only — not separate WAVs, not per-part mute. Playlist takes remain orthogonal (`takeIndex`). Deferred: step sequencer, SFZ kit choke, nested takes×parts.
+
+### Month 11 remaining
 
 | Focus | Status |
 |-------|--------|
-| Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Planned** |
-| Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
 | Optional record orientation lock; Record landscape chrome | **Planned** |
+| Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
 
 ### Implementation notes (shared — Month 9)
 

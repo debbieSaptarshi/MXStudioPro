@@ -26,6 +26,8 @@ public struct StudioView: View {
     @State private var tracksCollapsed = false
     /// Session-local collapse state: tracks in this set are collapsed to one summary lane.
     @State private var collapsedPlaylistTrackIDs: Set<UUID> = []
+    /// Session-local collapse for Week 40 drum part columns (Kick/Snare/Hats…).
+    @State private var collapsedDrumPartTrackIDs: Set<UUID> = []
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
@@ -40,6 +42,8 @@ public struct StudioView: View {
     private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
     /// Height of one take lane inside an expanded playlist folder.
     private var takeRowHeight: CGFloat { isLandscape ? 40 : 44 }
+    /// Height of one Kick/Snare/Hats… column inside an expanded drum folder.
+    private var drumPartRowHeight: CGFloat { isLandscape ? 36 : 40 }
     /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
     private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
     private let rulerHeight: CGFloat = 24
@@ -56,9 +60,24 @@ public struct StudioView: View {
         isPlaylistFolder(track) && !collapsedPlaylistTrackIDs.contains(track.id)
     }
 
+    /// Drum tracks always expose BandLab-style part columns (orthogonal to takes).
+    private func isDrumPartFolder(_ track: MXSessionTrack) -> Bool {
+        track.category == .drums
+    }
+
+    /// Part columns for single-take drum tracks (playlist folder wins when ≥2 takes).
+    private func isDrumPartsExpanded(_ track: MXSessionTrack) -> Bool {
+        isDrumPartFolder(track)
+            && !isPlaylistFolder(track)
+            && !collapsedDrumPartTrackIDs.contains(track.id)
+    }
+
     private func trackArrangementHeight(for track: MXSessionTrack) -> CGFloat {
         if isPlaylistExpanded(track) {
             return CGFloat(playlistTakeIndices(for: track).count) * takeRowHeight
+        }
+        if isDrumPartsExpanded(track) {
+            return CGFloat(MXDrumPart.allCases.count) * drumPartRowHeight
         }
         return trackLaneHeight
     }
@@ -464,6 +483,11 @@ public struct StudioView: View {
                         takeLaneCount: playlistTakeIndices(for: track).count,
                         takeRepresentatives: session.takes(onTrackID: track.id),
                         isPlaylistExpanded: isPlaylistExpanded(track),
+                        drumPartLabels: isDrumPartsExpanded(track)
+                            ? MXDrumPart.allCases.sorted().map(\.shortLabel)
+                            : [],
+                        isDrumPartsExpanded: isDrumPartsExpanded(track),
+                        showsDrumPartChevron: isDrumPartFolder(track) && !isPlaylistFolder(track),
                         onSelect: {
                             selectedTrackID = track.id
                             session.armTrack(id: track.id)
@@ -477,6 +501,15 @@ public struct StudioView: View {
                                     collapsedPlaylistTrackIDs.remove(track.id)
                                 } else {
                                     collapsedPlaylistTrackIDs.insert(track.id)
+                                }
+                            }
+                        },
+                        onToggleDrumParts: {
+                            withAnimation {
+                                if collapsedDrumPartTrackIDs.contains(track.id) {
+                                    collapsedDrumPartTrackIDs.remove(track.id)
+                                } else {
+                                    collapsedDrumPartTrackIDs.insert(track.id)
                                 }
                             }
                         }
@@ -758,6 +791,18 @@ public struct StudioView: View {
                     .frame(height: takeRowHeight)
                 }
             }
+        } else if isDrumPartsExpanded(track) {
+            // One timeline row per drum part (BandLab / GarageBand kit columns).
+            VStack(spacing: 0) {
+                ForEach(MXDrumPart.allCases.sorted()) { part in
+                    drumPartRow(
+                        track: track,
+                        part: part,
+                        pixelsPerBeat: pixelsPerBeat
+                    )
+                    .frame(height: drumPartRowHeight)
+                }
+            }
         } else {
             // Single-take or collapsed folder: summary lane with active clips only.
             let activeClips = track.clips.filter(\.isActive)
@@ -774,7 +819,7 @@ public struct StudioView: View {
 
                 if activeClips.isEmpty {
                     if isPrimary {
-                        Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
+                        Text(emptyLaneHint(for: track))
                             .font(MXFont.body3())
                             .foregroundStyle(MXColor.grey)
                             .padding(.leading, 12)
@@ -795,6 +840,70 @@ public struct StudioView: View {
                 }
             }
         }
+    }
+
+    private func emptyLaneHint(for track: MXSessionTrack) -> String {
+        if track.category == .drums { return "Tap pads below · Play to capture" }
+        if track.kind == .midi { return "Play the keys below" }
+        return "Tap ● to record"
+    }
+
+    /// Part-lane row: same performance clip(s), notes filtered to Kick/Snare/Hats…
+    private func drumPartRow(
+        track: MXSessionTrack,
+        part: MXDrumPart,
+        pixelsPerBeat: CGFloat
+    ) -> some View {
+        let activeClips = track.clips.filter(\.isActive)
+        let interactiveHeight = drumPartRowHeight - 6
+        return ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(MXColor.surfaceRaised.opacity(0.35))
+                .contentShape(Rectangle())
+                .modifier(LaneBackgroundPointerModifier(
+                    pixelsPerBeat: pixelsPerBeat,
+                    hasSelection: session.selectedClipID != nil,
+                    onSeek: { session.seek(toBeat: max(0, $0)) },
+                    onClearSelection: { session.selectClip(nil) }
+                ))
+
+            if activeClips.isEmpty {
+                if part == .kick {
+                    Text("Tap pads below")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.leading, 12)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                ForEach(activeClips) { clip in
+                    let partNotes = clip.midiNotes.filtered(to: part)
+                    if partNotes.isEmpty {
+                        // Faint clip shell so empty columns still align with the take (BandLab).
+                        StudioDrumPartClipShell(
+                            clip: clip,
+                            pixelsPerBeat: pixelsPerBeat,
+                            rowHeight: drumPartRowHeight,
+                            onSelect: { session.selectClip(clip.id) }
+                        )
+                    } else {
+                        InteractiveStudioClip(
+                            clip: clip,
+                            pixelsPerBeat: pixelsPerBeat,
+                            isSelected: session.selectedClipID == clip.id,
+                            clipHeight: interactiveHeight,
+                            displayNotes: partNotes,
+                            onSelect: { session.selectClip(clip.id) },
+                            onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
+                            onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
+                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                        )
+                    }
+                }
+            }
+        }
+        .clipped()
+        .accessibilityLabel("\(part.shortLabel) lane")
     }
 
     private func playlistTakeRow(
@@ -2440,11 +2549,16 @@ private struct StudioTrackHeader: View {
     var takeLaneCount: Int
     var takeRepresentatives: [MXClip]
     var isPlaylistExpanded: Bool
+    /// When non-empty, header stacks Kick/Snare/Hats… labels for expanded drum folder.
+    var drumPartLabels: [String] = []
+    var isDrumPartsExpanded: Bool = false
+    var showsDrumPartChevron: Bool = false
     var onSelect: () -> Void
     var onMute: () -> Void
     var onSolo: () -> Void
     var onSetActiveTake: (UUID) -> Void
     var onTogglePlaylist: () -> Void
+    var onToggleDrumParts: () -> Void = {}
 
     private var categoryTint: Color {
         switch track.category {
@@ -2478,6 +2592,15 @@ private struct StudioTrackHeader: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isPlaylistExpanded ? "Collapse takes" : "Expand takes")
+                } else if showsDrumPartChevron {
+                    Button(action: onToggleDrumParts) {
+                        Image(systemName: isDrumPartsExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isDrumPartsExpanded ? "Collapse drum parts" : "Expand drum parts")
                 }
 
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -2486,63 +2609,10 @@ private struct StudioTrackHeader: View {
                     .frame(maxHeight: .infinity)
                     .padding(.vertical, 4)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 3) {
-                        Image(systemName: categoryIcon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(isArmed ? MXColor.red : categoryTint)
-                        Text(track.name.uppercased())
-                            .font(MXFont.studioTrackName())
-                            .foregroundStyle(MXColor.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        Spacer(minLength: 2)
-                        if isArmed {
-                            Text("R")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(MXColor.white)
-                                .frame(width: 12, height: 12)
-                                .background(Circle().fill(MXColor.red))
-                        }
-                        if takeLaneCount > 1 {
-                            Text("T\(takeLaneCount)")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(MXColor.grey)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(MXColor.black.opacity(0.35))
-                                )
-                            Menu {
-                                ForEach(takeRepresentatives) { take in
-                                    Button {
-                                        onSetActiveTake(take.id)
-                                    } label: {
-                                        if take.isActive {
-                                            Label(take.name, systemImage: "checkmark")
-                                        } else {
-                                            Text(take.name)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(MXColor.grey)
-                            }
-                        }
-                    }
-
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(MXColor.black).frame(height: 5)
-                            Capsule()
-                                .fill(categoryTint)
-                                .frame(width: geo.size.width * CGFloat(track.volume), height: 5)
-                        }
-                    }
-                    .frame(height: 5)
+                if isDrumPartsExpanded && !drumPartLabels.isEmpty {
+                    drumPartLabelsColumn
+                } else {
+                    trackSummaryColumn
                 }
 
                 VStack(spacing: 3) {
@@ -2551,7 +2621,7 @@ private struct StudioTrackHeader: View {
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, isDrumPartsExpanded ? 0 : 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -2564,6 +2634,104 @@ private struct StudioTrackHeader: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)
+    }
+
+    /// Collapsed / non-drum header: name, arm badge, takes menu, volume.
+    private var trackSummaryColumn: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 3) {
+                Image(systemName: categoryIcon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isArmed ? MXColor.red : categoryTint)
+                Text(track.name.uppercased())
+                    .font(MXFont.studioTrackName())
+                    .foregroundStyle(MXColor.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 2)
+                if isArmed {
+                    Text("R")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.white)
+                        .frame(width: 12, height: 12)
+                        .background(Circle().fill(MXColor.red))
+                }
+                if takeLaneCount > 1 {
+                    Text("T\(takeLaneCount)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(MXColor.black.opacity(0.35))
+                        )
+                    Menu {
+                        ForEach(takeRepresentatives) { take in
+                            Button {
+                                onSetActiveTake(take.id)
+                            } label: {
+                                if take.isActive {
+                                    Label(take.name, systemImage: "checkmark")
+                                } else {
+                                    Text(take.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                    }
+                } else if showsDrumPartChevron {
+                    Text("Parts")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(MXColor.black.opacity(0.35))
+                        )
+                }
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(MXColor.black).frame(height: 5)
+                    Capsule()
+                        .fill(categoryTint)
+                        .frame(width: geo.size.width * CGFloat(track.volume), height: 5)
+                }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    /// Expanded drum folder: one label row per Kick / Snare / Hats… lane.
+    private var drumPartLabelsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(drumPartLabels.enumerated()), id: \.offset) { _, label in
+                HStack(spacing: 4) {
+                    if label == drumPartLabels.first {
+                        Image(systemName: categoryIcon)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(isArmed ? MXColor.red : categoryTint)
+                    } else {
+                        Color.clear.frame(width: 10, height: 10)
+                    }
+                    Text(label)
+                        .font(MXFont.caption())
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MXColor.lightGrey)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func muteSoloButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -2652,10 +2820,14 @@ private struct InteractiveStudioClip: View {
     let isSelected: Bool
     /// Clip body height; smaller in expanded playlist take rows.
     var clipHeight: CGFloat = 52
+    /// When set (drum part lanes), draw only these notes instead of the full clip roll.
+    var displayNotes: [MXMIDINote]? = nil
     var onSelect: () -> Void
     var onMove: (_ toStartBeat: Double) -> Void
     var onTrimStart: (_ toStartBeat: Double) -> Void
     var onTrimEnd: (_ toEndBeat: Double) -> Void
+
+    private var rollNotes: [MXMIDINote] { displayNotes ?? clip.midiNotes }
 
     private let handleWidth: CGFloat = 14
 
@@ -2698,12 +2870,17 @@ private struct InteractiveStudioClip: View {
     @ViewBuilder
     private var clipChrome: some View {
         let base = ZStack(alignment: .leading) {
-            if clip.midiNotes.isEmpty {
+            if rollNotes.isEmpty && clip.midiNotes.isEmpty {
                 StudioWaveformClip()
                     .frame(width: displayWidth, height: clipHeight)
                     .opacity(isSelected ? 1 : 0.92)
+            } else if rollNotes.isEmpty {
+                // Part lane with no hits for this column — keep clip bounds selectable.
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2.opacity(0.35))
+                    .frame(width: displayWidth, height: clipHeight)
             } else {
-                StudioMIDIRollClip(notes: clip.midiNotes, lengthBeats: clip.lengthBeats)
+                StudioMIDIRollClip(notes: rollNotes, lengthBeats: clip.lengthBeats)
                     .frame(width: displayWidth, height: clipHeight)
                     .opacity(isSelected ? 1 : 0.92)
             }
@@ -2808,6 +2985,38 @@ private struct InteractiveStudioClip: View {
     }
 }
 
+// MARK: - Empty drum part shell (aligns columns when a part has no hits)
+
+private struct StudioDrumPartClipShell: View {
+    let clip: MXClip
+    let pixelsPerBeat: CGFloat
+    var rowHeight: CGFloat = 40
+    var onSelect: () -> Void = {}
+
+    private var width: CGFloat {
+        max(24, CGFloat(clip.lengthBeats) * pixelsPerBeat)
+    }
+
+    private var x: CGFloat {
+        CGFloat(clip.startBeat) * pixelsPerBeat
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .strokeBorder(MXColor.grey.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            .background(
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2.opacity(0.2))
+            )
+            .frame(width: width, height: rowHeight - 6)
+            .offset(x: x, y: 3)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+            .accessibilityLabel("Empty \(clip.name) part")
+            .accessibilityHint("Selects the drum clip")
+    }
+}
+
 // MARK: - Piano-roll lite clip (MIDI notes)
 
 private struct StudioMIDIRollClip: View {
@@ -2817,21 +3026,38 @@ private struct StudioMIDIRollClip: View {
     var body: some View {
         Canvas { context, size in
             let beats = max(lengthBeats, 0.25)
-            let minNote = notes.map(\.note).min() ?? 60
-            let maxNote = notes.map(\.note).max() ?? 72
-            let noteSpan = max(1, Int(maxNote) - Int(minNote) + 1)
-            let rowH = size.height / CGFloat(noteSpan)
-            for note in notes {
-                let x = CGFloat(note.startBeat / beats) * size.width
-                let w = max(2, CGFloat(note.lengthBeats / beats) * size.width)
-                let row = Int(maxNote) - Int(note.note)
-                let y = CGFloat(row) * rowH + 1
-                let rect = CGRect(x: x, y: y, width: w, height: max(2, rowH - 2))
-                let alpha = 0.45 + 0.55 * (Double(note.velocity) / 127.0)
-                context.fill(
-                    Path(roundedRect: rect, cornerRadius: 1),
-                    with: .color(MXColor.orange.opacity(alpha))
-                )
+            // Single-pitch part lanes (Kick/Snare…) use a mid-band hit bar for readability.
+            let uniquePitches = Set(notes.map(\.note))
+            if uniquePitches.count <= 2 {
+                let rowH = max(4, size.height * 0.55)
+                let y = (size.height - rowH) / 2
+                for note in notes {
+                    let x = CGFloat(note.startBeat / beats) * size.width
+                    let w = max(3, CGFloat(note.lengthBeats / beats) * size.width)
+                    let rect = CGRect(x: x, y: y, width: w, height: rowH)
+                    let alpha = 0.5 + 0.5 * (Double(note.velocity) / 127.0)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: 1.5),
+                        with: .color(MXColor.orange.opacity(alpha))
+                    )
+                }
+            } else {
+                let minNote = notes.map(\.note).min() ?? 60
+                let maxNote = notes.map(\.note).max() ?? 72
+                let noteSpan = max(1, Int(maxNote) - Int(minNote) + 1)
+                let rowH = size.height / CGFloat(noteSpan)
+                for note in notes {
+                    let x = CGFloat(note.startBeat / beats) * size.width
+                    let w = max(2, CGFloat(note.lengthBeats / beats) * size.width)
+                    let row = Int(maxNote) - Int(note.note)
+                    let y = CGFloat(row) * rowH + 1
+                    let rect = CGRect(x: x, y: y, width: w, height: max(2, rowH - 2))
+                    let alpha = 0.45 + 0.55 * (Double(note.velocity) / 127.0)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: 1),
+                        with: .color(MXColor.orange.opacity(alpha))
+                    )
+                }
             }
         }
         .background(
