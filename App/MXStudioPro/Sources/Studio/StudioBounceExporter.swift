@@ -18,6 +18,25 @@ public enum StudioBounceExporter {
         public var loudnessMode: LoudnessMode
     }
 
+    /// One per-track stem from `bounceStems` (Ableton / BandLab stem export lite).
+    public struct StemResult: Sendable {
+        public var trackID: UUID
+        public var trackName: String
+        public var wavURL: URL
+        public var m4aURL: URL
+        public var durationSeconds: Double
+        public var loudnessMode: LoudnessMode
+    }
+
+    public struct StemsResult: Sendable {
+        public var stems: [StemResult]
+        public var loudnessMode: LoudnessMode
+
+        public var allURLs: [URL] {
+            stems.flatMap { [$0.wavURL, $0.m4aURL] }
+        }
+    }
+
     public enum BounceError: Error, LocalizedError {
         case noAudio
         case writeFailed(String)
@@ -122,6 +141,106 @@ public enum StudioBounceExporter {
             durationSeconds: totalSeconds,
             loudnessMode: appliedMode
         )
+    }
+
+    /// Bounce each track with audible clips to its own WAV + M4A (stem export).
+    ///
+    /// Ignores mute/solo so every track with audio becomes a stem (BandLab / Ableton style).
+    /// Tracks with no active audio files are skipped.
+    public static func bounceStems(
+        project: MXProject,
+        audioDirectory: URL,
+        outputDirectory: URL,
+        normalize: Bool = true,
+        loudnessMode: LoudnessMode = .peakNormalize,
+        highPassEnabled: Bool = true
+    ) throws -> StemsResult {
+        let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
+        let bpm = max(project.bpm, 1)
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let stamp = Int(Date().timeIntervalSince1970)
+
+        var stems: [StemResult] = []
+        var skippedMissing = 0
+        var appliedMode = loudnessMode
+
+        for track in project.tracks {
+            var endBeat: Double = 0
+            var jobs: [(clip: MXClip, url: URL)] = []
+            var fxTailSeconds: Double = 0.25
+            for clip in track.clips {
+                guard clip.isActive else { continue }
+                guard let name = clip.audioFileName else { continue }
+                let url = audioDirectory.appendingPathComponent(name)
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    skippedMissing += 1
+                    continue
+                }
+                jobs.append((clip, url))
+                endBeat = max(endBeat, clip.startBeat + clip.lengthBeats)
+                fxTailSeconds = max(fxTailSeconds, mixClipFXTailSeconds(track: track))
+            }
+            guard !jobs.isEmpty, endBeat > 0 else { continue }
+
+            let totalSeconds = endBeat * 60.0 / bpm + fxTailSeconds
+            let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
+            var left = [Float](repeating: 0, count: frameCount)
+            var right = [Float](repeating: 0, count: frameCount)
+
+            for job in jobs {
+                try mixClip(
+                    url: job.url,
+                    clip: job.clip,
+                    track: track,
+                    bpm: bpm,
+                    sampleRate: sampleRate,
+                    highPassEnabled: highPassEnabled,
+                    intoLeft: &left,
+                    intoRight: &right
+                )
+            }
+
+            if normalize {
+                switch loudnessMode {
+                case .peakNormalize:
+                    peakNormalize(left: &left, right: &right, targetPeak: 0.89)
+                    appliedMode = .peakNormalize
+                case .reelsLUFS:
+                    MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                    appliedMode = .reelsLUFS
+                }
+                applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+            } else {
+                applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+                appliedMode = loudnessMode
+            }
+
+            let base = "Stem_\(sanitize(track.name))_\(stamp)"
+            let wavURL = outputDirectory.appendingPathComponent("\(base).wav")
+            let m4aURL = outputDirectory.appendingPathComponent("\(base).m4a")
+            try writeWAV(left: left, right: right, sampleRate: sampleRate, to: wavURL)
+            try writeM4A(left: left, right: right, sampleRate: sampleRate, to: m4aURL)
+
+            stems.append(
+                StemResult(
+                    trackID: track.id,
+                    trackName: track.name,
+                    wavURL: wavURL,
+                    m4aURL: m4aURL,
+                    durationSeconds: totalSeconds,
+                    loudnessMode: appliedMode
+                )
+            )
+        }
+
+        guard !stems.isEmpty else {
+            if skippedMissing > 0 {
+                throw BounceError.writeFailed("Audio files missing for \(skippedMissing) clip(s). Re-record or re-import.")
+            }
+            throw BounceError.noAudio
+        }
+
+        return StemsResult(stems: stems, loudnessMode: appliedMode)
     }
 
     // MARK: - Mix

@@ -56,10 +56,10 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ mute re-renders WAV beds |
 | **43** | Arrange timeline strip meters | **Done (MVP)** ✅ header meters reuse W38 peaks |
 | **44** | Per-part drum solo (Kick/Snare/Hats… S) | **Done (MVP)** ✅ solo + mute → audible bed |
-| **45** | MIDI quantize lite (16th note starts) | **In progress** |
-| **46** | Clip fade wedges on arrange timeline | **Planned** |
-| **47** | Stem export (per-track bounce) | **Planned** |
-| **48** | Import tempo detect lite | **Planned** |
+| **45** | MIDI quantize lite (16th note starts) | **Done (MVP)** ✅ |
+| **46** | Clip fade wedges on arrange timeline | **Done (MVP)** ✅ |
+| **47** | Stem export (per-track bounce) | **Done (MVP)** ✅ |
+| **48** | Import tempo detect lite | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -490,19 +490,50 @@ Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ab
 
 | Week | Focus | Status |
 |------|--------|--------|
-| **45** | MIDI quantize lite — snap captured note starts to 16ths | **In progress** |
-| **46** | Clip fade wedges on arrange timeline (visual equal-power fades) | **Planned** |
-| **47** | Stem export — one WAV(+M4A) per track from Export sheet | **Planned** |
-| **48** | Import tempo detect lite (estimate BPM from imported audio) | **Planned** |
+| **45** | MIDI quantize lite — snap captured note starts to 16ths | **Done (MVP)** ✅ |
+| **46** | Clip fade wedges on arrange timeline (visual equal-power fades) | **Done (MVP)** ✅ |
+| **47** | Stem export — one WAV(+M4A) per track from Export sheet | **Done (MVP)** ✅ |
+| **48** | Import tempo detect lite (estimate BPM from imported audio) | **Done (MVP)** ✅ |
 
-### Week 45 — MIDI quantize lite
+### Week 45 — MIDI quantize lite ✅
 
 **Done when (GarageBand / BandLab Quantize)**
-- [ ] Pure `MXMIDIQuantize` snaps note `startBeat` to 16th grid; length preserved
-- [ ] Studio Settings toggle “Quantize MIDI capture” (default **on**), separate from arrange snap
-- [ ] Drum + piano Pause/Stop commit applies quantize to absolute starts before localizing / rendering bed
-- [ ] Live pads/keys stay unquantized while playing
-- [ ] Unit tests for snap edges, length preserve, empty / bad resolution
+- [x] Pure `MXMIDIQuantize` snaps note `startBeat` to 16th grid; length preserved
+- [x] Studio Settings toggle “Quantize MIDI capture” (default **on**), separate from arrange snap
+- [x] Drum + piano Pause/Stop commit applies quantize to absolute starts before localizing / rendering bed
+- [x] Live pads/keys stay unquantized while playing
+- [x] Unit tests for snap edges, length preserve, empty / bad resolution
+
+**Week 45 notes:** Arrange `snapBeat` shares `MXMIDIQuantize.snapBeat`. Strength / swing deferred.
+
+### Week 46 — Clip fade wedges ✅
+
+**Done when (Logic / Pro Tools fade visualization)**
+- [x] Active arrange clips show equal-power fade-in / fade-out wedges matching `fadeInSeconds` / `fadeOutSeconds`
+- [x] Wedge width converts seconds → beats via project BPM (`MXClipFadeGeometry`)
+- [x] Drawn on `InteractiveStudioClip` (summary, playlist, drum-part lanes); not on ghosts / empty shells
+- [x] Edit remains clip inspector sliders (drag-to-edit deferred)
+- [x] Unit tests for beat width + equal-power gain helpers
+
+### Week 47 — Stem export ✅
+
+**Done when (Ableton / BandLab stem bounce)**
+- [x] Export sheet → “Export stems” bounces each track with audio to its own WAV + M4A
+- [x] Ignores mute/solo (true stems); skips tracks with no active audio files
+- [x] Same loudness toggle as mix bounce (Reels −14 LUFS or peak)
+- [x] Share sheet presents all stem files
+- [x] Per-stem FX / fades via existing `mixClip` path
+
+### Week 48 — Import tempo detect lite ✅
+
+**Done when (Mixed In Key / GarageBand / BandLab tempo detect lite)**
+- [x] Pure `MXTempoDetect` estimates BPM from mono PCM + sampleRate via energy-onset autocorrelation (60–200)
+- [x] Studio `importAudioFile` auto-applies confident estimate via `setBPM` (clamped 40–240); stores `lastDetectedBPM`
+- [x] Detect failure is non-fatal — import still places the clip at the current project BPM
+- [x] Clip `lengthBeats` computed after any tempo update
+- [x] Unit tests: synthetic click trains (90/120/140), silence, short/empty input
+
+**Week 48 notes:** Confirmation sheet deferred; auto-apply + BPM transport display is the MVP. Full beat grid / Mixed In Key key+BPM deferred.
 
 **SOTA next (Month 12+ backlog ideas for existing features)**
 - Strength / swing quantize (not hard snap only)
@@ -511,6 +542,7 @@ Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ab
 - Clip gain automation lane lite
 - Pitch correction / time stretch / harmonies
 - Beat browser + video+audio Reels export
+- Tempo-detect confirmation UI / confidence badge; beat grid from import
 - Cloud auth / social / AI beyond local MVP
 
 ### Implementation notes (shared — Month 9)
@@ -604,8 +636,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 
 ### Later “wow”
 - Pitch correction, time stretch, harmonies
-- Stem export, video+audio Reels export
-- Beat browser / tempo detect from import
+- Stem export ✅ Week 47; video+audio Reels export
+- Beat browser; import tempo detect ✅ Week 48 lite (`MXTempoDetect`)
 
 ---
 
@@ -670,7 +702,10 @@ W1–4 Engine + project + record → clip     ← done (MVP)
               → W29 Checklist + loop clamp + comps ← done
                 → W30 Mixer strips + bounce FX parity ← done
                   → W31–35 Instrument Studio sections ← done
-                    → W36–38 Arrangement depth done; W39 wet monitor ← next
+                    → W36–39 Arrangement depth ← done
+                      → W40–44 Drum depth + capture chrome ← done
+                        → W45–47 Quantize + fade wedges + stems ← done
+                          → W48 Import tempo detect ← done (MVP)
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -692,6 +727,9 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 30 | Mixer channel strips + bounce FX parity |
 | 31–35 | Guitar / Piano / Drum / Landscape Studio |
 | 36–39 | Arrangement depth (X-fades → playlist → meters → wet monitor) |
+| 40–44 | Drum part lanes + mute/solo + record chrome + timeline meters |
+| 45–47 | MIDI quantize + fade wedges + stem export |
+| 48 | Import tempo detect lite *(done MVP)* |
 
 ---
 

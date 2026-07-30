@@ -851,6 +851,7 @@ public struct StudioView: View {
                         InteractiveStudioClip(
                             clip: clip,
                             pixelsPerBeat: pixelsPerBeat,
+                            bpm: session.bpm,
                             isSelected: session.selectedClipID == clip.id,
                             onSelect: { session.selectClip(clip.id) },
                             onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
@@ -915,6 +916,7 @@ public struct StudioView: View {
                         InteractiveStudioClip(
                             clip: clip,
                             pixelsPerBeat: pixelsPerBeat,
+                            bpm: session.bpm,
                             isSelected: session.selectedClipID == clip.id,
                             clipHeight: interactiveHeight,
                             displayNotes: partNotes,
@@ -955,6 +957,7 @@ public struct StudioView: View {
                     InteractiveStudioClip(
                         clip: clip,
                         pixelsPerBeat: pixelsPerBeat,
+                        bpm: session.bpm,
                         isSelected: session.selectedClipID == clip.id,
                         clipHeight: interactiveHeight,
                         onSelect: { session.selectClip(clip.id) },
@@ -1579,6 +1582,14 @@ public struct StudioView: View {
                     isOn: session.isSnapEnabled
                 ) {
                     session.isSnapEnabled.toggle()
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
+                    title: "Quantize MIDI capture",
+                    subtitle: "Snap pad/key note starts to 16ths on Pause/Stop",
+                    isOn: session.isMIDIQuantizeEnabled
+                ) {
+                    session.isMIDIQuantizeEnabled.toggle()
                 }
                 Divider().overlay(MXColor.layer2)
                 settingsToggleRow(
@@ -2898,11 +2909,68 @@ private struct GhostStudioClip: View {
     }
 }
 
+// MARK: - Clip fade wedges (Logic / Pro Tools visual)
+
+/// Equal-power fade-in / fade-out overlays on arrange clips (edit via inspector).
+private struct StudioClipFadeWedges: View {
+    let fadeInSeconds: Double
+    let fadeOutSeconds: Double
+    let bpm: Double
+    let pixelsPerBeat: CGFloat
+    let clipWidth: CGFloat
+    let clipHeight: CGFloat
+
+    var body: some View {
+        let inBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: fadeInSeconds, bpm: bpm)
+        let outBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: fadeOutSeconds, bpm: bpm)
+        let inW = min(clipWidth, CGFloat(inBeats) * pixelsPerBeat)
+        let outW = min(clipWidth, CGFloat(outBeats) * pixelsPerBeat)
+        Canvas { context, size in
+            if inW > 1 {
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: 0))
+                let steps = max(8, Int(inW / 2))
+                for i in 0...steps {
+                    let t = Double(i) / Double(steps)
+                    let x = inW * CGFloat(t)
+                    let gain = MXClipFadeGeometry.fadeInGain(t)
+                    // Darken where gain is low (top of wedge).
+                    let y = size.height * (1 - CGFloat(gain))
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+                path.addLine(to: CGPoint(x: inW, y: 0))
+                path.closeSubpath()
+                context.fill(path, with: .color(Color.black.opacity(0.45)))
+            }
+            if outW > 1 {
+                var path = Path()
+                let startX = size.width - outW
+                path.move(to: CGPoint(x: startX, y: 0))
+                let steps = max(8, Int(outW / 2))
+                for i in 0...steps {
+                    let t = Double(i) / Double(steps)
+                    let x = startX + outW * CGFloat(t)
+                    let gain = MXClipFadeGeometry.fadeOutGain(t)
+                    let y = size.height * (1 - CGFloat(gain))
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+                path.addLine(to: CGPoint(x: size.width, y: 0))
+                path.closeSubpath()
+                context.fill(path, with: .color(Color.black.opacity(0.45)))
+            }
+        }
+        .frame(width: clipWidth, height: clipHeight)
+        .clipped()
+    }
+}
+
 // MARK: - Interactive clip (select / move / trim)
 
 private struct InteractiveStudioClip: View {
     let clip: MXClip
     let pixelsPerBeat: CGFloat
+    /// Project tempo — converts fade seconds → timeline width for wedges.
+    var bpm: Double = 120
     let isSelected: Bool
     /// Clip body height; smaller in expanded playlist take rows.
     var clipHeight: CGFloat = 52
@@ -2970,6 +3038,17 @@ private struct InteractiveStudioClip: View {
                     .frame(width: displayWidth, height: clipHeight)
                     .opacity(isSelected ? 1 : 0.92)
             }
+
+            // Logic / Pro Tools equal-power fade wedges (visual only; edit via inspector).
+            StudioClipFadeWedges(
+                fadeInSeconds: clip.fadeInSeconds,
+                fadeOutSeconds: clip.fadeOutSeconds,
+                bpm: bpm,
+                pixelsPerBeat: pixelsPerBeat,
+                clipWidth: displayWidth,
+                clipHeight: clipHeight
+            )
+            .allowsHitTesting(false)
 
             if isSelected {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)

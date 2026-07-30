@@ -49,6 +49,9 @@ public final class StudioSessionController {
     public private(set) var playheadTimeLabel: String = "00:00.0"
     public private(set) var bpm: Double = 120
     public private(set) var musicalKey: String = "Cmaj"
+    /// Last BPM estimated from an imported audio file (Week 48). `nil` until a
+    /// confident detect succeeds; not persisted.
+    public private(set) var lastDetectedBPM: Double?
 
     /// Vocal “Cut rumble” — 100 Hz HPF on clip playback path. On by default.
     public var isHighPassEnabled: Bool = true {
@@ -65,6 +68,10 @@ public final class StudioSessionController {
 
     /// Snap move/trim/loop edits to 16th-note grid. Session preference (not persisted).
     public var isSnapEnabled: Bool = true
+
+    /// Snap MIDI note starts to 16ths when committing a pad/keys performance.
+    /// Session preference (not persisted). Independent of arrange `isSnapEnabled`.
+    public var isMIDIQuantizeEnabled: Bool = true
 
     /// Prefer mono capture when recording on a vocal-category armed track.
     /// Session preference (not persisted). Guitar / import paths leave this unused.
@@ -894,6 +901,13 @@ public final class StudioSessionController {
         }
         try FileManager.default.copyItem(at: sourceURL, to: destURL)
 
+        // Week 48 — estimate BPM before placing the clip so lengthBeats matches
+        // the (possibly updated) project tempo. Failure is non-fatal.
+        if let detected = Self.estimateImportBPM(from: destURL) {
+            lastDetectedBPM = detected
+            setBPM(detected)
+        }
+
         let lengthBeats: Double
         if let transport {
             let endBeat = transport.tempoMap.beat(
@@ -931,6 +945,51 @@ public final class StudioSessionController {
         selectedClipID = clip.id
         persistNow()
         return track
+    }
+
+    /// Read mono PCM from an imported file and run `MXTempoDetect` (Week 48).
+    /// Returns `nil` on I/O failure, silence, or low-confidence estimates.
+    private static func estimateImportBPM(from url: URL, maxSeconds: Double = 20) -> Double? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let format = file.processingFormat
+        let sampleRate = format.sampleRate
+        guard sampleRate > 0 else { return nil }
+
+        let maxFrames = min(file.length, AVAudioFramePosition((maxSeconds * sampleRate).rounded()))
+        guard maxFrames > 0,
+              let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(maxFrames)
+              )
+        else { return nil }
+
+        do {
+            try file.read(into: buffer, frameCount: AVAudioFrameCount(maxFrames))
+        } catch {
+            return nil
+        }
+
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0, let channels = buffer.floatChannelData else { return nil }
+
+        let channelCount = Int(format.channelCount)
+        var mono = [Float](repeating: 0, count: frameCount)
+        if channelCount <= 1 {
+            for i in 0..<frameCount {
+                mono[i] = channels[0][i]
+            }
+        } else {
+            let scale = 1 / Float(channelCount)
+            for i in 0..<frameCount {
+                var sum: Float = 0
+                for c in 0..<channelCount {
+                    sum += channels[c][i]
+                }
+                mono[i] = sum * scale
+            }
+        }
+
+        return MXTempoDetect.estimateBPM(mono: mono, sampleRate: sampleRate)
     }
 
     /// Import a stub AI-generated clip into the current project (Week 18).
@@ -1142,7 +1201,7 @@ public final class StudioSessionController {
     /// Snap to 16th-note grid when `isSnapEnabled`; otherwise pass through.
     private func snapBeat(_ beat: Double) -> Double {
         guard isSnapEnabled else { return beat }
-        return (beat * 4).rounded() / 4
+        return MXMIDIQuantize.snapBeat(beat)
     }
 
     /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
@@ -1598,7 +1657,7 @@ public final class StudioSessionController {
         for note in Array(pendingMIDINoteOns.keys) {
             captureMIDINoteOff(note)
         }
-        let notes = pendingMIDINotes
+        var notes = pendingMIDINotes
         let trackID = pendingMIDITrackID
         pendingMIDINotes.removeAll()
         pendingMIDITrackID = nil
@@ -1606,6 +1665,11 @@ public final class StudioSessionController {
         guard let trackID, !notes.isEmpty,
               let trackIndex = project.tracks.firstIndex(where: { $0.id == trackID })
         else { return }
+
+        // Quantize absolute starts so the clip lands on the grid (GarageBand-style).
+        if isMIDIQuantizeEnabled {
+            notes = MXMIDIQuantize.quantizeStarts(notes)
+        }
 
         let startBeat = notes.map(\.startBeat).min() ?? 0
         let endBeat = notes.map(\.endBeat).max() ?? startBeat
@@ -1844,6 +1908,40 @@ public final class StudioSessionController {
         }.value
 
         lastExportURLs = [result.wavURL, result.m4aURL]
+        return result
+    }
+
+    /// Bounce each track to its own WAV + M4A stem set (ignores mute/solo).
+    public func bounceStems(
+        normalize: Bool = true,
+        loudnessMode: StudioBounceExporter.LoudnessMode = .peakNormalize
+    ) async throws -> StudioBounceExporter.StemsResult {
+        guard !isExporting else {
+            throw StudioBounceExporter.BounceError.writeFailed("Export already in progress")
+        }
+        isExporting = true
+        exportError = nil
+        defer { isExporting = false }
+
+        persistNow()
+        let snapshot = project
+        let audioDir = MXProjectStore.shared.audioDirectory(for: snapshot.id)
+        let exportDir = MXProjectStore.shared.exportsDirectory(for: snapshot.id)
+        let mode = loudnessMode
+        let highPass = isHighPassEnabled
+
+        let result = try await Task.detached(priority: .userInitiated) {
+            try StudioBounceExporter.bounceStems(
+                project: snapshot,
+                audioDirectory: audioDir,
+                outputDirectory: exportDir,
+                normalize: normalize,
+                loudnessMode: mode,
+                highPassEnabled: highPass
+            )
+        }.value
+
+        lastExportURLs = result.allURLs
         return result
     }
 

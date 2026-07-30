@@ -29,6 +29,7 @@ struct StudioExportSheet: View {
 
     private enum RetryAction: Equatable {
         case share
+        case stems
         case publish
         case copyLink
     }
@@ -145,6 +146,15 @@ struct StudioExportSheet: View {
                     tint: MXColor.accent
                 ) {
                     Task { await shareFiles() }
+                }
+
+                exportOption(
+                    title: "Export stems",
+                    subtitle: "One WAV + M4A per track (ignores mute/solo)",
+                    systemImage: "square.stack.3d.up",
+                    tint: MXColor.teal
+                ) {
+                    Task { await shareStems() }
                 }
 
                 exportOption(
@@ -357,6 +367,7 @@ struct StudioExportSheet: View {
                 Button {
                     switch retry {
                     case .share: Task { await shareFiles() }
+                    case .stems: Task { await shareStems() }
                     case .publish: Task { await publishToSocials() }
                     case .copyLink: copyLink()
                     }
@@ -412,6 +423,21 @@ struct StudioExportSheet: View {
             phase = .shareSuccess(format: format)
         } catch {
             phase = .error(message: error.localizedDescription, retry: .share)
+        }
+    }
+
+    @MainActor
+    private func shareStems() async {
+        phase = .working("Exporting stems…")
+        do {
+            let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
+            let result = try await session.bounceStems(normalize: true, loudnessMode: mode)
+            shareURLs = result.allURLs
+            let count = result.stems.count
+            let loud = mode == .reelsLUFS ? "−14 LUFS" : "peak"
+            phase = .shareSuccess(format: "\(count) stem\(count == 1 ? "" : "s") · WAV + M4A · \(loud)")
+        } catch {
+            phase = .error(message: error.localizedDescription, retry: .stems)
         }
     }
 
