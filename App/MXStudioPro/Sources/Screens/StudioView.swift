@@ -28,6 +28,11 @@ public struct StudioView: View {
     @State private var pitchCorrectLimitToKey = true
     /// Week 70 — target length in beats for time-stretch bake (Ableton/BandLab lite).
     @State private var timeStretchLengthBeats: Double = 4
+    /// Week 73 — CapCut / BandLab vocal harmony stack (session-local UI).
+    @State private var harmonyIncludeThird = true
+    @State private var harmonyIncludeFifth = true
+    @State private var harmonyIncludeLowFourth = false
+    @State private var harmonyMix: Float = 0.55
     @State private var showPianoRoll = false
     @State private var pianoRollDragUndoArmed = true
     /// Suppress magnet tap after a long-press cycle (W66).
@@ -310,7 +315,7 @@ public struct StudioView: View {
             ScrollView {
                 clipInspectorSheet
             }
-            .presentationDetents([.height(520), .large])
+            .presentationDetents([.height(640), .large])
             .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
@@ -2265,6 +2270,8 @@ public struct StudioView: View {
                         .disabled(abs(timeStretchLengthBeats - clip.lengthBeats) < 0.05)
                         .accessibilityHint("Bakes pitch-preserving stretch into a new WAV; undo supported")
                     }
+
+                    clipInspectorHarmoniesSection(clipID: clip.id)
                 }
             } else {
                 Text("Select a clip on the timeline.")
@@ -2276,6 +2283,87 @@ public struct StudioView: View {
         }
         .padding(20)
         .background(MXColor.surface.ignoresSafeArea())
+    }
+
+    /// Week 73 — CapCut / BandLab vocal harmonies lite (audio clips only).
+    @ViewBuilder
+    private func clipInspectorHarmoniesSection(clipID: UUID) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Harmonies")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+
+            Toggle(isOn: $harmonyIncludeThird) {
+                Text("Major 3rd (+4)")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
+            .tint(MXColor.accent)
+            .accessibilityHint("Stack a major-third harmony above the vocal")
+
+            Toggle(isOn: $harmonyIncludeFifth) {
+                Text("Perfect 5th (+7)")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
+            .tint(MXColor.accent)
+            .accessibilityHint("Stack a perfect-fifth harmony above the vocal")
+
+            Toggle(isOn: $harmonyIncludeLowFourth) {
+                Text("Low 4th (−5)")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
+            .tint(MXColor.accent)
+            .accessibilityHint("Stack a perfect-fourth harmony below the vocal")
+
+            HStack {
+                Text("Mix")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                Spacer()
+                Text("\(Int((harmonyMix * 100).rounded()))%")
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.lightGrey)
+                    .monospacedDigit()
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(harmonyMix) },
+                    set: { harmonyMix = Float($0) }
+                ),
+                in: 0...1,
+                step: 0.05
+            )
+            .tint(MXColor.accent)
+            .accessibilityLabel("Harmony mix amount")
+
+            Button {
+                _ = session.applyHarmonies(
+                    clipID: clipID,
+                    includeThird: harmonyIncludeThird,
+                    includeFifth: harmonyIncludeFifth,
+                    includeLowFourth: harmonyIncludeLowFourth,
+                    mix: harmonyMix
+                )
+            } label: {
+                Label("Apply Harmonies", systemImage: "person.3")
+                    .font(MXFont.mediumButton())
+                    .foregroundStyle(MXColor.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(MXColor.purple.opacity(0.85))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                harmonyMix < 0.05
+                    || (!harmonyIncludeThird && !harmonyIncludeFifth && !harmonyIncludeLowFourth)
+            )
+            .accessibilityHint("Bakes dry plus selected harmony voices into a new WAV; undo supported")
+        }
     }
 
     private var bpmSheet: some View {

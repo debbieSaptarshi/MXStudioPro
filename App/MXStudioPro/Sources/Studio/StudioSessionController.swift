@@ -2358,6 +2358,86 @@ public final class StudioSessionController {
         return (mono, sampleRate)
     }
 
+    /// Bake CapCut / BandLab-style vocal harmonies into an audio clip (Week 73).
+    ///
+    /// Stacks dry + optional major-third / perfect-fifth voices into one WAV.
+    /// Trim resets to the full baked file; fades / gain / timeline stay.
+    @discardableResult
+    public func applyHarmonies(
+        clipID: UUID? = nil,
+        includeThird: Bool = true,
+        includeFifth: Bool = true,
+        includeLowFourth: Bool = false,
+        mix: Float = 0.55
+    ) -> Bool {
+        let id = clipID ?? selectedClipID
+        guard let id, var clip = clip(id) else { return false }
+        guard clip.midiNotes.isEmpty else { return false }
+        guard let fileName = clip.audioFileName, !fileName.isEmpty else { return false }
+
+        var intervals: [Int] = []
+        if includeThird { intervals.append(MXHarmony.Interval.majorThird.semitones) }
+        if includeFifth { intervals.append(MXHarmony.Interval.perfectFifth.semitones) }
+        if includeLowFourth { intervals.append(MXHarmony.Interval.perfectFourthBelow.semitones) }
+        guard !intervals.isEmpty else { return false }
+        let clampedMix = max(0, min(1, mix))
+        guard clampedMix > 1e-4 else { return false }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let sourceURL = audioDir.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            recordError = "Harmonies: missing audio file"
+            return false
+        }
+
+        do {
+            let (mono, sampleRate) = try Self.readClipMonoPCM(
+                url: sourceURL,
+                sourceOffsetSeconds: clip.sourceOffsetSeconds,
+                sourceDurationSeconds: clip.sourceDurationSeconds
+            )
+            guard mono.count > 256 else {
+                recordError = "Harmonies: clip too short"
+                return false
+            }
+
+            let stacked = MXHarmony.stack(
+                mono: mono,
+                sampleRate: sampleRate,
+                intervals: intervals,
+                dryGain: 1,
+                voiceGain: 0.55,
+                mix: clampedMix
+            )
+
+            pushUndoSnapshot()
+            stopClipPlayers()
+
+            let outName = "harmony_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+            let outURL = audioDir.appendingPathComponent(outName)
+            try StudioBounceExporter.writeWAV(
+                left: stacked,
+                right: stacked,
+                sampleRate: sampleRate,
+                to: outURL
+            )
+
+            clip.audioFileName = outName
+            clip.sourceOffsetSeconds = 0
+            clip.sourceDurationSeconds = Double(stacked.count) / max(sampleRate, 1)
+            replaceClip(clip)
+            attachPlayer(for: clip)
+            persistSoon()
+            if isPlaying, let sample = transport?.currentSample {
+                scheduleClipPlayers(fromSample: sample)
+            }
+            return true
+        } catch {
+            recordError = "Harmonies failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     /// Bake Ableton/BandLab-style time-stretch into an audio clip (Week 70).
     ///
     /// Retargets timeline `lengthBeats` while preserving pitch via `MXTimeStretch`.

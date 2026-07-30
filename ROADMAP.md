@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 18 (W69–72) **complete** — next Month 19 SOTA polish (harmonies, beat browser, real sidechain, K-weighted LUFS).
+**Current focus:** Month 19 (W73–76) **in progress** — next: beat browser, real sidechain, K-weighted LUFS.
 
 ---
 
@@ -877,16 +877,27 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 
 **Week 72 notes:** Stub only — no remote API. Real backend / Keychain tokens remain operator work.
 
-## Month 19 — Award-app SOTA *(Weeks 73–76)* **Planned**
+## Month 19 — Award-app SOTA *(Weeks 73–76)*
 
 Raise shipped DAW features toward award-winning mobile music apps (BandLab, GarageBand, Cubasis, Logic Remote bars).
 
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
-| **73** | Vocal harmonies lite (1–2 voice stack bake) | **Planned** | CapCut / BandLab |
+| **73** | Vocal harmonies lite (1–2 voice stack bake) | **Done (MVP)** ✅ | CapCut / BandLab |
 | **74** | Beat browser + one-shot pack import | **Planned** | BandLab / Loopcloud |
 | **75** | Real key-input sidechain + bounce duck parity | **Planned** | Ableton / Logic |
 | **76** | K-weighted LUFS upgrade + inter-sample true peak | **Planned** | ITU BS.1770 / YouTube |
+
+### Week 73 — Vocal harmonies lite ✅
+
+**Done when (CapCut auto-harmony / BandLab vocal stack)**
+- [x] Pure `MXHarmony` — fixed-interval duration-preserving OLA pitch shift + `stack` (dry + voices, soft peak normalize)
+- [x] Preset intervals: Major 3rd (+4), Perfect 5th (+7), Low 4th (−5)
+- [x] Session `applyHarmonies` bakes trimmed region → new WAV (undo; keeps fades/gain/timeline)
+- [x] Clip inspector: Third / Fifth / Low 4th toggles + Mix slider + Apply Harmonies (audio clips only)
+- [x] Unit tests: ratio math, identity, length preserve, pitch raise, mix energy, silence safe
+
+**Week 73 notes:** Not live formant-preserving harmony / separate track-per-voice / MIDI harmony. Bounce inherits the baked stack automatically.
 
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
@@ -897,18 +908,17 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
 - **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
 - **Export:** Video + audio Reels export; loudness report sheet after bounce ✅ W71
-- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ← W73; beat browser ← W74
+- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ✅ W73; beat browser ← W74
 - **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
 - **Figma parity:** Create hub + landscape 812×375 second pass; After Record chrome re-audit vs `95:85026`
 - **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; inter-sample true-peak ← W76; sidechain on bounce path ← W75; audio→aux reverb bus; K-weighted LUFS ← W76; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels export
 
-**SOTA next (Month 18 / beyond)**
+**SOTA next (Month 19 remainder / beyond)**
 - Nested takes × drum parts; SFZ kit choke
-- Time stretch / harmonies / beat browser
-- Video+audio Reels export
+- Beat browser ← W74; video+audio Reels export
 - Cloud auth / social / AI beyond local MVP
-- Real key-input sidechain + audio→aux reverb bus
-- Bezier automation; certified LUFS report sheet
+- Real key-input sidechain + audio→aux reverb bus ← W75
+- Bezier automation; K-weighted LUFS ← W76
 
 ## Month 18 implementation notes
 
@@ -1080,7 +1090,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
-                                    → W69–W72 Month 18 wow + cloud ✅ ← next Month 19
+                                    → W73 Month 19 harmonies ✅ ← next W74–76
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
