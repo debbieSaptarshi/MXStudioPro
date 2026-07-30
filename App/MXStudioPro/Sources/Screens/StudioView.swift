@@ -32,7 +32,8 @@ public struct StudioView: View {
     @State private var automationLaneTrackIDs: Set<UUID> = []
     /// Pads vs BandLab-style 16-step sequencer (Week 49).
     @State private var drumInputMode: DrumInputMode = .pads
-    @State private var drumStepGrid: [[Bool]] = MXDrumStepSequencer.emptyGrid()
+    @State private var drumStepVelocityGrid: [[UInt8]] = MXDrumStepSequencer.emptyVelocityGrid(bars: 1)
+    @State private var drumStepBars: Int = 1
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum DrumInputMode: String, CaseIterable, Identifiable {
@@ -317,16 +318,29 @@ public struct StudioView: View {
                             )
                         } else {
                             DrumStepSequencerView(
-                                grid: $drumStepGrid,
+                                velocityGrid: $drumStepVelocityGrid,
+                                bars: $drumStepBars,
                                 canApply: session.phase == .ready,
+                                canLoadFromClip: session.canLoadDrumStepPatternFromSelectedClip,
                                 onPreviewHit: { note, vel in
                                     session.previewNote(note, velocity: vel)
                                 },
                                 onApply: {
-                                    _ = session.commitDrumStepPattern(drumStepGrid)
+                                    _ = session.commitDrumStepPattern(
+                                        drumStepVelocityGrid,
+                                        bars: drumStepBars
+                                    )
                                 },
                                 onClear: {
-                                    drumStepGrid = MXDrumStepSequencer.emptyGrid()
+                                    drumStepVelocityGrid = MXDrumStepSequencer.emptyVelocityGrid(
+                                        bars: drumStepBars
+                                    )
+                                },
+                                onLoadFromClip: {
+                                    if let loaded = session.loadDrumStepPatternFromSelectedClip() {
+                                        drumStepBars = loaded.bars
+                                        drumStepVelocityGrid = loaded.grid
+                                    }
                                 }
                             )
                         }

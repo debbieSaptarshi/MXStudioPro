@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 13 (W49–52) shipped — next is Month 14 (W53–56) award-app depth.
+**Current focus:** Month 14 (W53–56) — Week 53 step velocity/multi-bar shipped; next W54 clip automation + meet-in-middle fades.
 
 ---
 
@@ -66,6 +66,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **50** | Drag fade wedges to edit clip fades | **Done (MVP)** ✅ |
 | **51** | Quantize strength / swing + re-quantize | **Done (MVP)** ✅ |
 | **52** | Track volume automation lane lite | **Done (MVP)** ✅ |
+| **53** | Step seq velocity + multi-bar + load from clip | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -592,20 +593,32 @@ Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cub
 
 ---
 
-## Month 14 — Award-app DAW depth *(Weeks 53–56)* **Planned**
+## Month 14 — Award-app DAW depth *(Weeks 53–56)* **In progress**
 
 Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile, CapCut/Reels.
 
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
-| **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Planned** | BandLab / FL Mobile |
+| **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **54** | Clip-relative volume + pan automation; meet-in-middle fade clamp | **Planned** | Logic / Ableton |
 | **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Planned** | Cubasis / GarageBand |
 | **56** | Latency calibration UX + input monitoring polish | **Planned** | GarageBand / BandLab |
 
+### Week 53 — Step seq velocity + multi-bar + load from clip ✅
+
+**Done when (BandLab / FL Mobile)**
+- [x] Velocity grid `[[UInt8]]` (0=off, 1–127=on); cell opacity + vertical drag
+- [x] Pattern length 1 / 2 / 4 bars; `patternLengthBeats(bars:)` + resize
+- [x] **Load** from selected drums MIDI clip; **Add** advances playhead by pattern length
+- [x] Unit tests: multi-bar round-trip, velocity preserve, inferred bars, louder-wins
+
+**Week 53 notes:** 3-bar patterns via inferred load only (picker is 1/2/4). Step playback cursor deferred.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
+- **Step seq:** Pattern library / copy-paste bars; live step cursor during playback
+- **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual
 - **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
@@ -780,7 +793,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                       → W40–44 Drum depth + capture chrome ← done
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
-                            → W53–56 Velocity patterns + clip auto + piano roll + latency ← next
+                            → W53 velocity/multi-bar ✅ → W54–56 clip auto + piano roll + latency ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.

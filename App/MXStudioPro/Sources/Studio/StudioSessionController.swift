@@ -1760,9 +1760,11 @@ public final class StudioSessionController {
     ///
     /// Notes are clip-local (bar starts at 0). The clip is anchored at `playheadBeat`
     /// (snapped when arrange snap is on). Empty grids are no-ops.
+    /// After a successful place, the playhead advances by the pattern length (BandLab).
     @discardableResult
-    public func commitDrumStepPattern(_ grid: [[Bool]]) -> UUID? {
-        guard MXDrumStepSequencer.hasHits(grid) else { return nil }
+    public func commitDrumStepPattern(_ velocityGrid: [[UInt8]], bars: Int = 1) -> UUID? {
+        let barCount = MXDrumStepSequencer.clampBars(bars)
+        guard MXDrumStepSequencer.hasHits(velocityGrid) else { return nil }
         let trackID = activeMIDITrackID()
             ?? project.tracks.first(where: { $0.category == .drums })?.id
         guard let trackID,
@@ -1774,10 +1776,10 @@ public final class StudioSessionController {
             return nil
         }
 
-        let localNotes = MXDrumStepSequencer.notes(from: grid)
+        let localNotes = MXDrumStepSequencer.notes(fromVelocityGrid: velocityGrid, bars: barCount)
         guard !localNotes.isEmpty else { return nil }
 
-        let lengthBeats = MXDrumStepSequencer.patternLengthBeats
+        let lengthBeats = MXDrumStepSequencer.patternLengthBeats(bars: barCount)
         let startBeat = snapBeat(playheadBeat)
         let bank = synthBankPreset(for: trackID)
         let mutedParts = project.tracks[trackIndex].mutedDrumPartSet
@@ -1812,7 +1814,41 @@ public final class StudioSessionController {
         attachPlayer(for: clip)
         selectedClipID = clip.id
         persistSoon()
+        // Advance playhead so the next Add doesn't stack on the same beat.
+        seek(toBeat: startBeat + lengthBeats)
         return clip.id
+    }
+
+    /// Week 49 boolean-grid overload.
+    @discardableResult
+    public func commitDrumStepPattern(_ grid: [[Bool]]) -> UUID? {
+        commitDrumStepPattern(
+            MXDrumStepSequencer.velocityGrid(fromBool: grid),
+            bars: 1
+        )
+    }
+
+    /// Load the selected drums MIDI clip into a velocity grid + bar count (Week 53).
+    /// Returns `nil` when nothing suitable is selected.
+    public func loadDrumStepPatternFromSelectedClip() -> (grid: [[UInt8]], bars: Int)? {
+        guard let id = selectedClipID, let clip = clip(id) else { return nil }
+        guard !clip.midiNotes.isEmpty else { return nil }
+        guard let track = project.tracks.first(where: { $0.id == clip.trackID }),
+              track.kind == .midi,
+              track.category == .drums
+        else { return nil }
+        // Prefer clip length so sparse hits in a long clip keep trailing empty bars.
+        let fromLength = Int(ceil(max(clip.lengthBeats, 0.25) / 4.0))
+        let fromNotes = MXDrumStepSequencer.inferredBarCount(from: clip.midiNotes)
+        let bars = MXDrumStepSequencer.clampBars(max(fromLength, fromNotes))
+        let grid = MXDrumStepSequencer.velocityGrid(from: clip.midiNotes, bars: bars)
+        guard MXDrumStepSequencer.hasHits(grid) else { return nil }
+        return (grid, bars)
+    }
+
+    /// Whether the selected clip can feed the drum step sequencer.
+    public var canLoadDrumStepPatternFromSelectedClip: Bool {
+        loadDrumStepPatternFromSelectedClip() != nil
     }
 
     /// Re-apply capture quantize settings to the selected MIDI clip (Logic Quantize).
