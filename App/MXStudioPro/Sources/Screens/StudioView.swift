@@ -13,6 +13,7 @@ public struct StudioView: View {
     @State private var showMetronomeSheet = false
     @State private var showAddTrackSheet = false
     @State private var showAIComposeSheet = false
+    @State private var showBeatBrowserSheet = false
     @State private var showMixerSheet = false
     @State private var showFXSheet = false
     @State private var showSettingsSheet = false
@@ -222,7 +223,7 @@ public struct StudioView: View {
         }
         .sheet(isPresented: $showAddTrackSheet) {
             addTrackSheet
-                .presentationDetents([.height(460)])
+                .presentationDetents([.height(520)])
                 .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
         }
@@ -234,6 +235,18 @@ public struct StudioView: View {
                     selectedTrackID = session.project.armedTrack?.id ?? session.project.tracks.last?.id
                 }
             )
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showBeatBrowserSheet) {
+            BeatBrowserView(
+                session: session,
+                onClose: { showBeatBrowserSheet = false },
+                onImported: { trackID in
+                    selectedTrackID = trackID
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showMixerSheet) {
@@ -1937,6 +1950,19 @@ public struct StudioView: View {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 350_000_000)
                     showFileImporter = true
+                }
+            }
+
+            addTrackOption(
+                title: "Beats",
+                subtitle: "Loops & one-shots (BandLab lite)",
+                systemImage: "waveform.badge.plus",
+                tint: MXColor.orange
+            ) {
+                showAddTrackSheet = false
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    showBeatBrowserSheet = true
                 }
             }
 

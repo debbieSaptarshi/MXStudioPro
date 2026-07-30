@@ -884,7 +884,7 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
 | **73** | Vocal harmonies lite (1–2 voice stack bake) | **Done (MVP)** ✅ | CapCut / BandLab |
-| **74** | Beat browser + one-shot pack import | **Planned** | BandLab / Loopcloud |
+| **74** | Beat browser + one-shot pack import | **Done (MVP)** ✅ | BandLab / Loopcloud |
 | **75** | Real key-input sidechain + bounce duck parity | **Planned** | Ableton / Logic |
 | **76** | K-weighted LUFS upgrade + inter-sample true peak | **Planned** | ITU BS.1770 / YouTube |
 
@@ -899,6 +899,16 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 
 **Week 73 notes:** Not live formant-preserving harmony / separate track-per-voice / MIDI harmony. Bounce inherits the baked stack automatically.
 
+### Week 74 — Beat browser + one-shot pack import ✅
+
+**Done when (BandLab / Loopcloud lite)**
+- [x] `MXBeatCatalog` — 4 procedural loops + 4 one-shots (no binary assets); PCM → WAV writer
+- [x] `BeatBrowserView` — Loops / One-shots list; tap imports
+- [x] Session `importBeatItem` — new imported track + clip at beat 0 (no tempo-detect on one-shots)
+- [x] Studio **+** → **Beats** entry (alongside Import / AI)
+
+**Week 74 notes:** Procedural first-party stubs only — not licensed Loopcloud packs / MXPacks download. Create hub Sampler tile still disabled.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns
@@ -908,14 +918,14 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
 - **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
 - **Export:** Video + audio Reels export; loudness report sheet after bounce ✅ W71
-- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ✅ W73; beat browser ← W74
+- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ✅ W73; beat browser ✅ W74
 - **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
 - **Figma parity:** Create hub + landscape 812×375 second pass; After Record chrome re-audit vs `95:85026`
-- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; inter-sample true-peak ← W76; sidechain on bounce path ← W75; audio→aux reverb bus; K-weighted LUFS ← W76; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels export
+- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; inter-sample true-peak ← W76; sidechain on bounce path ← W75; audio→aux reverb bus; K-weighted LUFS ← W76; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels export; real MXPacks / Loopcloud catalog
 
 **SOTA next (Month 19 remainder / beyond)**
 - Nested takes × drum parts; SFZ kit choke
-- Beat browser ← W74; video+audio Reels export
+- Video+audio Reels export; real MXPacks download
 - Cloud auth / social / AI beyond local MVP
 - Real key-input sidechain + audio→aux reverb bus ← W75
 - Bezier automation; K-weighted LUFS ← W76
@@ -1120,7 +1130,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 61–64 | Step swing / multi-select / sidechain / snap resolution *(done)* |
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
-| 73–76 | Harmonies / beat browser / real sidechain / K-weighted LUFS |
+| 73–76 | Harmonies ✅ / beat browser / real sidechain / K-weighted LUFS |
 
 ---
 

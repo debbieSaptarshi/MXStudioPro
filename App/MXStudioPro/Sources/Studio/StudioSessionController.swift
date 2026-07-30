@@ -1137,6 +1137,53 @@ public final class StudioSessionController {
         return MXTempoDetect.estimateBPM(mono: mono, sampleRate: sampleRate)
     }
 
+    /// Import a BandLab/Loopcloud-style beat catalog item as a new track (Week 74).
+    ///
+    /// Writes procedural PCM into the project Audio folder. Does **not** run
+    /// tempo detect (one-shots would poison BPM).
+    @discardableResult
+    public func importBeatItem(_ item: MXBeatCatalogItem) throws -> MXSessionTrack {
+        guard canAddTrack else {
+            trackLimitMessage = "Track limit reached (\(Self.maxTracks))"
+            throw ImportError.trackLimitReached
+        }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        try FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
+
+        let sampleRate = transport?.sampleRate ?? project.sampleRate
+        let mono = MXBeatCatalog.renderPCM(item, sampleRate: sampleRate)
+        guard mono.count > 32 else { throw ImportError.emptyFile }
+
+        let fileName = "beat_\(item.id)_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).wav"
+        let wavURL = audioDir.appendingPathComponent(fileName)
+        try MXBeatCatalog.writeWAV(mono: mono, sampleRate: sampleRate, to: wavURL)
+
+        let durationSeconds = Double(mono.count) / max(sampleRate, 1)
+        let lengthBeats = max(0.25, durationSeconds * bpm / 60.0)
+        let trackName = String(item.name.prefix(28))
+
+        guard let track = addAudioTrack(named: trackName) else {
+            try? FileManager.default.removeItem(at: wavURL)
+            throw ImportError.trackLimitReached
+        }
+        if let index = project.tracks.firstIndex(where: { $0.id == track.id }) {
+            project.tracks[index].category = .imported
+        }
+
+        let clip = MXClip(
+            trackID: track.id,
+            name: trackName,
+            startBeat: 0,
+            lengthBeats: lengthBeats,
+            audioFileName: fileName,
+            sourceOffsetSeconds: 0,
+            sourceDurationSeconds: durationSeconds
+        )
+        try addImportedClip(clip, toTrackID: track.id)
+        return track
+    }
+
     /// Import a stub AI-generated clip into the current project (Week 18).
     @discardableResult
     public func importAIResult(_ result: AIComposeResult) throws -> MXSessionTrack {
