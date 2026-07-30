@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 19 (W73–76) **in progress** — next: beat browser, real sidechain, K-weighted LUFS.
+**Current focus:** Month 19 (W73–74) **complete** — next W75 real sidechain bounce + W76 K-weighted LUFS.
 
 ---
 
@@ -1100,7 +1100,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
-                                    → W73 Month 19 harmonies ✅ ← next W74–76
+                                    → W74 Month 19 beat browser ✅ ← next W75–76
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -1130,7 +1130,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 61–64 | Step swing / multi-select / sidechain / snap resolution *(done)* |
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
-| 73–76 | Harmonies ✅ / beat browser / real sidechain / K-weighted LUFS |
+| 73–76 | Harmonies ✅ / beat browser ✅ / real sidechain / K-weighted LUFS |
 
 ---
 

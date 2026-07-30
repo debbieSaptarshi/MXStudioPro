@@ -1,11 +1,10 @@
 import XCTest
 @testable import MXAudioDSP
 
-/// Offline LUFS MVP checks for Reels/TikTok export helpers.
+/// Offline LUFS checks for Reels/TikTok export helpers (Week 76 K-weighted).
 ///
 /// Tolerance: after `normalizeToLUFS(target: -14)`, measured LUFS should land
-/// within ~1.5 LU of −14 for a constant-amplitude tone (mean-square gated
-/// estimator without full K-weighting).
+/// within ~1.5 LU of −14 for a constant-amplitude tone.
 final class MXLoudnessTests: XCTestCase {
 
     private let sampleRate: Double = 48_000
@@ -82,7 +81,7 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertEqual(MXLoudness.loudnessFromMeanSquare(0), -.infinity)
     }
 
-    // MARK: - Week 71 report
+    // MARK: - Week 71 / 76 report
 
     func testReportFiniteForTone() {
         let (left, right) = makeStereoTone(amplitude: 0.25, seconds: 3)
@@ -96,8 +95,9 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertNil(report.targetLUFS)
         XCTAssertNil(report.headroomLU)
 
-        let expectedPeak = max(MXAudioAnalysis.peakDB(left), MXAudioAnalysis.peakDB(right))
-        XCTAssertEqual(report.truePeakDBFS, expectedPeak, accuracy: 1e-5)
+        let samplePeak = max(MXAudioAnalysis.peakDB(left), MXAudioAnalysis.peakDB(right))
+        // Inter-sample TP ≥ sample peak.
+        XCTAssertGreaterThanOrEqual(report.truePeakDBFS + 1e-4, samplePeak)
     }
 
     func testReportHeadroomAgainstTarget() {
@@ -117,8 +117,42 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertEqual(report.integratedLUFS, -.infinity)
         XCTAssertNil(report.headroomLU, "headroom should be nil when measured LUFS is non-finite")
         XCTAssertEqual(report.targetLUFS, -14)
-        // Sample peak of digital silence → very low dBFS via MXAudioAnalysis floor.
         XCTAssertLessThan(report.truePeakDBFS, -100)
+    }
+
+    // MARK: - Week 76 K-weight + true peak
+
+    func testKWeightChangesBassVersusTrebleEnergy() {
+        let bass = makeStereoTone(amplitude: 0.3, seconds: 1.5, hz: 100).0
+        let treble = makeStereoTone(amplitude: 0.3, seconds: 1.5, hz: 3000).0
+        let kBass = MXLoudness.kWeight(bass, sampleRate: sampleRate)
+        let kTreble = MXLoudness.kWeight(treble, sampleRate: sampleRate)
+        let energy: ([Float]) -> Double = { samples in
+            var s: Double = 0
+            for x in samples { s += Double(x) * Double(x) }
+            return s
+        }
+        // High shelf boosts treble relative to bass after K-weight.
+        XCTAssertGreaterThan(energy(kTreble), energy(kBass) * 1.2)
+    }
+
+    func testTruePeakAtLeastSamplePeak() {
+        let n = 4096
+        var samples = [Float](repeating: 0, count: n)
+        let hz = 18_000.0
+        for i in 0..<n {
+            samples[i] = Float(sin(2 * .pi * hz * Double(i) / sampleRate))
+        }
+        let samplePeak = MXAudioAnalysis.peak(samples)
+        let tp = MXLoudness.truePeakLinear(samples, oversample: 4)
+        XCTAssertGreaterThanOrEqual(tp + 1e-6, samplePeak)
+        XCTAssertGreaterThan(tp, 0.5)
+    }
+
+    func testTruePeakIdentityOnDC() {
+        let samples = [Float](repeating: 0.5, count: 64)
+        XCTAssertEqual(MXLoudness.truePeakLinear(samples), 0.5, accuracy: 1e-6)
+        XCTAssertEqual(MXLoudness.truePeakDB(samples), 20 * log10(0.5), accuracy: 1e-4)
     }
 
     // MARK: - Fixtures

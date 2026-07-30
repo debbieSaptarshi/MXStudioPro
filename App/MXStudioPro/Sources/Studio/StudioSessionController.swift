@@ -3635,14 +3635,13 @@ public final class StudioSessionController {
         for track: MXSessionTrack,
         kickTriggers: [(startBeat: Double, note: UInt8)]
     ) -> Float {
-        guard track.sidechainEnabled, !kickTriggers.isEmpty else { return 1 }
-        guard let seconds = MXSidechainDuck.secondsSinceKick(
-            playheadBeat: playheadBeat,
-            notes: kickTriggers,
-            bpm: project.bpm
-        ) else { return 1 }
-        let amount = Double(track.sidechainAmount) / 100
-        return Float(MXSidechainDuck.gain(timeSinceTrigger: seconds, amount: amount))
+        guard track.sidechainEnabled else { return 1 }
+        return Float(MXSidechainDuck.duckGain(
+            atBeat: playheadBeat,
+            kicks: kickTriggers,
+            bpm: project.bpm,
+            amount: Double(track.sidechainAmount) / 100
+        ))
     }
 
     /// Toggle kick→track ducking (Week 63). Typically enabled on keys / bass.

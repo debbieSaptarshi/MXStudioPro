@@ -84,4 +84,24 @@ public enum MXSidechainDuck: Sendable {
         if let part = MXDrumPart.part(forNote: note) { return part == .kick }
         return note == 36
     }
+
+    /// Convenience: duck gain at a playhead beat for bounce / playback parity (Week 75).
+    ///
+    /// Returns 1 when there is no preceding kick or `amount` is 0.
+    public static func duckGain(
+        atBeat playheadBeat: Double,
+        kicks: [(startBeat: Double, note: UInt8)],
+        bpm: Double,
+        amount: Double,
+        attack: Double = 0.02,
+        release: Double = 0.18
+    ) -> Double {
+        guard amount > 0, !kicks.isEmpty else { return 1 }
+        guard let seconds = secondsSinceKick(
+            playheadBeat: playheadBeat,
+            notes: kicks,
+            bpm: bpm
+        ) else { return 1 }
+        return gain(timeSinceTrigger: seconds, amount: amount, attack: attack, release: release)
+    }
 }

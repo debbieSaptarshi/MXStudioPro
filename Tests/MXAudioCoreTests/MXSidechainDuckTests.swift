@@ -115,4 +115,18 @@ final class MXSidechainDuckTests: XCTestCase {
         XCTAssertFalse(MXSidechainDuck.isKick(38)) // snare
         XCTAssertFalse(MXSidechainDuck.isKick(42)) // closed hat
     }
+
+    func testDuckGainConvenienceMatchesCurve() {
+        let kicks: [(startBeat: Double, note: UInt8)] = [(0, 36)]
+        let atHit = MXSidechainDuck.duckGain(atBeat: 0, kicks: kicks, bpm: 120, amount: 0.6)
+        XCTAssertEqual(atHit, 0.4, accuracy: 1e-6)
+        // 0.5 s after hit @ 120 bpm = 1 beat → past attack+release → unity.
+        let later = MXSidechainDuck.duckGain(atBeat: 1, kicks: kicks, bpm: 120, amount: 0.6)
+        XCTAssertEqual(later, 1, accuracy: 1e-6)
+        XCTAssertEqual(
+            MXSidechainDuck.duckGain(atBeat: 0, kicks: kicks, bpm: 120, amount: 0),
+            1,
+            accuracy: 1e-9
+        )
+    }
 }

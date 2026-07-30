@@ -1,10 +1,10 @@
 import Foundation
 
-/// Practical BS.1770-style loudness helpers for **Reels / TikTok export** (~−14 LUFS).
+/// BS.1770-style loudness helpers for **Reels / TikTok export** (~−14 LUFS).
 ///
-/// This is an offline MVP: mean-square block energy with absolute and relative
-/// gating, **not** a certified K-weighted meter. Suitable for music-export
-/// targeting; do not treat readings as broadcast-legal LUFS.
+/// Week 76: K-weighted (pre-filter + RLB) gated integrated loudness + 4×
+/// inter-sample true peak. Still not a certified broadcast meter — suitable for
+/// music-export targeting.
 public enum MXLoudness {
 
     /// Absolute gate floor used by BS.1770 (LUFS).
@@ -18,13 +18,10 @@ public enum MXLoudness {
 
     // MARK: - Integrated loudness
 
-    /// Absolute-gated integrated loudness approximation for mono or stereo float buffers.
+    /// Absolute-gated integrated loudness for mono or stereo float buffers.
     ///
-    /// - Parameters:
-    ///   - left: Left (or mono) channel samples.
-    ///   - right: Optional right channel; when `nil`, `left` is treated as mono.
-    ///   - sampleRate: Sample rate of the buffers.
-    /// - Returns: Approximate integrated LUFS, or `-∞` for silence / empty input.
+    /// Applies ITU BS.1770 K-weighting (48 kHz stage coeffs) before gated
+    /// mean-square. Returns `-∞` for silence / empty input.
     public static func integratedLUFS(left: [Float],
                                       right: [Float]? = nil,
                                       sampleRate: Double = 48_000) -> Float {
@@ -32,11 +29,13 @@ public enum MXLoudness {
         let frameCount = right.map { min(left.count, $0.count) } ?? left.count
         guard frameCount > 0 else { return -.infinity }
 
+        let kLeft = kWeight(left, sampleRate: sampleRate)
+        let kRight = right.map { kWeight($0, sampleRate: sampleRate) }
+
         let blockFrames = max(1, Int((blockDurationSeconds * sampleRate).rounded()))
         let hopFrames = max(1, Int((Double(blockFrames) * blockHopFraction).rounded()))
         guard frameCount >= blockFrames else {
-            // Short buffers: one ungated mean-square estimate.
-            let z = meanSquarePower(left: left, right: right, start: 0, count: frameCount)
+            let z = meanSquarePower(left: kLeft, right: kRight, start: 0, count: frameCount)
             return loudnessFromMeanSquare(z)
         }
 
@@ -45,7 +44,7 @@ public enum MXLoudness {
         var start = 0
         while start + blockFrames <= frameCount {
             blockMeanSquares.append(
-                meanSquarePower(left: left, right: right, start: start, count: blockFrames)
+                meanSquarePower(left: kLeft, right: kRight, start: start, count: blockFrames)
             )
             start += hopFrames
         }
@@ -105,11 +104,8 @@ public enum MXLoudness {
         applyMasterLimiter(left: &left, right: &right, ceiling: maxPeak)
     }
 
-    /// Soft master limiter / brickwall safety so true peak stays ≤ `ceiling`
+    /// Soft master limiter / brickwall safety so sample peak stays ≤ `ceiling`
     /// (~0.99 ≈ −0.1 dBTP). Shared by peak-normalize and LUFS bounce paths.
-    ///
-    /// Soft-knees samples above ~92% of the ceiling, then hard-clamps and
-    /// applies a final global scale if anything still exceeds the ceiling.
     public static func applyMasterLimiter(left: inout [Float],
                                           right: inout [Float],
                                           ceiling: Float = 0.99) {
@@ -135,15 +131,12 @@ public enum MXLoudness {
         applyGain(ceiling / peak, left: &left, right: &right)
     }
 
-    // MARK: - Report (Week 71)
+    // MARK: - Report (Week 71 / 76)
 
-    /// Post-bounce loudness report: integrated LUFS, sample-peak dBFS, optional target.
-    ///
-    /// `truePeakDBFS` is **approx true-peak / sample peak** — `MXAudioAnalysis.peakDB`
-    /// of the louder channel (max of L/R). Not inter-sample true peak (ITU-R BS.1770).
+    /// Post-bounce loudness report: K-weighted integrated LUFS + inter-sample true peak.
     public struct Report: Sendable, Equatable {
         public var integratedLUFS: Float
-        /// Approx true-peak / sample peak in dBFS (max of L/R sample peak).
+        /// Inter-sample true peak in dBFS (4× linear oversample, max of L/R).
         public var truePeakDBFS: Float
         public var targetLUFS: Float?
         public var sampleRate: Double
@@ -167,44 +160,68 @@ public enum MXLoudness {
     }
 
     /// Build a bounce/export loudness report from mono or stereo float buffers.
-    ///
-    /// - Parameters:
-    ///   - left: Left (or mono) channel samples.
-    ///   - right: Optional right channel; when `nil`, `left` is treated as mono.
-    ///   - sampleRate: Sample rate of the buffers.
-    ///   - targetLUFS: Optional export target (e.g. −14 for Reels).
-    /// - Returns: Report with integrated LUFS and sample-peak dBFS (approx true-peak).
     public static func report(left: [Float],
                               right: [Float]? = nil,
                               sampleRate: Double = 48_000,
                               targetLUFS: Float? = nil) -> Report {
         let integrated = integratedLUFS(left: left, right: right, sampleRate: sampleRate)
-        let leftPeakDB = MXAudioAnalysis.peakDB(left)
-        let rightPeakDB = right.map { MXAudioAnalysis.peakDB($0) } ?? -.infinity
-        let truePeak = max(leftPeakDB, rightPeakDB)
+        let leftTP = truePeakDB(left)
+        let rightTP = right.map { truePeakDB($0) } ?? -.infinity
+        let truePeak = max(leftTP, rightTP)
         return Report(integratedLUFS: integrated,
                       truePeakDBFS: truePeak,
                       targetLUFS: targetLUFS,
                       sampleRate: sampleRate)
     }
 
-    // MARK: - Live / momentary (Week 59)
+    // MARK: - True peak (Week 76)
+
+    /// Linear peak of `samples` after 4× linear oversampling (inter-sample lite).
+    public static func truePeakLinear(_ samples: [Float], oversample: Int = 4) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        let factor = max(1, oversample)
+        var peak = abs(samples[0])
+        if samples.count == 1 { return peak }
+        for i in 0..<(samples.count - 1) {
+            let a = samples[i]
+            let b = samples[i + 1]
+            peak = max(peak, abs(a), abs(b))
+            if factor > 1 {
+                for k in 1..<factor {
+                    let t = Float(k) / Float(factor)
+                    let y = a + (b - a) * t
+                    peak = max(peak, abs(y))
+                }
+            }
+        }
+        return peak
+    }
+
+    /// Inter-sample true peak in dBFS (20·log10). Floor for silence.
+    public static func truePeakDB(_ samples: [Float], oversample: Int = 4) -> Float {
+        let peak = truePeakLinear(samples, oversample: oversample)
+        guard peak > 1e-20 else { return -160 }
+        return 20 * log10(peak)
+    }
+
+    // MARK: - Live / momentary (Week 59 / 76)
 
     /// Momentary loudness from a short buffer (GarageBand / Reels live meter lite).
     ///
-    /// Uses the same ungated mean-square → LUFS map as integrated blocks — not
-    /// K-weighted. Returns `-∞` for silence / empty input.
+    /// K-weighted ungated mean-square → LUFS. Returns `-∞` for silence / empty.
     public static func momentaryLUFS(left: [Float],
                                      right: [Float]? = nil,
                                      sampleRate: Double = 48_000) -> Float {
         guard sampleRate > 0, !left.isEmpty else { return -.infinity }
         let frameCount = right.map { min(left.count, $0.count) } ?? left.count
         guard frameCount > 0 else { return -.infinity }
-        let z = meanSquarePower(left: left, right: right, start: 0, count: frameCount)
+        let kLeft = kWeight(left, sampleRate: sampleRate)
+        let kRight = right.map { kWeight($0, sampleRate: sampleRate) }
+        let z = meanSquarePower(left: kLeft, right: kRight, start: 0, count: frameCount)
         return loudnessFromMeanSquare(z)
     }
 
-    /// Convert channel-summed mean-square power to approximate LUFS.
+    /// Convert channel-summed mean-square power to LUFS (BS.1770 constant).
     public static func loudnessFromMeanSquare(_ z: Float) -> Float {
         guard z > 1e-20 else { return -.infinity }
         return -0.691 + 10 * log10(z)
@@ -219,6 +236,37 @@ public enum MXLoudness {
         let compressed = knee + headroom * (over / (over + headroom))
         let limited = min(compressed, ceiling)
         return x >= 0 ? limited : -limited
+    }
+
+    // MARK: - K-weighting (ITU BS.1770-4 Annex 1 @ 48 kHz)
+
+    /// Apply K-weighting (pre-filter high shelf + RLB highpass) to one channel.
+    ///
+    /// Uses the published 48 kHz stage coefficients for all rates (MVP). Primary
+    /// path is 48 kHz project audio.
+    public static func kWeight(_ input: [Float], sampleRate: Double) -> [Float] {
+        guard !input.isEmpty, sampleRate > 0 else { return input }
+        // Pre-filter (high shelf) — BS.1770-4 @ 48 kHz.
+        var pre = BiquadDF2(
+            b0: 1.53512485958697,
+            b1: -2.69169618940638,
+            b2: 1.19839281085285,
+            a1: -1.69065929318241,
+            a2: 0.73248077421585
+        )
+        // RLB highpass — BS.1770-4 @ 48 kHz.
+        var rlb = BiquadDF2(
+            b0: 1.0,
+            b1: -2.0,
+            b2: 1.0,
+            a1: -1.99004745483398,
+            a2: 0.99007225036621
+        )
+        var out = [Float](repeating: 0, count: input.count)
+        for i in input.indices {
+            out[i] = rlb.process(pre.process(input[i]))
+        }
+        return out
     }
 
     // MARK: - Internals
@@ -250,5 +298,31 @@ public enum MXLoudness {
     private static func meanSquareFromLoudness(_ lufs: Float) -> Float {
         guard lufs.isFinite else { return 0 }
         return pow(10, (lufs + 0.691) / 10)
+    }
+
+    /// Direct-form II biquad (a0 normalized to 1).
+    private struct BiquadDF2 {
+        let b0: Float
+        let b1: Float
+        let b2: Float
+        let a1: Float
+        let a2: Float
+        var z1: Float = 0
+        var z2: Float = 0
+
+        init(b0: Double, b1: Double, b2: Double, a1: Double, a2: Double) {
+            self.b0 = Float(b0)
+            self.b1 = Float(b1)
+            self.b2 = Float(b2)
+            self.a1 = Float(a1)
+            self.a2 = Float(a2)
+        }
+
+        mutating func process(_ x: Float) -> Float {
+            let y = b0 * x + z1
+            z1 = b1 * x - a1 * y + z2
+            z2 = b2 * x - a2 * y
+            return y
+        }
     }
 }

@@ -127,6 +127,9 @@ public enum StudioBounceExporter {
         var left = [Float](repeating: 0, count: frameCount)
         var right = [Float](repeating: 0, count: frameCount)
 
+        // Week 75 — kick key list for bounce duck parity with live mix.
+        let kickTriggers = sidechainKickTriggers(project: project)
+
         for job in jobs {
             try mixClip(
                 url: job.url,
@@ -135,6 +138,7 @@ public enum StudioBounceExporter {
                 bpm: bpm,
                 sampleRate: sampleRate,
                 highPassEnabled: highPassEnabled,
+                kickTriggers: kickTriggers,
                 intoLeft: &left,
                 intoRight: &right
             )
@@ -246,6 +250,9 @@ public enum StudioBounceExporter {
             var left = [Float](repeating: 0, count: frameCount)
             var right = [Float](repeating: 0, count: frameCount)
 
+            // Stems still apply SC duck so a sidechained bass stem matches live feel.
+            let kickTriggers = sidechainKickTriggers(project: project)
+
             for job in jobs {
                 try mixClip(
                     url: job.url,
@@ -254,6 +261,7 @@ public enum StudioBounceExporter {
                     bpm: bpm,
                     sampleRate: sampleRate,
                     highPassEnabled: highPassEnabled,
+                    kickTriggers: kickTriggers,
                     intoLeft: &left,
                     intoRight: &right
                 )
@@ -326,6 +334,7 @@ public enum StudioBounceExporter {
         bpm: Double,
         sampleRate: Double,
         highPassEnabled: Bool,
+        kickTriggers: [(startBeat: Double, note: UInt8)] = [],
         intoLeft left: inout [Float],
         intoRight right: inout [Float]
     ) throws {
@@ -352,6 +361,8 @@ public enum StudioBounceExporter {
         let hasTrackAutomation = !track.volumeAutomation.isEmpty
         let hasClipVolAutomation = !clip.volumeAutomation.isEmpty
         let hasClipPanAutomation = !clip.panAutomation.isEmpty
+        let sidechainOn = track.sidechainEnabled && !kickTriggers.isEmpty
+        let sidechainAmount = Double(track.sidechainAmount) / 100
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
@@ -474,12 +485,37 @@ public enum StudioBounceExporter {
                 ? clip.panAutomationOffset(atProjectBeat: beat)
                 : MXPanAutomation.center
             let pan = MXPanAutomation.combined(trackPan: trackPan, clipOffset: panOffset)
-            let gain = baseGain * trackAuto * clipAuto
+            let duck: Float
+            if sidechainOn {
+                duck = Float(MXSidechainDuck.duckGain(
+                    atBeat: beat,
+                    kicks: kickTriggers,
+                    bpm: bpm,
+                    amount: sidechainAmount
+                ))
+            } else {
+                duck = 1
+            }
+            let gain = baseGain * trackAuto * clipAuto * duck
             let leftGain = gain * min(1, max(0, 1 - pan))
             let rightGain = gain * min(1, max(0, 1 + pan))
             left[di] += mono * leftGain
             right[di] += mono * rightGain
         }
+    }
+
+    /// Absolute-beat kick triggers from drums-category MIDI clips (Week 75 bounce key).
+    static func sidechainKickTriggers(project: MXProject) -> [(startBeat: Double, note: UInt8)] {
+        guard project.tracks.contains(where: { $0.sidechainEnabled }) else { return [] }
+        var triggers: [(startBeat: Double, note: UInt8)] = []
+        for track in project.tracks where track.category == .drums {
+            for clip in track.clips where clip.isActive {
+                for note in clip.midiNotes where MXSidechainDuck.isKick(note.note) {
+                    triggers.append((startBeat: clip.startBeat + note.startBeat, note: note.note))
+                }
+            }
+        }
+        return triggers
     }
 
     /// Extra seconds of silence to render through delay/reverb after clip audio ends.

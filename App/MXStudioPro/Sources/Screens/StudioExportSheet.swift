@@ -406,7 +406,7 @@ struct StudioExportSheet: View {
                     .foregroundStyle(MXColor.white)
                     .monospacedDigit()
             }
-            Text("Approx LUFS · not broadcast-certified")
+            Text("K-weighted LUFS · not broadcast-certified")
                 .font(MXFont.caption())
                 .foregroundStyle(MXColor.grey.opacity(0.75))
         }
