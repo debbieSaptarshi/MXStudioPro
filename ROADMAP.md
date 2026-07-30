@@ -48,7 +48,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **34** | Drum & Others Studio Section (Figma) | **Done (MVP)** ✅ Pads + Hide Tracks + Others labels |
 | **35** | Quick Landscape Studio Section (Figma) | **Done (MVP)** ✅ landscape compact + Quick Recording |
 | **36** | Equal-power crossfades (arrangement) | **Done (MVP)** ✅ overlapping punch X-fades |
-| **37** | Multi-row playlist folder (take lanes) | **Next** |
+| **37** | Multi-row playlist folder (take lanes) | **Done (MVP)** ✅ one row per takeIndex; collapse chevron |
 
 ### Figma anchors (shipped / in use)
 
@@ -219,7 +219,7 @@ Patterned after GarageBand first-record tips, Logic punch comps, BandLab take la
 | **Clamp clip schedules to loop end** | ✅ `MXLoopScheduleClamp` caps `AVAudioPlayerNode` frames so audio doesn’t bleed past loop on hostTime |
 | **Playlist lanes / crossfade comps lite** | ✅ Punch splits active takes into before/after; ~12 ms abut fades; ghost inactive takes; take-lane activation |
 
-**Takes / punch Week 29 limits:** abut fade dips (not overlapping X-fades); ghosts only when inactive takes exist; no always-on multi-row playlist folder.
+**Takes / punch Week 29 limits (superseded where noted):** abut fade dips → Week 36 equal-power X-fades; Week 37 always-on multi-row playlist folder (session-local collapse).
 
 ---
 
@@ -233,7 +233,7 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Month 10 backlog:** Week 36 equal-power crossfades → playlist folder → strip meters → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
+**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
@@ -322,15 +322,15 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 ---
 
-## Month 10 — Arrangement depth *(Weeks 36–39)* **Next**
+## Month 10 — Arrangement depth *(Weeks 36–39)*
 
 Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab playlist comps; Studio One strip meters.
 
 | Week | Focus | Status |
 |------|--------|--------|
 | **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Done (MVP)** ✅ |
-| 37 | Expanded multi-row playlist folder (always-on take lanes) | **Next** |
-| 38 | Playback strip meters (mixer + optional timeline) | Planned |
+| **37** | Expanded multi-row playlist folder (always-on take lanes) | **Done (MVP)** ✅ |
+| 38 | Playback strip meters (mixer + optional timeline) | **Next** |
 | 39 | Wet input monitoring for guitar pedalboard | Planned |
 
 ### Week 36 — Equal-power crossfades ✅
@@ -344,6 +344,18 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 - [x] Demo: punch over a take → seamless splice on play + bounce
 
 **Week 36 notes:** `MXCompRegionSplit` extends before/after into the punch; both seams share `min(xf, punch/2)`. Soft-overlap default 0.08 beats. Manual clip fades also use equal-power.
+
+### Week 37 — Expanded multi-row playlist folder ✅
+
+**Done when (GarageBand / Logic playlist lite)**
+- [x] Multi-take track (≥2 distinct `takeIndex`) expands to one timeline row per take lane
+- [x] Active take editable (`InteractiveStudioClip`); inactive takes on own dimmed rows; tap activates via `setActiveTake`
+- [x] Track header height matches expanded folder height
+- [x] Folder defaults open; chevron collapses to single summary lane (session-local `@State`, not persisted)
+- [x] Takes menu lists one representative clip per `takeIndex`
+- [x] Single-take tracks unchanged (one lane)
+
+**Week 37 notes:** `StudioSessionController.takes(onTrackID:)` returns one rep per takeIndex (prefer active). Ghosts only in expanded playlist rows; collapsed summary shows actives only. No empty lanes, no drag between lanes, no punch/activation math changes.
 
 ### Implementation notes (shared — Month 9)
 

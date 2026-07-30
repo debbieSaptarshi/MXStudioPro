@@ -1035,10 +1035,16 @@ public final class StudioSessionController {
         }
     }
 
-    /// Clips on a track that participate in take picking (2+ clips).
+    /// One representative clip per distinct `takeIndex` for take menus / playlist folders.
+    /// Prefers an active piece when present; otherwise the earliest clip by `startBeat`. Sorted by takeIndex.
     public func takes(onTrackID trackID: UUID) -> [MXClip] {
         guard let track = project.tracks.first(where: { $0.id == trackID }) else { return [] }
-        return track.clips.sorted { $0.takeIndex < $1.takeIndex }
+        let grouped = Dictionary(grouping: track.clips, by: \.takeIndex)
+        return grouped.keys.sorted().compactMap { index in
+            guard let clips = grouped[index], !clips.isEmpty else { return nil }
+            if let active = clips.first(where: \.isActive) { return active }
+            return clips.sorted { $0.startBeat < $1.startBeat }.first
+        }
     }
 
     public func moveSelectedClip(byBeats delta: Double) {

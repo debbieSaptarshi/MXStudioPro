@@ -24,6 +24,8 @@ public struct StudioView: View {
     @State private var showClipInspector = false
     /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
     @State private var tracksCollapsed = false
+    /// Session-local collapse state: tracks in this set are collapsed to one summary lane.
+    @State private var collapsedPlaylistTrackIDs: Set<UUID> = []
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
@@ -36,9 +38,30 @@ public struct StudioView: View {
     private let beatsVisible: Double = 8
     /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
     private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
+    /// Height of one take lane inside an expanded playlist folder.
+    private var takeRowHeight: CGFloat { isLandscape ? 40 : 44 }
     /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
     private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
     private let rulerHeight: CGFloat = 24
+
+    private func playlistTakeIndices(for track: MXSessionTrack) -> [Int] {
+        Array(Set(track.clips.map(\.takeIndex))).sorted()
+    }
+
+    private func isPlaylistFolder(_ track: MXSessionTrack) -> Bool {
+        playlistTakeIndices(for: track).count >= 2
+    }
+
+    private func isPlaylistExpanded(_ track: MXSessionTrack) -> Bool {
+        isPlaylistFolder(track) && !collapsedPlaylistTrackIDs.contains(track.id)
+    }
+
+    private func trackArrangementHeight(for track: MXSessionTrack) -> CGFloat {
+        if isPlaylistExpanded(track) {
+            return CGFloat(playlistTakeIndices(for: track).count) * takeRowHeight
+        }
+        return trackLaneHeight
+    }
 
     public init(
         session: StudioSessionController,
@@ -432,21 +455,33 @@ public struct StudioView: View {
             ForEach(session.project.tracks) { track in
                 if tracksCollapsed {
                     collapsedTrackRailButton(track)
-                        .frame(height: trackLaneHeight)
+                        .frame(height: trackArrangementHeight(for: track))
                 } else {
                     StudioTrackHeader(
                         track: track,
                         isSelected: selectedTrackID == track.id,
                         isArmed: track.isArmed,
+                        takeLaneCount: playlistTakeIndices(for: track).count,
+                        takeRepresentatives: session.takes(onTrackID: track.id),
+                        isPlaylistExpanded: isPlaylistExpanded(track),
                         onSelect: {
                             selectedTrackID = track.id
                             session.armTrack(id: track.id)
                         },
                         onMute: { session.toggleMute(trackID: track.id) },
                         onSolo: { session.toggleSolo(trackID: track.id) },
-                        onSetActiveTake: { session.setActiveTake(clipID: $0) }
+                        onSetActiveTake: { session.setActiveTake(clipID: $0) },
+                        onTogglePlaylist: {
+                            withAnimation {
+                                if collapsedPlaylistTrackIDs.contains(track.id) {
+                                    collapsedPlaylistTrackIDs.remove(track.id)
+                                } else {
+                                    collapsedPlaylistTrackIDs.insert(track.id)
+                                }
+                            }
+                        }
                     )
-                    .frame(height: trackLaneHeight)
+                    .frame(height: trackArrangementHeight(for: track))
                     .clipped()
                 }
             }
@@ -677,7 +712,7 @@ public struct StudioView: View {
                     Color.clear.frame(height: rulerHeight)
                     ForEach(Array(session.project.tracks.enumerated()), id: \.element.id) { index, track in
                         trackLane(track: track, width: width, pixelsPerBeat: pixelsPerBeat, isPrimary: index == 0)
-                            .frame(height: trackLaneHeight)
+                            .frame(height: trackArrangementHeight(for: track))
                     }
                     Spacer(minLength: 0)
                 }
@@ -709,12 +744,66 @@ public struct StudioView: View {
         }
     }
 
+    @ViewBuilder
     private func trackLane(track: MXSessionTrack, width: CGFloat, pixelsPerBeat: CGFloat, isPrimary: Bool) -> some View {
-        let takeLaneCount = Set(track.clips.map(\.takeIndex)).count
-        let showGhostLanes = takeLaneCount >= 2
-        let activeClips = track.clips.filter(\.isActive)
-        let ghostClips = showGhostLanes ? track.clips.filter { !$0.isActive } : []
+        if isPlaylistExpanded(track) {
+            // One timeline row per takeIndex (GarageBand / Logic playlist lite).
+            VStack(spacing: 0) {
+                ForEach(playlistTakeIndices(for: track), id: \.self) { takeIndex in
+                    playlistTakeRow(
+                        track: track,
+                        takeIndex: takeIndex,
+                        pixelsPerBeat: pixelsPerBeat
+                    )
+                    .frame(height: takeRowHeight)
+                }
+            }
+        } else {
+            // Single-take or collapsed folder: summary lane with active clips only.
+            let activeClips = track.clips.filter(\.isActive)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.surfaceRaised.opacity(0.35))
+                    .contentShape(Rectangle())
+                    .modifier(LaneBackgroundPointerModifier(
+                        pixelsPerBeat: pixelsPerBeat,
+                        hasSelection: session.selectedClipID != nil,
+                        onSeek: { session.seek(toBeat: max(0, $0)) },
+                        onClearSelection: { session.selectClip(nil) }
+                    ))
 
+                if activeClips.isEmpty {
+                    if isPrimary {
+                        Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.grey)
+                            .padding(.leading, 12)
+                            .allowsHitTesting(false)
+                    }
+                } else {
+                    ForEach(activeClips) { clip in
+                        InteractiveStudioClip(
+                            clip: clip,
+                            pixelsPerBeat: pixelsPerBeat,
+                            isSelected: session.selectedClipID == clip.id,
+                            onSelect: { session.selectClip(clip.id) },
+                            onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
+                            onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
+                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func playlistTakeRow(
+        track: MXSessionTrack,
+        takeIndex: Int,
+        pixelsPerBeat: CGFloat
+    ) -> some View {
+        let clips = track.clips.filter { $0.takeIndex == takeIndex }
+        let interactiveHeight = takeRowHeight - 6
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(MXColor.surfaceRaised.opacity(0.35))
@@ -726,37 +815,29 @@ public struct StudioView: View {
                     onClearSelection: { session.selectClip(nil) }
                 ))
 
-            // Ghost playlist lanes under actives (BandLab / Logic take comps lite).
-            ForEach(ghostClips) { clip in
-                GhostStudioClip(
-                    clip: clip,
-                    pixelsPerBeat: pixelsPerBeat,
-                    onActivate: { session.setActiveTake(clipID: clip.id) }
-                )
-            }
-
-            if activeClips.isEmpty {
-                if isPrimary {
-                    Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
-                        .font(MXFont.body3())
-                        .foregroundStyle(MXColor.grey)
-                        .padding(.leading, 12)
-                        .allowsHitTesting(false)
-                }
-            } else {
-                ForEach(activeClips) { clip in
+            ForEach(clips) { clip in
+                if clip.isActive {
                     InteractiveStudioClip(
                         clip: clip,
                         pixelsPerBeat: pixelsPerBeat,
                         isSelected: session.selectedClipID == clip.id,
+                        clipHeight: interactiveHeight,
                         onSelect: { session.selectClip(clip.id) },
                         onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
                         onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
                         onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
                     )
+                } else {
+                    GhostStudioClip(
+                        clip: clip,
+                        pixelsPerBeat: pixelsPerBeat,
+                        rowHeight: takeRowHeight,
+                        onActivate: { session.setActiveTake(clipID: clip.id) }
+                    )
                 }
             }
         }
+        .clipped()
     }
 
     private func playheadX(pixelsPerBeat: CGFloat) -> CGFloat {
@@ -2309,10 +2390,14 @@ private struct StudioTrackHeader: View {
     let track: MXSessionTrack
     var isSelected: Bool
     var isArmed: Bool
+    var takeLaneCount: Int
+    var takeRepresentatives: [MXClip]
+    var isPlaylistExpanded: Bool
     var onSelect: () -> Void
     var onMute: () -> Void
     var onSolo: () -> Void
     var onSetActiveTake: (UUID) -> Void
+    var onTogglePlaylist: () -> Void
 
     private var categoryTint: Color {
         switch track.category {
@@ -2334,11 +2419,20 @@ private struct StudioTrackHeader: View {
         }
     }
 
-    private var takeCount: Int { track.clips.count }
-
     var body: some View {
         Button(action: onSelect) {
             HStack(alignment: .center, spacing: 6) {
+                if takeLaneCount > 1 {
+                    Button(action: onTogglePlaylist) {
+                        Image(systemName: isPlaylistExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPlaylistExpanded ? "Collapse takes" : "Expand takes")
+                }
+
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(categoryTint)
                     .frame(width: 3)
@@ -2363,9 +2457,18 @@ private struct StudioTrackHeader: View {
                                 .frame(width: 12, height: 12)
                                 .background(Circle().fill(MXColor.red))
                         }
-                        if takeCount > 1 {
+                        if takeLaneCount > 1 {
+                            Text("T\(takeLaneCount)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(MXColor.grey)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(MXColor.black.opacity(0.35))
+                                )
                             Menu {
-                                ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
+                                ForEach(takeRepresentatives) { take in
                                     Button {
                                         onSetActiveTake(take.id)
                                     } label: {
@@ -2459,6 +2562,7 @@ private struct LaneBackgroundPointerModifier: ViewModifier {
 private struct GhostStudioClip: View {
     let clip: MXClip
     let pixelsPerBeat: CGFloat
+    var rowHeight: CGFloat = 36
     var onActivate: () -> Void
 
     private var width: CGFloat {
@@ -2483,8 +2587,8 @@ private struct GhostStudioClip: View {
                 .padding(.leading, 4)
                 .padding(.top, 2)
         }
-        .frame(width: width, height: 36)
-        .offset(x: x, y: 8)
+        .frame(width: width, height: rowHeight - 6)
+        .offset(x: x, y: 3)
         .opacity(0.45)
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
@@ -2499,13 +2603,14 @@ private struct InteractiveStudioClip: View {
     let clip: MXClip
     let pixelsPerBeat: CGFloat
     let isSelected: Bool
+    /// Clip body height; smaller in expanded playlist take rows.
+    var clipHeight: CGFloat = 52
     var onSelect: () -> Void
     var onMove: (_ toStartBeat: Double) -> Void
     var onTrimStart: (_ toStartBeat: Double) -> Void
     var onTrimEnd: (_ toEndBeat: Double) -> Void
 
     private let handleWidth: CGFloat = 14
-    private let clipHeight: CGFloat = 52
 
     @State private var activeDrag: DragKind?
     @State private var dragDeltaX: CGFloat = 0
