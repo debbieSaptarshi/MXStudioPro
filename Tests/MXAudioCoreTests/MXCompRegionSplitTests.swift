@@ -25,15 +25,22 @@ final class MXCompRegionSplitTests: XCTestCase {
             secondsBetween: secondsBetween
         )
 
+        // At 120 BPM: xfSec = 0.012 → xfBeats = 0.012/0.5 = 0.024
         XCTAssertFalse(result.deactivateOriginal)
         XCTAssertEqual(result.before?.startBeat ?? -1, 0, accuracy: 1e-9)
-        XCTAssertEqual(result.before?.lengthBeats ?? -1, 2, accuracy: 1e-9)
-        XCTAssertEqual(result.before?.sourceDurationSeconds ?? -1, 1, accuracy: 1e-9)
+        XCTAssertEqual(result.before?.lengthBeats ?? -1, 2.024, accuracy: 1e-9)
+        XCTAssertGreaterThan(result.before?.lengthBeats ?? 0, 2)
+        XCTAssertEqual(result.before?.sourceDurationSeconds ?? -1, 1.012, accuracy: 1e-9)
         XCTAssertEqual(result.before?.fadeOutSeconds ?? -1, 0.012, accuracy: 1e-9)
+        // before ends after punch start (overlap)
+        let beforeEnd = (result.before?.startBeat ?? 0) + (result.before?.lengthBeats ?? 0)
+        XCTAssertGreaterThan(beforeEnd, 2)
 
-        XCTAssertEqual(result.after?.startBeat ?? -1, 4, accuracy: 1e-9)
-        XCTAssertEqual(result.after?.lengthBeats ?? -1, 4, accuracy: 1e-9)
-        XCTAssertEqual(result.after?.sourceOffsetSeconds ?? -1, 2, accuracy: 1e-9)
+        XCTAssertEqual(result.after?.startBeat ?? -1, 3.976, accuracy: 1e-9)
+        XCTAssertLessThan(result.after?.startBeat ?? 99, 4)
+        XCTAssertEqual(result.after?.lengthBeats ?? -1, 4.024, accuracy: 1e-9)
+        XCTAssertEqual(result.after?.sourceOffsetSeconds ?? -1, 1.988, accuracy: 1e-9)
+        XCTAssertEqual(result.after?.sourceDurationSeconds ?? -1, 2.012, accuracy: 1e-9)
         XCTAssertEqual(result.after?.fadeInSeconds ?? -1, 0.012, accuracy: 1e-9)
 
         XCTAssertEqual(result.punchFadeInSeconds, 0.012, accuracy: 1e-9)
@@ -50,7 +57,9 @@ final class MXCompRegionSplitTests: XCTestCase {
 
         XCTAssertNil(result.before)
         XCTAssertTrue(result.deactivateOriginal)
-        XCTAssertEqual(result.after?.startBeat ?? -1, 3, accuracy: 1e-9)
+        // Soft-overlap into punch: start pulled earlier by xfBeats = 0.024
+        XCTAssertEqual(result.after?.startBeat ?? -1, 2.976, accuracy: 1e-9)
+        XCTAssertEqual(result.after?.fadeInSeconds ?? -1, 0.012, accuracy: 1e-9)
         XCTAssertEqual(result.punchFadeInSeconds, 0, accuracy: 1e-9)
         XCTAssertEqual(result.punchFadeOutSeconds, 0.012, accuracy: 1e-9)
     }
@@ -65,7 +74,9 @@ final class MXCompRegionSplitTests: XCTestCase {
 
         XCTAssertNil(result.after)
         XCTAssertFalse(result.deactivateOriginal)
-        XCTAssertEqual(result.before?.lengthBeats ?? -1, 5, accuracy: 1e-9)
+        // Soft-overlap into punch: length grown by xfBeats = 0.024
+        XCTAssertEqual(result.before?.lengthBeats ?? -1, 5.024, accuracy: 1e-9)
+        XCTAssertEqual(result.before?.fadeOutSeconds ?? -1, 0.012, accuracy: 1e-9)
         XCTAssertEqual(result.punchFadeInSeconds, 0.012, accuracy: 1e-9)
         XCTAssertEqual(result.punchFadeOutSeconds, 0, accuracy: 1e-9)
     }

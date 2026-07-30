@@ -45,6 +45,9 @@
 		C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */; };
 		C1A00101AAAA000100000061 /* MetalLiveWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */; };
 		C1A00101AAAA000100000063 /* MetalWaveform.metal in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000062 /* MetalWaveform.metal */; };
+		C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005B /* DrumPadView.swift */; };
+		C1A00101AAAA00010000005C /* DrumStepSequencerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */; };
+		C1A00101AAAA000100000065 /* MXOrientationLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000064 /* MXOrientationLock.swift */; };
 		C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */; };
 		C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000041 /* DemoTemplatesView.swift */; };
 		C1A00101AAAA000100000042 /* LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000043 /* LearnView.swift */; };
@@ -95,6 +98,9 @@
 		C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietRoomChecklist.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalLiveWaveformView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000062 /* MetalWaveform.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MetalWaveform.metal; sourceTree = "<group>"; };
+		C1A00101AAAA00010000005B /* DrumPadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPadView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumStepSequencerView.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000064 /* MXOrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXOrientationLock.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDiscoverStudioBridge.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000041 /* DemoTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTemplatesView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000043 /* LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnView.swift; sourceTree = "<group>"; };
@@ -209,6 +215,8 @@
 				C1A00101AAAA00010000001F /* MXProject.swift */,
 				C1A00101AAAA000100000020 /* MXProjectStore.swift */,
 				C1A00101AAAA000100000031 /* PianoKeyboardView.swift */,
+				C1A00101AAAA00010000005B /* DrumPadView.swift */,
+				C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */,
 				C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */,
 				C1A00101AAAA000100000025 /* StudioEditStack.swift */,
 				C1A00101AAAA000100000019 /* StudioSessionController.swift */,
@@ -220,6 +228,7 @@
 			isa = PBXGroup;
 			children = (
 				C1A00101AAAA00010000002B /* MXAuthSession.swift */,
+				C1A00101AAAA000100000064 /* MXOrientationLock.swift */,
 				7DBBE916452293EA2406BF32 /* MXStudioProApp.swift */,
 				C1A00101AAAA00010000002F /* MXSocialStore.swift */,
 				C1A00101AAAA000100000057 /* MXNotificationStore.swift */,
@@ -345,6 +354,9 @@
 				C1A00101AAAA00010000002E /* EmailSignInView.swift in Sources */,
 				C1A00101AAAA000100000030 /* MXSocialStore.swift in Sources */,
 				C1A00101AAAA000100000032 /* PianoKeyboardView.swift in Sources */,
+				C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */,
+				C1A00101AAAA00010000005C /* DrumStepSequencerView.swift in Sources */,
+				C1A00101AAAA000100000065 /* MXOrientationLock.swift in Sources */,
 				C1A00101AAAA000100000009 /* StudioSessionController.swift in Sources */,
 				C1A00101AAAA00010000000A /* StudioView.swift in Sources */,
 				C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */,
@@ -466,7 +478,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MXStudio Pro needs the microphone to record vocals and instruments.";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -491,7 +503,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MXStudio Pro needs the microphone to record vocals and instruments.";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

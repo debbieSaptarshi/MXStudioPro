@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import MXStudioEngine
 
 /// Studio shell matching Figma `Studio - After Record Audio or Vocal` (95:85026).
 public struct StudioView: View {
@@ -22,14 +23,94 @@ public struct StudioView: View {
     @State private var showTunerSheet = false
     @State private var showCollabSheet = false
     @State private var showClipInspector = false
+    /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
+    @State private var tracksCollapsed = false
+    /// Session-local collapse state: tracks in this set are collapsed to one summary lane.
+    @State private var collapsedPlaylistTrackIDs: Set<UUID> = []
+    /// Session-local collapse for Week 40 drum part columns (Kick/Snare/Hats…).
+    @State private var collapsedDrumPartTrackIDs: Set<UUID> = []
+    /// Tracks showing volume automation lane (Week 52).
+    @State private var automationLaneTrackIDs: Set<UUID> = []
+    /// Pads vs BandLab-style 16-step sequencer (Week 49).
+    @State private var drumInputMode: DrumInputMode = .pads
+    @State private var drumStepVelocityGrid: [[UInt8]] = MXDrumStepSequencer.emptyVelocityGrid(bars: 1)
+    @State private var drumStepBars: Int = 1
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    private let trackColumnWidth: CGFloat = 135
+    private enum DrumInputMode: String, CaseIterable, Identifiable {
+        case pads
+        case steps
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .pads: return "Pads"
+            case .steps: return "Steps"
+            }
+        }
+    }
+
+    /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
+    private var isLandscape: Bool { verticalSizeClass == .compact }
+
+    private var trackColumnWidth: CGFloat {
+        if tracksCollapsed || isLandscape { return 44 }
+        return 135
+    }
     private let beatsVisible: Double = 8
     /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
-    private let trackLaneHeight: CGFloat = 60
-    /// Figma Bottom Actions “Studio Details” row is 70pt.
-    private let detailsStripHeight: CGFloat = 70
+    private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
+    /// Height of one take lane inside an expanded playlist folder.
+    private var takeRowHeight: CGFloat { isLandscape ? 40 : 44 }
+    /// Height of one Kick/Snare/Hats… column inside an expanded drum folder.
+    private var drumPartRowHeight: CGFloat { isLandscape ? 36 : 40 }
+    /// Volume automation lane under a track (Logic / Ableton lite).
+    private var automationLaneHeight: CGFloat { isLandscape ? 28 : 36 }
+    /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
+    private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
     private let rulerHeight: CGFloat = 24
+
+    private func playlistTakeIndices(for track: MXSessionTrack) -> [Int] {
+        Array(Set(track.clips.map(\.takeIndex))).sorted()
+    }
+
+    private func isPlaylistFolder(_ track: MXSessionTrack) -> Bool {
+        playlistTakeIndices(for: track).count >= 2
+    }
+
+    private func isPlaylistExpanded(_ track: MXSessionTrack) -> Bool {
+        isPlaylistFolder(track) && !collapsedPlaylistTrackIDs.contains(track.id)
+    }
+
+    /// Drum tracks always expose BandLab-style part columns (orthogonal to takes).
+    private func isDrumPartFolder(_ track: MXSessionTrack) -> Bool {
+        track.category == .drums
+    }
+
+    /// Part columns for single-take drum tracks (playlist folder wins when ≥2 takes).
+    private func isDrumPartsExpanded(_ track: MXSessionTrack) -> Bool {
+        isDrumPartFolder(track)
+            && !isPlaylistFolder(track)
+            && !collapsedDrumPartTrackIDs.contains(track.id)
+    }
+
+    private func trackArrangementHeight(for track: MXSessionTrack) -> CGFloat {
+        var height: CGFloat
+        if isPlaylistExpanded(track) {
+            height = CGFloat(playlistTakeIndices(for: track).count) * takeRowHeight
+        } else if isDrumPartsExpanded(track) {
+            height = CGFloat(MXDrumPart.allCases.count) * drumPartRowHeight
+        } else {
+            height = trackLaneHeight
+        }
+        if automationLaneTrackIDs.contains(track.id) {
+            height += automationLaneHeight
+        }
+        return height
+    }
+
+    private func isAutomationLaneVisible(_ track: MXSessionTrack) -> Bool {
+        automationLaneTrackIDs.contains(track.id)
+    }
 
     public init(
         session: StudioSessionController,
@@ -64,6 +145,20 @@ public struct StudioView: View {
         .onAppear {
             session.start()
             selectedTrackID = session.project.armedTrack?.id ?? session.project.tracks.first?.id
+            if isLandscape { tracksCollapsed = true }
+            MXOrientationLock.applyForRecordMode(session.isRecordMode)
+        }
+        .onChange(of: session.isRecordMode) { _, isRecordMode in
+            MXOrientationLock.applyForRecordMode(isRecordMode)
+        }
+        .onDisappear {
+            MXOrientationLock.unlock()
+        }
+        .onChange(of: verticalSizeClass) { _, _ in
+            // Landscape defaults to Hide Tracks for denser Figma 812×375 arrange.
+            if isLandscape {
+                tracksCollapsed = true
+            }
         }
         .onChange(of: session.isRecordMode) { _, inRecord in
             // Leaving record mode lands on After Record Studio with the armed track selected.
@@ -202,14 +297,55 @@ public struct StudioView: View {
                 arrangement
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
-                studioDetailsStrip
-                    .frame(height: detailsStripHeight)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Landscape + piano/pads: hide details strip so Figma 812×375 keeps net + keys usable.
+                if !(isLandscape && (session.showsPianoKeyboard || session.showsDrumPads)) {
+                    studioDetailsStrip
+                        .frame(height: detailsStripHeight)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if session.showsPianoKeyboard {
                     PianoKeyboardView(
-                        onNoteOn: { session.noteOn($0) },
+                        onNoteOn: { session.noteOn($0, velocity: $1) },
                         onNoteOff: { session.noteOff($0) }
                     )
+                    .fixedSize(horizontal: false, vertical: true)
+                } else if session.showsDrumPads {
+                    VStack(spacing: 0) {
+                        drumInputModePicker
+                        if drumInputMode == .pads {
+                            DrumPadView(
+                                onPadHit: { session.noteOn($0, velocity: $1) },
+                                onPadRelease: { session.noteOff($0) }
+                            )
+                        } else {
+                            DrumStepSequencerView(
+                                velocityGrid: $drumStepVelocityGrid,
+                                bars: $drumStepBars,
+                                canApply: session.phase == .ready,
+                                canLoadFromClip: session.canLoadDrumStepPatternFromSelectedClip,
+                                onPreviewHit: { note, vel in
+                                    session.previewNote(note, velocity: vel)
+                                },
+                                onApply: {
+                                    _ = session.commitDrumStepPattern(
+                                        drumStepVelocityGrid,
+                                        bars: drumStepBars
+                                    )
+                                },
+                                onClear: {
+                                    drumStepVelocityGrid = MXDrumStepSequencer.emptyVelocityGrid(
+                                        bars: drumStepBars
+                                    )
+                                },
+                                onLoadFromClip: {
+                                    if let loaded = session.loadDrumStepPatternFromSelectedClip() {
+                                        drumStepBars = loaded.bars
+                                        drumStepVelocityGrid = loaded.grid
+                                    }
+                                }
+                            )
+                        }
+                    }
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 actionBoard
@@ -223,9 +359,20 @@ public struct StudioView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            if let tempoMessage = session.tempoDetectMessage {
+                tempoDetectBanner(tempoMessage)
+                    .padding(.top, session.trackLimitMessage == nil ? 56 : 96)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             if let clipWarning = session.clipLoadWarnings.last {
                 clipWarningBanner(clipWarning)
-                    .padding(.top, session.trackLimitMessage == nil ? 56 : 96)
+                    .padding(.top, {
+                        var top: CGFloat = 56
+                        if session.trackLimitMessage != nil { top += 40 }
+                        if session.tempoDetectMessage != nil { top += 40 }
+                        return top
+                    }())
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
@@ -247,8 +394,43 @@ public struct StudioView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: session.trackLimitMessage)
+        .animation(.easeInOut(duration: 0.2), value: session.tempoDetectMessage)
         .animation(.easeInOut(duration: 0.2), value: session.clipLoadWarnings.count)
         .animation(.easeInOut(duration: 0.2), value: session.isExporting)
+    }
+
+    /// Pads / Steps segmented control above the drum surface (BandLab-style).
+    private var drumInputModePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(DrumInputMode.allCases) { mode in
+                let selected = drumInputMode == mode
+                Button {
+                    drumInputMode = mode
+                } label: {
+                    Text(mode.label)
+                        .font(MXFont.caption())
+                        .foregroundStyle(selected ? MXColor.black : MXColor.lightGrey)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, isLandscape ? 4 : 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(selected ? MXColor.orange : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(mode.label) drum input")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.layer2)
+        )
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.top, isLandscape ? 4 : 6)
+        .padding(.bottom, 2)
+        .background(MXColor.surfaceRaised)
     }
 
     // MARK: - Header (95:85029)
@@ -277,6 +459,27 @@ public struct StudioView: View {
                 studioIconButton(asset: "studio_tuner_a", systemFallback: "tuningfork") {
                     showTunerSheet = true
                 }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        tracksCollapsed.toggle()
+                    }
+                } label: {
+                    Image(systemName: tracksCollapsed ? "sidebar.left" : "sidebar.leading")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tracksCollapsed ? MXColor.accent : MXColor.white)
+                        .frame(width: 20, height: 20)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tracksCollapsed ? "Show track names" : "Hide tracks")
             }
             .padding(2)
             .background(
@@ -288,13 +491,21 @@ public struct StudioView: View {
 
             HStack(spacing: 2) {
                 Button { showCollabSheet = true } label: {
-                    HStack(spacing: 6) {
-                        Text("+ Collab")
-                            .font(MXFont.mediumButton())
-                            .foregroundStyle(MXColor.white)
+                    Group {
+                        if isLandscape {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MXColor.white)
+                                .frame(width: 20, height: 20)
+                                .padding(10)
+                        } else {
+                            Text("+ Collab")
+                                .font(MXFont.mediumButton())
+                                .foregroundStyle(MXColor.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.layer2)
@@ -316,6 +527,7 @@ public struct StudioView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Collaborate")
 
                 studioIconButton(asset: "studio_fx", systemFallback: "wand.and.stars") {
                     showFXSheet = true
@@ -335,8 +547,8 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, isLandscape ? 10 : 16)
+        .padding(.vertical, isLandscape ? 6 : 12)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .bottom) {
             Rectangle().fill(MXColor.layer2).frame(height: 1)
@@ -359,39 +571,110 @@ public struct StudioView: View {
 
     private var trackListColumn: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(session.playheadTimeLabel)
-                .font(MXFont.body3())
-                .foregroundStyle(MXColor.grey)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-                .frame(height: rulerHeight)
+            if tracksCollapsed {
+                Image(systemName: "clock")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: rulerHeight)
+            } else {
+                Text(session.playheadTimeLabel)
+                    .font(MXFont.body3())
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                    .frame(height: rulerHeight)
+            }
 
             ForEach(session.project.tracks) { track in
-                StudioTrackHeader(
-                    track: track,
-                    isSelected: selectedTrackID == track.id,
-                    isArmed: track.isArmed,
-                    onSelect: {
-                        selectedTrackID = track.id
-                        session.armTrack(id: track.id)
-                    },
-                    onMute: { session.toggleMute(trackID: track.id) },
-                    onSolo: { session.toggleSolo(trackID: track.id) },
-                    onSetActiveTake: { session.setActiveTake(clipID: $0) }
-                )
-                .frame(height: trackLaneHeight)
-                .clipped()
+                if tracksCollapsed {
+                    collapsedTrackRailButton(track)
+                        .frame(height: trackArrangementHeight(for: track))
+                } else {
+                    StudioTrackHeader(
+                        track: track,
+                        isSelected: selectedTrackID == track.id,
+                        isArmed: track.isArmed,
+                        takeLaneCount: playlistTakeIndices(for: track).count,
+                        takeRepresentatives: session.takes(onTrackID: track.id),
+                        isPlaylistExpanded: isPlaylistExpanded(track),
+                        drumPartLabels: isDrumPartsExpanded(track)
+                            ? MXDrumPart.allCases.sorted().map(\.shortLabel)
+                            : [],
+                        mutedDrumParts: isDrumPartsExpanded(track)
+                            ? Set(MXDrumPart.allCases.sorted().filter { track.isDrumPartMuted($0) })
+                            : [],
+                        soloedDrumParts: isDrumPartsExpanded(track)
+                            ? Set(MXDrumPart.allCases.sorted().filter { track.isDrumPartSoloed($0) })
+                            : [],
+                        isDrumPartsExpanded: isDrumPartsExpanded(track),
+                        showsDrumPartChevron: isDrumPartFolder(track) && !isPlaylistFolder(track),
+                        onSelect: {
+                            selectedTrackID = track.id
+                            session.armTrack(id: track.id)
+                        },
+                        onMute: { session.toggleMute(trackID: track.id) },
+                        onSolo: { session.toggleSolo(trackID: track.id) },
+                        onSetActiveTake: { session.setActiveTake(clipID: $0) },
+                        onTogglePlaylist: {
+                            withAnimation {
+                                if collapsedPlaylistTrackIDs.contains(track.id) {
+                                    collapsedPlaylistTrackIDs.remove(track.id)
+                                } else {
+                                    collapsedPlaylistTrackIDs.insert(track.id)
+                                }
+                            }
+                        },
+                        onToggleDrumParts: {
+                            withAnimation {
+                                if collapsedDrumPartTrackIDs.contains(track.id) {
+                                    collapsedDrumPartTrackIDs.remove(track.id)
+                                } else {
+                                    collapsedDrumPartTrackIDs.insert(track.id)
+                                }
+                            }
+                        },
+                        onToggleDrumPartMute: { part in
+                            session.toggleDrumPartMute(trackID: track.id, part: part)
+                        },
+                        onToggleDrumPartSolo: { part in
+                            session.toggleDrumPartSolo(trackID: track.id, part: part)
+                        },
+                        showsAutomation: isAutomationLaneVisible(track),
+                        onToggleAutomation: {
+                            withAnimation {
+                                if automationLaneTrackIDs.contains(track.id) {
+                                    automationLaneTrackIDs.remove(track.id)
+                                } else {
+                                    automationLaneTrackIDs.insert(track.id)
+                                    session.ensureDefaultVolumeAutomation(trackID: track.id)
+                                }
+                            }
+                        },
+                        playbackLevel: session.trackPlaybackLevels[track.id] ?? 0,
+                        playbackPeakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
+                    )
+                    .frame(height: trackArrangementHeight(for: track))
+                    .clipped()
+                }
             }
 
             Button {
                 showAddTrackSheet = true
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("ADD TRACK")
-                        .font(MXFont.caption())
-                        .fontWeight(.semibold)
+                Group {
+                    if tracksCollapsed {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("ADD TRACK")
+                                .font(MXFont.caption())
+                                .fontWeight(.semibold)
+                        }
+                    }
                 }
                 .foregroundStyle(session.canAddTrack ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
                 .frame(maxWidth: .infinity)
@@ -415,6 +698,48 @@ public struct StudioView: View {
         .padding(.trailing, 4)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(MXColor.surface)
+        .animation(.easeInOut(duration: 0.2), value: tracksCollapsed)
+    }
+
+    /// Figma Hide Tracks — icon rail for denser arrange.
+    private func collapsedTrackRailButton(_ track: MXSessionTrack) -> some View {
+        let tint = mixerCategoryTint(track.category)
+        let icon: String = {
+            switch track.category {
+            case .vocal: return "mic.fill"
+            case .guitar: return "guitars.fill"
+            case .keys: return "pianokeys"
+            case .drums: return "circle.grid.2x2.fill"
+            case .imported: return "waveform"
+            }
+        }()
+        return Button {
+            selectedTrackID = track.id
+            session.armTrack(id: track.id)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(track.isArmed ? MXColor.red : tint)
+                if track.isMuted {
+                    Text("M")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(selectedTrackID == track.id ? tint : Color.clear, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .accessibilityLabel(track.name)
     }
 
     private func trackLimitBanner(_ message: String) -> some View {
@@ -447,6 +772,42 @@ public struct StudioView: View {
             Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 session.dismissTrackLimitMessage()
+            }
+        }
+    }
+
+    private func tempoDetectBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "metronome.fill")
+                .foregroundStyle(MXColor.accent)
+            Text(message)
+                .font(MXFont.body3())
+                .foregroundStyle(MXColor.white)
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button("OK") {
+                session.dismissTempoDetectMessage()
+            }
+            .font(MXFont.caption())
+            .fontWeight(.semibold)
+            .foregroundStyle(MXColor.accent)
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.black.opacity(0.92))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(MXColor.layer2, lineWidth: 0.5)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            Task {
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                session.dismissTempoDetectMessage()
             }
         }
     }
@@ -560,7 +921,7 @@ public struct StudioView: View {
                     Color.clear.frame(height: rulerHeight)
                     ForEach(Array(session.project.tracks.enumerated()), id: \.element.id) { index, track in
                         trackLane(track: track, width: width, pixelsPerBeat: pixelsPerBeat, isPrimary: index == 0)
-                            .frame(height: trackLaneHeight)
+                            .frame(height: trackArrangementHeight(for: track))
                     }
                     Spacer(minLength: 0)
                 }
@@ -592,12 +953,175 @@ public struct StudioView: View {
         }
     }
 
+    @ViewBuilder
     private func trackLane(track: MXSessionTrack, width: CGFloat, pixelsPerBeat: CGFloat, isPrimary: Bool) -> some View {
-        let takeLaneCount = Set(track.clips.map(\.takeIndex)).count
-        let showGhostLanes = takeLaneCount >= 2
-        let activeClips = track.clips.filter(\.isActive)
-        let ghostClips = showGhostLanes ? track.clips.filter { !$0.isActive } : []
+        VStack(spacing: 0) {
+            Group {
+                if isPlaylistExpanded(track) {
+                    // One timeline row per takeIndex (GarageBand / Logic playlist lite).
+                    VStack(spacing: 0) {
+                        ForEach(playlistTakeIndices(for: track), id: \.self) { takeIndex in
+                            playlistTakeRow(
+                                track: track,
+                                takeIndex: takeIndex,
+                                pixelsPerBeat: pixelsPerBeat
+                            )
+                            .frame(height: takeRowHeight)
+                        }
+                    }
+                } else if isDrumPartsExpanded(track) {
+                    // One timeline row per drum part (BandLab / GarageBand kit columns).
+                    VStack(spacing: 0) {
+                        ForEach(MXDrumPart.allCases.sorted()) { part in
+                            drumPartRow(
+                                track: track,
+                                part: part,
+                                pixelsPerBeat: pixelsPerBeat
+                            )
+                            .frame(height: drumPartRowHeight)
+                        }
+                    }
+                } else {
+                    // Single-take or collapsed folder: summary lane with active clips only.
+                    let activeClips = track.clips.filter(\.isActive)
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(MXColor.surfaceRaised.opacity(0.35))
+                            .contentShape(Rectangle())
+                            .modifier(LaneBackgroundPointerModifier(
+                                pixelsPerBeat: pixelsPerBeat,
+                                hasSelection: session.selectedClipID != nil,
+                                onSeek: { session.seek(toBeat: max(0, $0)) },
+                                onClearSelection: { session.selectClip(nil) }
+                            ))
 
+                        if activeClips.isEmpty {
+                            if isPrimary {
+                                Text(emptyLaneHint(for: track))
+                                    .font(MXFont.body3())
+                                    .foregroundStyle(MXColor.grey)
+                                    .padding(.leading, 12)
+                                    .allowsHitTesting(false)
+                            }
+                        } else {
+                            ForEach(activeClips) { clip in
+                                InteractiveStudioClip(
+                                    clip: clip,
+                                    pixelsPerBeat: pixelsPerBeat,
+                                    bpm: session.bpm,
+                                    isSelected: session.selectedClipID == clip.id,
+                                    onSelect: { session.selectClip(clip.id) },
+                                    onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
+                                    onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
+                                    onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                                    onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
+                                )
+                            }
+                        }
+                    }
+                    .frame(height: trackLaneHeight)
+                }
+            }
+
+            if isAutomationLaneVisible(track) {
+                VolumeAutomationLaneView(
+                    points: track.volumeAutomation,
+                    pixelsPerBeat: pixelsPerBeat,
+                    beatsVisible: beatsVisible,
+                    height: automationLaneHeight,
+                    onAdd: { beat, value in
+                        session.upsertVolumeAutomation(trackID: track.id, beat: beat, value: value)
+                    },
+                    onMove: { id, beat, value in
+                        session.moveVolumeAutomationPoint(trackID: track.id, pointID: id, beat: beat, value: value)
+                    },
+                    onDelete: { id in
+                        session.removeVolumeAutomationPoint(trackID: track.id, pointID: id)
+                    }
+                )
+                .frame(height: automationLaneHeight)
+            }
+        }
+    }
+
+    private func emptyLaneHint(for track: MXSessionTrack) -> String {
+        if track.category == .drums { return "Pads or Steps · Add pattern to timeline" }
+        if track.kind == .midi { return "Play the keys below" }
+        return "Tap ● to record"
+    }
+
+    /// Part-lane row: same performance clip(s), notes filtered to Kick/Snare/Hats…
+    private func drumPartRow(
+        track: MXSessionTrack,
+        part: MXDrumPart,
+        pixelsPerBeat: CGFloat
+    ) -> some View {
+        let activeClips = track.clips.filter(\.isActive)
+        let interactiveHeight = drumPartRowHeight - 6
+        let partMuted = track.isDrumPartMuted(part)
+        let anySolo = !track.soloedDrumPartSet.isEmpty
+        let partSoloed = track.isDrumPartSoloed(part)
+        let partSilent = partMuted || (anySolo && !partSoloed)
+        return ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(MXColor.surfaceRaised.opacity(partSilent ? 0.18 : 0.35))
+                .contentShape(Rectangle())
+                .modifier(LaneBackgroundPointerModifier(
+                    pixelsPerBeat: pixelsPerBeat,
+                    hasSelection: session.selectedClipID != nil,
+                    onSeek: { session.seek(toBeat: max(0, $0)) },
+                    onClearSelection: { session.selectClip(nil) }
+                ))
+
+            if activeClips.isEmpty {
+                if part == .kick {
+                    Text("Tap pads below")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.leading, 12)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                ForEach(activeClips) { clip in
+                    let partNotes = clip.midiNotes.filtered(to: part)
+                    if partNotes.isEmpty {
+                        // Faint clip shell so empty columns still align with the take (BandLab).
+                        StudioDrumPartClipShell(
+                            clip: clip,
+                            pixelsPerBeat: pixelsPerBeat,
+                            rowHeight: drumPartRowHeight,
+                            onSelect: { session.selectClip(clip.id) }
+                        )
+                    } else {
+                        InteractiveStudioClip(
+                            clip: clip,
+                            pixelsPerBeat: pixelsPerBeat,
+                            bpm: session.bpm,
+                            isSelected: session.selectedClipID == clip.id,
+                            clipHeight: interactiveHeight,
+                            displayNotes: partNotes,
+                            onSelect: { session.selectClip(clip.id) },
+                            onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
+                            onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
+                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                            onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
+                        )
+                    }
+                }
+            }
+        }
+        .opacity(partSilent ? 0.45 : 1)
+        .clipped()
+        .accessibilityLabel("\(part.shortLabel) lane\(partSilent ? ", silent" : "")")
+    }
+
+    private func playlistTakeRow(
+        track: MXSessionTrack,
+        takeIndex: Int,
+        pixelsPerBeat: CGFloat
+    ) -> some View {
+        let clips = track.clips.filter { $0.takeIndex == takeIndex }
+        let interactiveHeight = takeRowHeight - 6
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(MXColor.surfaceRaised.opacity(0.35))
@@ -609,37 +1133,31 @@ public struct StudioView: View {
                     onClearSelection: { session.selectClip(nil) }
                 ))
 
-            // Ghost playlist lanes under actives (BandLab / Logic take comps lite).
-            ForEach(ghostClips) { clip in
-                GhostStudioClip(
-                    clip: clip,
-                    pixelsPerBeat: pixelsPerBeat,
-                    onActivate: { session.setActiveTake(clipID: clip.id) }
-                )
-            }
-
-            if activeClips.isEmpty {
-                if isPrimary {
-                    Text(track.kind == .midi ? "Play the keys below" : "Tap ● to record")
-                        .font(MXFont.body3())
-                        .foregroundStyle(MXColor.grey)
-                        .padding(.leading, 12)
-                        .allowsHitTesting(false)
-                }
-            } else {
-                ForEach(activeClips) { clip in
+            ForEach(clips) { clip in
+                if clip.isActive {
                     InteractiveStudioClip(
                         clip: clip,
                         pixelsPerBeat: pixelsPerBeat,
+                        bpm: session.bpm,
                         isSelected: session.selectedClipID == clip.id,
+                        clipHeight: interactiveHeight,
                         onSelect: { session.selectClip(clip.id) },
                         onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
                         onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
-                        onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                        onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                        onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
+                    )
+                } else {
+                    GhostStudioClip(
+                        clip: clip,
+                        pixelsPerBeat: pixelsPerBeat,
+                        rowHeight: takeRowHeight,
+                        onActivate: { session.setActiveTake(clipID: clip.id) }
                     )
                 }
             }
         }
+        .clipped()
     }
 
     private func playheadX(pixelsPerBeat: CGFloat) -> CGFloat {
@@ -743,7 +1261,11 @@ public struct StudioView: View {
 
     private var actionBoard: some View {
         // Figma Action Board Studio: Undo / Redo / To-start · Record · Play / Metro / Mixer
-        HStack {
+        // Landscape: compact Rec + tighter padding (Figma Studio landscape 97:113250).
+        let recOuter: CGFloat = isLandscape ? 40 : 52
+        let recInner: CGFloat = isLandscape ? 22 : 28
+        let iconPad: CGFloat = isLandscape ? 7 : 10
+        return HStack {
             HStack(spacing: 2) {
                 studioIconButton(asset: "studio_undo", systemFallback: "arrow.uturn.backward") {
                     session.undo()
@@ -773,21 +1295,21 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 4 : 8)
 
             Button {
                 guard session.canRecordAudio else { return }
                 session.enterRecordMode()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: isLandscape ? 12 : 16, style: .continuous)
                         .fill(MXColor.layer2)
-                        .frame(width: 52, height: 52)
+                        .frame(width: recOuter, height: recOuter)
                     Circle()
                         .fill(session.canRecordAudio ? MXColor.red : MXColor.grey)
-                        .frame(width: 28, height: 28)
+                        .frame(width: recInner, height: recInner)
                 }
-                .padding(4)
+                .padding(isLandscape ? 2 : 4)
                 .background(
                     Capsule(style: .continuous)
                         .fill(MXColor.black)
@@ -797,21 +1319,21 @@ public struct StudioView: View {
             .disabled(session.phase != .ready || session.isInterrupted || !session.canRecordAudio)
             .opacity(session.canRecordAudio ? 1 : 0.4)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 4 : 8)
 
             HStack(spacing: 2) {
                 Button(action: session.togglePlayback) {
                     Group {
                         if session.isPlaying {
                             Image(systemName: "pause.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
                                 .foregroundStyle(MXColor.white)
                                 .frame(width: 20, height: 20)
                         } else {
                             studioGlyph("studio_play", systemFallback: "play.fill", size: 20)
                         }
                     }
-                    .padding(10)
+                    .padding(iconPad)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.layer2)
@@ -825,7 +1347,7 @@ public struct StudioView: View {
                 } label: {
                     studioGlyph("studio_metro", systemFallback: "metronome.fill", size: 20)
                         .foregroundStyle(session.isMetronomeEnabled ? MXColor.accent : MXColor.white)
-                        .padding(10)
+                        .padding(iconPad)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(MXColor.layer2)
@@ -854,8 +1376,8 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isLandscape ? 10 : 16)
+        .padding(.vertical, isLandscape ? 4 : 8)
         .background(MXColor.surfaceRaised)
     }
 
@@ -901,6 +1423,18 @@ public struct StudioView: View {
                 tint: MXColor.orange
             ) {
                 if let track = session.addMIDITrack() {
+                    selectedTrackID = track.id
+                }
+                showAddTrackSheet = false
+            }
+
+            addTrackOption(
+                title: "Drums",
+                subtitle: "Pad machine with Drum Kit patch",
+                systemImage: "circle.grid.2x2.fill",
+                tint: MXColor.orange
+            ) {
+                if let track = session.addDrumTrack() {
                     selectedTrackID = track.id
                 }
                 showAddTrackSheet = false
@@ -1109,6 +1643,24 @@ public struct StudioView: View {
                         )
                 }
                 .buttonStyle(.plain)
+
+                if !clip.midiNotes.isEmpty {
+                    Button {
+                        _ = session.requantizeSelectedMIDIClip()
+                    } label: {
+                        Label("Re-quantize MIDI", systemImage: "metronome")
+                            .font(MXFont.mediumButton())
+                            .foregroundStyle(MXColor.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(MXColor.orange.opacity(0.85))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Applies Strength and Swing from Studio Settings")
+                }
             } else {
                 Text("Select a clip on the timeline.")
                     .font(MXFont.body2())
@@ -1233,6 +1785,62 @@ public struct StudioView: View {
                 }
                 Divider().overlay(MXColor.layer2)
                 settingsToggleRow(
+                    title: "Quantize MIDI capture",
+                    subtitle: "Snap pad/key note starts to 16ths on Pause/Stop",
+                    isOn: session.isMIDIQuantizeEnabled
+                ) {
+                    session.isMIDIQuantizeEnabled.toggle()
+                }
+                if session.isMIDIQuantizeEnabled {
+                    Divider().overlay(MXColor.layer2)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Strength")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Spacer()
+                            Text("\(Int((session.midiQuantizeStrength * 100).rounded()))%")
+                                .font(MXFont.body3())
+                                .foregroundStyle(MXColor.lightGrey)
+                                .monospacedDigit()
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { session.midiQuantizeStrength },
+                                set: { session.midiQuantizeStrength = $0 }
+                            ),
+                            in: 0...1,
+                            step: 0.05
+                        )
+                        .tint(MXColor.accent)
+                        HStack {
+                            Text("Swing")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Spacer()
+                            Text("\(Int((session.midiQuantizeSwing * 100).rounded()))%")
+                                .font(MXFont.body3())
+                                .foregroundStyle(MXColor.lightGrey)
+                                .monospacedDigit()
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { session.midiQuantizeSwing },
+                                set: { session.midiQuantizeSwing = $0 }
+                            ),
+                            in: 0...1,
+                            step: 0.05
+                        )
+                        .tint(MXColor.accent)
+                        Text("Applies on capture and Re-quantize")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey.opacity(0.8))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
                     title: "Loop region",
                     subtitle: session.project.loopEnabled
                         ? "Looping current region"
@@ -1244,6 +1852,15 @@ public struct StudioView: View {
                     } else {
                         session.setLoopToSelectionOrBar()
                     }
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
+                    title: "Lock portrait while recording",
+                    subtitle: "Keeps Rec chrome upright; off allows landscape record",
+                    isOn: MXOrientationLock.prefersPortraitWhileRecording
+                ) {
+                    MXOrientationLock.prefersPortraitWhileRecording.toggle()
+                    MXOrientationLock.applyForRecordMode(session.isRecordMode)
                 }
                 if session.selectedClipID != nil {
                     Divider().overlay(MXColor.layer2)
@@ -1425,6 +2042,11 @@ public struct StudioView: View {
             }
         }
         .background(MXColor.surface)
+        .onAppear {
+            if session.isPlaying {
+                session.ensurePlaybackMetersRunning()
+            }
+        }
     }
 
     /// Selected / armed track first, then remaining tracks.
@@ -1439,8 +2061,14 @@ public struct StudioView: View {
 
     private var fxSheetTitle: String {
         let track = fxSheetTracks.first
-        if track?.category == .guitar || session.preset == .guitar {
+        if track?.category == .guitar {
             return "Pedalboard"
+        }
+        if track?.category == .drums {
+            return "Drum Kit"
+        }
+        if track?.category == .keys {
+            return "Piano FX"
         }
         return "Track FX"
     }
@@ -1468,7 +2096,9 @@ public struct StudioView: View {
     }
 
     private func fxTrackRow(_ track: MXSessionTrack) -> some View {
-        let isGuitar = track.category == .guitar || session.preset == .guitar
+        let isGuitar = track.category == .guitar
+        let isKeys = track.category == .keys
+        let isDrums = track.category == .drums
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -1478,11 +2108,97 @@ public struct StudioView: View {
                     .font(MXFont.mediumButton())
                     .foregroundStyle(MXColor.white)
                     .lineLimit(1)
+                if isGuitar {
+                    Spacer(minLength: 4)
+                    Image(systemName: "guitars.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.teal)
+                } else if isKeys {
+                    Spacer(minLength: 4)
+                    Image(systemName: "pianokeys")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.orange)
+                } else if isDrums {
+                    Spacer(minLength: 4)
+                    Image(systemName: "circle.grid.2x2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MXColor.orange)
+                }
             }
 
             insertChainBar(for: track)
 
-            if !isGuitar {
+            if isGuitar {
+                // Figma Select Guitar Effect (`95:89964`): named amp/pedal presets.
+                guitarPedalPresetRow(for: track)
+            }
+
+            if isKeys {
+                // Figma Piano Midi (`95:86149`): instrument bank switch.
+                pianoSynthBankRow(for: track)
+                Text("Play keys while transport runs — stop to drop a keys clip on the timeline.")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if isDrums {
+                Text("Tap pads while transport runs — stop to drop a drum clip. Kit is short one-shots.")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if isGuitar {
+                // Pedalboard order: Dist → Delay → Rev (matches live insert chain).
+                mixerSliderRow(
+                    label: "Dist",
+                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    value: Binding(
+                        get: { Double(track.distortionMix) },
+                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Tone",
+                    valueLabel: String(format: "%+.0f", track.eqMidGain),
+                    value: Binding(
+                        get: { Double(track.eqMidGain) },
+                        set: { session.setTrackEQMidGain(Float($0), trackID: track.id) }
+                    ),
+                    range: -12...12,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Mix",
+                    valueLabel: String(format: "%.0f", track.delayMix),
+                    value: Binding(
+                        get: { Double(track.delayMix) },
+                        set: {
+                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
+                        }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Time",
+                    valueLabel: String(format: "%.2f", track.delayTime),
+                    value: Binding(
+                        get: { Double(track.delayTime) },
+                        set: {
+                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
+                        }
+                    ),
+                    range: 0.05...0.8,
+                    labelWidth: 56
+                )
+            } else if !isKeys && !isDrums {
                 mixerSliderRow(
                     label: "EQ Mid",
                     valueLabel: String(format: "%+.0f", track.eqMidGain),
@@ -1493,44 +2209,57 @@ public struct StudioView: View {
                     range: -12...12,
                     labelWidth: 56
                 )
+
+                mixerSliderRow(
+                    label: "Dly Mix",
+                    valueLabel: String(format: "%.0f", track.delayMix),
+                    value: Binding(
+                        get: { Double(track.delayMix) },
+                        set: {
+                            session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
+                        }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dly Time",
+                    valueLabel: String(format: "%.2f", track.delayTime),
+                    value: Binding(
+                        get: { Double(track.delayTime) },
+                        set: {
+                            session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
+                        }
+                    ),
+                    range: 0.05...0.8,
+                    labelWidth: 56
+                )
+
+                mixerSliderRow(
+                    label: "Dist",
+                    valueLabel: String(format: "%.0f", track.distortionMix),
+                    value: Binding(
+                        get: { Double(track.distortionMix) },
+                        set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
             }
 
-            mixerSliderRow(
-                label: "Dly Mix",
-                valueLabel: String(format: "%.0f", track.delayMix),
-                value: Binding(
-                    get: { Double(track.delayMix) },
-                    set: {
-                        session.setTrackDelay(mix: Float($0), time: track.delayTime, trackID: track.id)
-                    }
-                ),
-                range: 0...100,
-                labelWidth: 56
-            )
-
-            mixerSliderRow(
-                label: "Dly Time",
-                valueLabel: String(format: "%.2f", track.delayTime),
-                value: Binding(
-                    get: { Double(track.delayTime) },
-                    set: {
-                        session.setTrackDelay(mix: track.delayMix, time: Float($0), trackID: track.id)
-                    }
-                ),
-                range: 0.05...0.8,
-                labelWidth: 56
-            )
-
-            mixerSliderRow(
-                label: "Dist",
-                valueLabel: String(format: "%.0f", track.distortionMix),
-                value: Binding(
-                    get: { Double(track.distortionMix) },
-                    set: { session.setTrackDistortionMix(Float($0), trackID: track.id) }
-                ),
-                range: 0...100,
-                labelWidth: 56
-            )
+            if isKeys || isDrums {
+                mixerSliderRow(
+                    label: "Send",
+                    valueLabel: String(format: "%.0f", track.reverbSend),
+                    value: Binding(
+                        get: { Double(track.reverbSend) },
+                        set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
+                    ),
+                    range: 0...100,
+                    labelWidth: 56
+                )
+            }
 
             mixerSliderRow(
                 label: "Rev",
@@ -1603,7 +2332,7 @@ public struct StudioView: View {
                 }
             }
 
-            if !isGuitar {
+            if !isGuitar && !isKeys && !isDrums {
                 Button {
                     session.toggleReelsVocal(trackID: track.id)
                 } label: {
@@ -1666,13 +2395,19 @@ public struct StudioView: View {
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.lightGrey)
                     .monospacedDigit()
-                MixerVerticalFader(
-                    value: Binding(
-                        get: { Double(track.volume) },
-                        set: { session.setTrackVolume(Float($0), trackID: track.id) }
-                    ),
-                    tint: tint
-                )
+                HStack(alignment: .bottom, spacing: 4) {
+                    PlaybackStripMeter(
+                        level: session.trackPlaybackLevels[track.id] ?? 0,
+                        peakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
+                    )
+                    MixerVerticalFader(
+                        value: Binding(
+                            get: { Double(track.volume) },
+                            set: { session.setTrackVolume(Float($0), trackID: track.id) }
+                        ),
+                        tint: tint
+                    )
+                }
                 Text("Vol")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
@@ -1767,14 +2502,34 @@ public struct StudioView: View {
 
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
-        let stages: [(label: String, active: Bool)] = [
-            ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
-            ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
-            ("Dly", track.delayMix > 0.5),
-            ("Dist", track.distortionMix > 0.5),
-            ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
-            ("Rev", track.reverbMix > 0.5),
-        ]
+        let isGuitar = track.category == .guitar
+        let isKeys = track.category == .keys
+        let isDrums = track.category == .drums
+        // Guitar: Dist → Dly → Rev. Keys/Drums: Synth → Send → Rev. Vocal: HPF → EQ → …
+        let stages: [(label: String, active: Bool)]
+        if isGuitar {
+            stages = [
+                ("Dist", track.distortionMix > 0.5),
+                ("Dly", track.delayMix > 0.5),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+        } else if isKeys || isDrums {
+            stages = [
+                ("Synth", true),
+                ("Send", track.reverbSend > 0.5),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+        } else {
+            stages = [
+                ("HPF", session.isHighPassEnabled || track.reelsVocalEnabled),
+                ("EQ", abs(track.eqMidGain) >= 0.05 || (track.deEsserEnabled && track.deEsserAmount > 0.5)),
+                ("Dly", track.delayMix > 0.5),
+                ("Dist", track.distortionMix > 0.5),
+                ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
+                ("Rev", track.reverbMix > 0.5),
+            ]
+        }
+        let activeFill = isGuitar ? MXColor.teal : ((isKeys || isDrums) ? MXColor.orange : MXColor.accent)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
@@ -1790,7 +2545,7 @@ public struct StudioView: View {
                         .padding(.vertical, 4)
                         .background(
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(stage.active ? MXColor.accent : MXColor.black)
+                                .fill(stage.active ? activeFill : MXColor.black)
                         )
                         .overlay {
                             if !stage.active {
@@ -1802,7 +2557,99 @@ public struct StudioView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Insert chain")
+        .accessibilityLabel(
+            isGuitar ? "Pedalboard chain" : (isKeys ? "Piano FX chain" : (isDrums ? "Drum kit chain" : "Insert chain"))
+        )
+    }
+
+    /// Figma Piano Midi — Soft Keys / Pad / Bass / Pluck / Synthwave chips.
+    private func pianoSynthBankRow(for track: MXSessionTrack) -> some View {
+        let selected = session.synthBankPreset(for: track.id)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Instrument")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(MXSynthBankPreset.pianoBank) { bank in
+                        let isOn = selected == bank
+                        Button {
+                            session.loadSynthBankPreset(bank, trackID: track.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(bank.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(isOn ? MXColor.black : MXColor.white)
+                                Text(bank.subtitle)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(isOn ? MXColor.black.opacity(0.7) : MXColor.grey)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 92, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(isOn ? MXColor.orange : MXColor.black)
+                            )
+                            .overlay {
+                                if !isOn {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(bank.title) instrument preset")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Figma Select Guitar Effect — Clean / Crunch / Lead / Ambient chips.
+    private func guitarPedalPresetRow(for track: MXSessionTrack) -> some View {
+        let matched = session.matchingGuitarPedalPreset(for: track.id)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Effect")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(MXGuitarPedalPreset.allCases) { preset in
+                        let selected = matched == preset
+                        Button {
+                            session.applyGuitarPedalPreset(preset, trackID: track.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(selected ? MXColor.black : MXColor.white)
+                                Text(preset.subtitle)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(selected ? MXColor.black.opacity(0.7) : MXColor.grey)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 88, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(selected ? MXColor.teal : MXColor.black)
+                            )
+                            .overlay {
+                                if !selected {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(preset.title) pedalboard preset")
+                    }
+                }
+            }
+        }
     }
 
     private func mixerCategoryTint(_ category: MXSessionTrack.Category) -> Color {
@@ -1810,6 +2657,7 @@ public struct StudioView: View {
         case .vocal: return MXColor.accent
         case .guitar: return MXColor.teal
         case .keys: return MXColor.orange
+        case .drums: return MXColor.orange
         case .imported: return MXColor.red
         }
     }
@@ -1950,22 +2798,81 @@ private struct MixerVerticalFader: View {
     }
 }
 
+/// Vertical peak meter beside mixer faders / arrange headers (Studio One / Logic strip style).
+private struct PlaybackStripMeter: View {
+    var level: Float
+    var peakHold: Float
+    var height: CGFloat = 140
+    var width: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geo in
+            let clamped = CGFloat(min(max(level, 0), 1))
+            let hold = CGFloat(min(max(peakHold, 0), 1))
+            let fillHeight = max(level > 0.001 ? 2 : 0, geo.size.height * clamped)
+            let holdY = geo.size.height * (1 - hold)
+            let hot = level > 0.9
+
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2)
+
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(hot ? MXColor.red : MXColor.accent)
+                    .frame(height: fillHeight)
+
+                // Peak hold marker
+                if peakHold > 0.001 {
+                    Rectangle()
+                        .fill(hot ? MXColor.red : MXColor.white)
+                        .frame(width: geo.size.width, height: 2)
+                        .position(x: geo.size.width / 2, y: max(1, min(geo.size.height - 1, holdY)))
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Track header (95:85033)
 
 private struct StudioTrackHeader: View {
     let track: MXSessionTrack
     var isSelected: Bool
     var isArmed: Bool
+    var takeLaneCount: Int
+    var takeRepresentatives: [MXClip]
+    var isPlaylistExpanded: Bool
+    /// When non-empty, header stacks Kick/Snare/Hats… labels for expanded drum folder.
+    var drumPartLabels: [String] = []
+    /// Currently muted drum parts (Week 42 per-part M).
+    var mutedDrumParts: Set<MXDrumPart> = []
+    /// Currently soloed drum parts (Week 44 per-part S).
+    var soloedDrumParts: Set<MXDrumPart> = []
+    var isDrumPartsExpanded: Bool = false
+    var showsDrumPartChevron: Bool = false
     var onSelect: () -> Void
     var onMute: () -> Void
     var onSolo: () -> Void
     var onSetActiveTake: (UUID) -> Void
+    var onTogglePlaylist: () -> Void
+    var onToggleDrumParts: () -> Void = {}
+    var onToggleDrumPartMute: (MXDrumPart) -> Void = { _ in }
+    var onToggleDrumPartSolo: (MXDrumPart) -> Void = { _ in }
+    /// Volume automation lane visibility (Week 52).
+    var showsAutomation: Bool = false
+    var onToggleAutomation: () -> Void = {}
+    /// Live playback peak (Week 38 taps / Week 43 arrange meter).
+    var playbackLevel: Float = 0
+    var playbackPeakHold: Float = 0
 
     private var categoryTint: Color {
         switch track.category {
         case .vocal: return MXColor.accent
         case .guitar: return MXColor.teal
         case .keys: return MXColor.orange
+        case .drums: return MXColor.orange
         case .imported: return MXColor.red
         }
     }
@@ -1975,78 +2882,61 @@ private struct StudioTrackHeader: View {
         case .vocal: return "mic.fill"
         case .guitar: return "guitars.fill"
         case .keys: return "pianokeys"
+        case .drums: return "circle.grid.2x2.fill"
         case .imported: return "waveform"
         }
     }
 
-    private var takeCount: Int { track.clips.count }
-
     var body: some View {
         Button(action: onSelect) {
             HStack(alignment: .center, spacing: 6) {
+                if takeLaneCount > 1 {
+                    Button(action: onTogglePlaylist) {
+                        Image(systemName: isPlaylistExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPlaylistExpanded ? "Collapse takes" : "Expand takes")
+                } else if showsDrumPartChevron {
+                    Button(action: onToggleDrumParts) {
+                        Image(systemName: isDrumPartsExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isDrumPartsExpanded ? "Collapse drum parts" : "Expand drum parts")
+                }
+
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(categoryTint)
                     .frame(width: 3)
                     .frame(maxHeight: .infinity)
                     .padding(.vertical, 4)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 3) {
-                        Image(systemName: categoryIcon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(isArmed ? MXColor.red : categoryTint)
-                        Text(track.name.uppercased())
-                            .font(MXFont.studioTrackName())
-                            .foregroundStyle(MXColor.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        Spacer(minLength: 2)
-                        if isArmed {
-                            Text("R")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(MXColor.white)
-                                .frame(width: 12, height: 12)
-                                .background(Circle().fill(MXColor.red))
-                        }
-                        if takeCount > 1 {
-                            Menu {
-                                ForEach(track.clips.sorted(by: { $0.takeIndex < $1.takeIndex })) { take in
-                                    Button {
-                                        onSetActiveTake(take.id)
-                                    } label: {
-                                        if take.isActive {
-                                            Label(take.name, systemImage: "checkmark")
-                                        } else {
-                                            Text(take.name)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(MXColor.grey)
-                            }
-                        }
-                    }
-
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(MXColor.black).frame(height: 5)
-                            Capsule()
-                                .fill(categoryTint)
-                                .frame(width: geo.size.width * CGFloat(track.volume), height: 5)
-                        }
-                    }
-                    .frame(height: 5)
+                if isDrumPartsExpanded && !drumPartLabels.isEmpty {
+                    drumPartLabelsColumn
+                } else {
+                    trackSummaryColumn
                 }
+
+                PlaybackStripMeter(
+                    level: playbackLevel,
+                    peakHold: playbackPeakHold,
+                    height: isDrumPartsExpanded ? 72 : 48,
+                    width: 5
+                )
 
                 VStack(spacing: 3) {
                     muteSoloButton("M", active: track.isMuted, action: onMute)
                     muteSoloButton("S", active: track.isSolo, action: onSolo)
+                    muteSoloButton("A", active: showsAutomation, action: onToggleAutomation)
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, isDrumPartsExpanded ? 0 : 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -2059,6 +2949,138 @@ private struct StudioTrackHeader: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)
+    }
+
+    /// Collapsed / non-drum header: name, arm badge, takes menu, volume.
+    private var trackSummaryColumn: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 3) {
+                Image(systemName: categoryIcon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isArmed ? MXColor.red : categoryTint)
+                Text(track.name.uppercased())
+                    .font(MXFont.studioTrackName())
+                    .foregroundStyle(MXColor.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 2)
+                if isArmed {
+                    Text("R")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.white)
+                        .frame(width: 12, height: 12)
+                        .background(Circle().fill(MXColor.red))
+                }
+                if takeLaneCount > 1 {
+                    Text("T\(takeLaneCount)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(MXColor.black.opacity(0.35))
+                        )
+                    Menu {
+                        ForEach(takeRepresentatives) { take in
+                            Button {
+                                onSetActiveTake(take.id)
+                            } label: {
+                                if take.isActive {
+                                    Label(take.name, systemImage: "checkmark")
+                                } else {
+                                    Text(take.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                    }
+                } else if showsDrumPartChevron {
+                    Text("Parts")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MXColor.grey)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(MXColor.black.opacity(0.35))
+                        )
+                }
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(MXColor.black).frame(height: 5)
+                    Capsule()
+                        .fill(categoryTint)
+                        .frame(width: geo.size.width * CGFloat(track.volume), height: 5)
+                }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    /// Expanded drum folder: label + part M/S per Kick / Snare / Hats… lane.
+    private var drumPartLabelsColumn: some View {
+        let parts = MXDrumPart.allCases.sorted()
+        let anySolo = !soloedDrumParts.isEmpty
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(parts.enumerated()), id: \.element.id) { index, part in
+                let muted = mutedDrumParts.contains(part)
+                let soloed = soloedDrumParts.contains(part)
+                let dimmed = muted || (anySolo && !soloed)
+                HStack(spacing: 3) {
+                    if index == 0 {
+                        Image(systemName: categoryIcon)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(isArmed ? MXColor.red : categoryTint)
+                    } else {
+                        Color.clear.frame(width: 10, height: 10)
+                    }
+                    Text(part.shortLabel)
+                        .font(MXFont.caption())
+                        .fontWeight(.semibold)
+                        .foregroundStyle(dimmed ? MXColor.grey : MXColor.lightGrey)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 0)
+                    Button {
+                        onToggleDrumPartMute(part)
+                    } label: {
+                        Text("M")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(muted ? MXColor.black : MXColor.lightGrey)
+                            .frame(width: 15, height: 15)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(muted ? MXColor.orange : MXColor.black.opacity(0.35))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(muted ? "Unmute \(part.shortLabel)" : "Mute \(part.shortLabel)")
+                    Button {
+                        onToggleDrumPartSolo(part)
+                    } label: {
+                        Text("S")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(soloed ? MXColor.black : MXColor.lightGrey)
+                            .frame(width: 15, height: 15)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(soloed ? MXColor.accent : MXColor.black.opacity(0.35))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(soloed ? "Unsolo \(part.shortLabel)" : "Solo \(part.shortLabel)")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .opacity(dimmed ? 0.75 : 1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func muteSoloButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -2104,6 +3126,7 @@ private struct LaneBackgroundPointerModifier: ViewModifier {
 private struct GhostStudioClip: View {
     let clip: MXClip
     let pixelsPerBeat: CGFloat
+    var rowHeight: CGFloat = 36
     var onActivate: () -> Void
 
     private var width: CGFloat {
@@ -2128,8 +3151,8 @@ private struct GhostStudioClip: View {
                 .padding(.leading, 4)
                 .padding(.top, 2)
         }
-        .frame(width: width, height: 36)
-        .offset(x: x, y: 8)
+        .frame(width: width, height: rowHeight - 6)
+        .offset(x: x, y: 3)
         .opacity(0.45)
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
@@ -2138,25 +3161,193 @@ private struct GhostStudioClip: View {
     }
 }
 
-// MARK: - Interactive clip (select / move / trim)
+// MARK: - Volume automation lane (Logic / Ableton lite)
+
+/// Track volume automation polyline under arrange clips (Week 52).
+private struct VolumeAutomationLaneView: View {
+    let points: [MXAutomationPoint]
+    let pixelsPerBeat: CGFloat
+    let beatsVisible: Double
+    let height: CGFloat
+    var onAdd: (_ beat: Double, _ value: Float) -> Void
+    var onMove: (_ id: UUID, _ beat: Double, _ value: Float) -> Void
+    var onDelete: (_ id: UUID) -> Void
+
+    @State private var selectedPointID: UUID?
+
+    private var sorted: [MXAutomationPoint] { points.sorted { $0.beat < $1.beat } }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(geo.size.width, 1)
+            let h = max(geo.size.height, 1)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2.opacity(0.55))
+
+                // Unity reference line
+                Path { path in
+                    let y = yPosition(for: 1, height: h)
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: w, y: y))
+                }
+                .stroke(MXColor.grey.opacity(0.35), style: StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
+
+                Path { path in
+                    guard let first = sorted.first else { return }
+                    path.move(to: CGPoint(x: xPosition(for: first.beat), y: yPosition(for: first.value, height: h)))
+                    for point in sorted.dropFirst() {
+                        path.addLine(to: CGPoint(x: xPosition(for: point.beat), y: yPosition(for: point.value, height: h)))
+                    }
+                }
+                .stroke(MXColor.accent, lineWidth: 1.5)
+
+                ForEach(sorted) { point in
+                    Circle()
+                        .fill(selectedPointID == point.id ? MXColor.orange : MXColor.accent)
+                        .overlay(Circle().strokeBorder(MXColor.white.opacity(0.85), lineWidth: 1))
+                        .frame(width: 12, height: 12)
+                        .position(
+                            x: xPosition(for: point.beat),
+                            y: yPosition(for: point.value, height: h)
+                        )
+                        .gesture(
+                            DragGesture(minimumDistance: 1)
+                                .onChanged { value in
+                                    selectedPointID = point.id
+                                    let beat = max(0, Double(value.location.x / pixelsPerBeat))
+                                    let gain = valueFromY(value.location.y, height: h)
+                                    onMove(point.id, beat, gain)
+                                }
+                        )
+                        .onTapGesture {
+                            if selectedPointID == point.id {
+                                onDelete(point.id)
+                                selectedPointID = nil
+                            } else {
+                                selectedPointID = point.id
+                            }
+                        }
+                        .accessibilityLabel("Volume point")
+                        .accessibilityValue(String(format: "%.0f%% at beat %.2f", point.value * 100, point.beat))
+                        .accessibilityHint("Drag to move. Tap twice to delete.")
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { location in
+                let beat = max(0, Double(location.x / pixelsPerBeat))
+                let gain = valueFromY(location.y, height: h)
+                onAdd(beat, gain)
+            }
+            .frame(width: w, height: h)
+        }
+        .accessibilityLabel("Volume automation")
+        .accessibilityHint("Tap to add a point")
+    }
+
+    private func xPosition(for beat: Double) -> CGFloat {
+        CGFloat(beat) * pixelsPerBeat
+    }
+
+    private func yPosition(for value: Float, height: CGFloat) -> CGFloat {
+        let t = CGFloat((value - MXVolumeAutomation.minValue) / (MXVolumeAutomation.maxValue - MXVolumeAutomation.minValue))
+        return height * (1 - min(1, max(0, t)))
+    }
+
+    private func valueFromY(_ y: CGFloat, height: CGFloat) -> Float {
+        guard height > 0 else { return 1 }
+        let t = 1 - min(1, max(0, y / height))
+        let span = MXVolumeAutomation.maxValue - MXVolumeAutomation.minValue
+        return MXVolumeAutomation.minValue + Float(t) * span
+    }
+}
+
+// MARK: - Clip fade wedges (Logic / Pro Tools visual)
+
+/// Equal-power fade-in / fade-out overlays on arrange clips (drag handles when selected).
+private struct StudioClipFadeWedges: View {
+    let fadeInSeconds: Double
+    let fadeOutSeconds: Double
+    let bpm: Double
+    let pixelsPerBeat: CGFloat
+    let clipWidth: CGFloat
+    let clipHeight: CGFloat
+
+    var body: some View {
+        let inBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: fadeInSeconds, bpm: bpm)
+        let outBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: fadeOutSeconds, bpm: bpm)
+        let inW = min(clipWidth, CGFloat(inBeats) * pixelsPerBeat)
+        let outW = min(clipWidth, CGFloat(outBeats) * pixelsPerBeat)
+        Canvas { context, size in
+            if inW > 1 {
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: 0))
+                let steps = max(8, Int(inW / 2))
+                for i in 0...steps {
+                    let t = Double(i) / Double(steps)
+                    let x = inW * CGFloat(t)
+                    let gain = MXClipFadeGeometry.fadeInGain(t)
+                    // Darken where gain is low (top of wedge).
+                    let y = size.height * (1 - CGFloat(gain))
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+                path.addLine(to: CGPoint(x: inW, y: 0))
+                path.closeSubpath()
+                context.fill(path, with: .color(Color.black.opacity(0.45)))
+            }
+            if outW > 1 {
+                var path = Path()
+                let startX = size.width - outW
+                path.move(to: CGPoint(x: startX, y: 0))
+                let steps = max(8, Int(outW / 2))
+                for i in 0...steps {
+                    let t = Double(i) / Double(steps)
+                    let x = startX + outW * CGFloat(t)
+                    let gain = MXClipFadeGeometry.fadeOutGain(t)
+                    let y = size.height * (1 - CGFloat(gain))
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+                path.addLine(to: CGPoint(x: size.width, y: 0))
+                path.closeSubpath()
+                context.fill(path, with: .color(Color.black.opacity(0.45)))
+            }
+        }
+        .frame(width: clipWidth, height: clipHeight)
+        .clipped()
+    }
+}
+
+// MARK: - Interactive clip (select / move / trim / fade)
 
 private struct InteractiveStudioClip: View {
     let clip: MXClip
     let pixelsPerBeat: CGFloat
+    /// Project tempo — converts fade seconds → timeline width for wedges.
+    var bpm: Double = 120
     let isSelected: Bool
+    /// Clip body height; smaller in expanded playlist take rows.
+    var clipHeight: CGFloat = 52
+    /// When set (drum part lanes), draw only these notes instead of the full clip roll.
+    var displayNotes: [MXMIDINote]? = nil
     var onSelect: () -> Void
     var onMove: (_ toStartBeat: Double) -> Void
     var onTrimStart: (_ toStartBeat: Double) -> Void
     var onTrimEnd: (_ toEndBeat: Double) -> Void
+    /// Logic-style drag edit for fade-in / fade-out (Week 50).
+    var onFadeChange: (_ fadeInSeconds: Double?, _ fadeOutSeconds: Double?) -> Void = { _, _ in }
+
+    private var rollNotes: [MXMIDINote] { displayNotes ?? clip.midiNotes }
 
     private let handleWidth: CGFloat = 14
-    private let clipHeight: CGFloat = 52
+    private let fadeHandleSize: CGFloat = 16
 
     @State private var activeDrag: DragKind?
     @State private var dragDeltaX: CGFloat = 0
+    @State private var previewFadeIn: Double?
+    @State private var previewFadeOut: Double?
 
     private enum DragKind {
-        case move, trimStart, trimEnd
+        case move, trimStart, trimEnd, fadeIn, fadeOut
     }
 
     private var baseWidth: CGFloat {
@@ -2170,7 +3361,7 @@ private struct InteractiveStudioClip: View {
     private var displayX: CGFloat {
         switch activeDrag {
         case .move, .trimStart: return baseX + dragDeltaX
-        case .trimEnd, .none: return baseX
+        case .trimEnd, .fadeIn, .fadeOut, .none: return baseX
         }
     }
 
@@ -2178,8 +3369,16 @@ private struct InteractiveStudioClip: View {
         switch activeDrag {
         case .trimStart: return max(24, baseWidth - dragDeltaX)
         case .trimEnd: return max(24, baseWidth + dragDeltaX)
-        case .move, .none: return baseWidth
+        case .move, .fadeIn, .fadeOut, .none: return baseWidth
         }
+    }
+
+    private var displayFadeIn: Double { previewFadeIn ?? clip.fadeInSeconds }
+    private var displayFadeOut: Double { previewFadeOut ?? clip.fadeOutSeconds }
+
+    private var maxFadeSeconds: Double {
+        if let duration = clip.sourceDurationSeconds { return max(0, duration) }
+        return max(0, clip.lengthBeats * 60.0 / max(bpm, 1))
     }
 
     var body: some View {
@@ -2191,9 +3390,31 @@ private struct InteractiveStudioClip: View {
     @ViewBuilder
     private var clipChrome: some View {
         let base = ZStack(alignment: .leading) {
-            StudioWaveformClip()
-                .frame(width: displayWidth, height: clipHeight)
-                .opacity(isSelected ? 1 : 0.92)
+            if rollNotes.isEmpty && clip.midiNotes.isEmpty {
+                StudioWaveformClip()
+                    .frame(width: displayWidth, height: clipHeight)
+                    .opacity(isSelected ? 1 : 0.92)
+            } else if rollNotes.isEmpty {
+                // Part lane with no hits for this column — keep clip bounds selectable.
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2.opacity(0.35))
+                    .frame(width: displayWidth, height: clipHeight)
+            } else {
+                StudioMIDIRollClip(notes: rollNotes, lengthBeats: clip.lengthBeats)
+                    .frame(width: displayWidth, height: clipHeight)
+                    .opacity(isSelected ? 1 : 0.92)
+            }
+
+            // Logic / Pro Tools equal-power fade wedges (drag when selected — Week 50).
+            StudioClipFadeWedges(
+                fadeInSeconds: displayFadeIn,
+                fadeOutSeconds: displayFadeOut,
+                bpm: bpm,
+                pixelsPerBeat: pixelsPerBeat,
+                clipWidth: displayWidth,
+                clipHeight: clipHeight
+            )
+            .allowsHitTesting(false)
 
             if isSelected {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -2218,6 +3439,10 @@ private struct InteractiveStudioClip: View {
                     .fill(MXColor.white.opacity(0.06))
                     .frame(width: displayWidth, height: clipHeight)
                     .allowsHitTesting(false)
+
+                // Fade drag knobs above chrome so they stay hittable (Logic / Pro Tools).
+                fadeInHandle
+                fadeOutHandle
             }
         }
         .frame(width: displayWidth, height: clipHeight, alignment: .leading)
@@ -2230,6 +3455,46 @@ private struct InteractiveStudioClip: View {
         } else {
             base
         }
+    }
+
+    private var fadeInHandleX: CGFloat {
+        let beats = MXClipFadeGeometry.widthBeats(fadeSeconds: displayFadeIn, bpm: bpm)
+        return min(displayWidth - fadeHandleSize, max(0, CGFloat(beats) * pixelsPerBeat - fadeHandleSize / 2))
+    }
+
+    private var fadeOutHandleX: CGFloat {
+        let beats = MXClipFadeGeometry.widthBeats(fadeSeconds: displayFadeOut, bpm: bpm)
+        let outW = min(displayWidth, CGFloat(beats) * pixelsPerBeat)
+        return max(0, displayWidth - outW - fadeHandleSize / 2)
+    }
+
+    private var fadeInHandle: some View {
+        fadeHandleKnob
+            .position(x: fadeInHandleX + fadeHandleSize / 2, y: fadeHandleSize / 2 + 2)
+            .highPriorityGesture(fadeInGesture)
+            .accessibilityLabel("Fade in")
+            .accessibilityValue(String(format: "%.2f seconds", displayFadeIn))
+            .accessibilityHint("Drag to adjust fade in")
+    }
+
+    private var fadeOutHandle: some View {
+        fadeHandleKnob
+            .position(x: fadeOutHandleX + fadeHandleSize / 2, y: fadeHandleSize / 2 + 2)
+            .highPriorityGesture(fadeOutGesture)
+            .accessibilityLabel("Fade out")
+            .accessibilityValue(String(format: "%.2f seconds", displayFadeOut))
+            .accessibilityHint("Drag to adjust fade out")
+    }
+
+    private var fadeHandleKnob: some View {
+        Circle()
+            .fill(MXColor.accent)
+            .overlay(
+                Circle()
+                    .strokeBorder(MXColor.white.opacity(0.85), lineWidth: 1)
+            )
+            .frame(width: fadeHandleSize, height: fadeHandleSize)
+            .contentShape(Circle().scale(1.4))
     }
 
     private var trimHandle: some View {
@@ -2292,6 +3557,128 @@ private struct InteractiveStudioClip: View {
                 dragDeltaX = 0
                 onTrimEnd(newEnd)
             }
+    }
+
+    private var fadeInGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                activeDrag = .fadeIn
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeInSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats + Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeIn = nextSec
+            }
+            .onEnded { value in
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeInSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats + Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeIn = nil
+                activeDrag = nil
+                onFadeChange(nextSec, nil)
+            }
+    }
+
+    private var fadeOutGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                activeDrag = .fadeOut
+                // Drag left widens fade-out (Logic / Pro Tools).
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeOutSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats - Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeOut = nextSec
+            }
+            .onEnded { value in
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeOutSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats - Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeOut = nil
+                activeDrag = nil
+                onFadeChange(nil, nextSec)
+            }
+    }
+}
+
+// MARK: - Empty drum part shell (aligns columns when a part has no hits)
+
+private struct StudioDrumPartClipShell: View {
+    let clip: MXClip
+    let pixelsPerBeat: CGFloat
+    var rowHeight: CGFloat = 40
+    var onSelect: () -> Void = {}
+
+    private var width: CGFloat {
+        max(24, CGFloat(clip.lengthBeats) * pixelsPerBeat)
+    }
+
+    private var x: CGFloat {
+        CGFloat(clip.startBeat) * pixelsPerBeat
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .strokeBorder(MXColor.grey.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            .background(
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(MXColor.layer2.opacity(0.2))
+            )
+            .frame(width: width, height: rowHeight - 6)
+            .offset(x: x, y: 3)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+            .accessibilityLabel("Empty \(clip.name) part")
+            .accessibilityHint("Selects the drum clip")
+    }
+}
+
+// MARK: - Piano-roll lite clip (MIDI notes)
+
+private struct StudioMIDIRollClip: View {
+    let notes: [MXMIDINote]
+    let lengthBeats: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let beats = max(lengthBeats, 0.25)
+            // Single-pitch part lanes (Kick/Snare…) use a mid-band hit bar for readability.
+            let uniquePitches = Set(notes.map(\.note))
+            if uniquePitches.count <= 2 {
+                let rowH = max(4, size.height * 0.55)
+                let y = (size.height - rowH) / 2
+                for note in notes {
+                    let x = CGFloat(note.startBeat / beats) * size.width
+                    let w = max(3, CGFloat(note.lengthBeats / beats) * size.width)
+                    let rect = CGRect(x: x, y: y, width: w, height: rowH)
+                    let alpha = 0.5 + 0.5 * (Double(note.velocity) / 127.0)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: 1.5),
+                        with: .color(MXColor.orange.opacity(alpha))
+                    )
+                }
+            } else {
+                let minNote = notes.map(\.note).min() ?? 60
+                let maxNote = notes.map(\.note).max() ?? 72
+                let noteSpan = max(1, Int(maxNote) - Int(minNote) + 1)
+                let rowH = size.height / CGFloat(noteSpan)
+                for note in notes {
+                    let x = CGFloat(note.startBeat / beats) * size.width
+                    let w = max(2, CGFloat(note.lengthBeats / beats) * size.width)
+                    let row = Int(maxNote) - Int(note.note)
+                    let y = CGFloat(row) * rowH + 1
+                    let rect = CGRect(x: x, y: y, width: w, height: max(2, rowH - 2))
+                    let alpha = 0.45 + 0.55 * (Double(note.velocity) / 127.0)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: 1),
+                        with: .color(MXColor.orange.opacity(alpha))
+                    )
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(MXColor.layer2.opacity(0.65))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
     }
 }
 

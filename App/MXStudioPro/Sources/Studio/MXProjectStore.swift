@@ -67,6 +67,13 @@ public final class MXProjectStore: @unchecked Sendable {
         return project
     }
 
+    public func createDrumsProject(bpm: Double = 120) throws -> MXProject {
+        var project = MXProject.untitledDrums(bpm: bpm)
+        try save(project)
+        lastOpenedProjectID = project.id
+        return project
+    }
+
     public func save(_ project: MXProject) throws {
         var mutable = project
         mutable.modifiedAt = .now

@@ -1,4 +1,5 @@
 import Foundation
+import MXStudioEngine
 
 public enum StudioPreset: String, Equatable, Sendable {
     case vocal
@@ -6,11 +7,14 @@ public enum StudioPreset: String, Equatable, Sendable {
     case guitar
     case bass
     case midi
+    case drums
     case looper
     case sampler
     case ai
     case live
     case template
+    /// Minimal capture entry (Week 35 Quick Recording) — vocal project auto-opens Record.
+    case quickRecord
 
     public var title: String {
         switch self {
@@ -19,11 +23,13 @@ public enum StudioPreset: String, Equatable, Sendable {
         case .guitar: return "Guitar"
         case .bass: return "Bass"
         case .midi: return "Virtual Instrument"
+        case .drums: return "Drums"
         case .looper: return "Looper"
         case .sampler: return "Sampler"
         case .ai: return "Create Music With AI"
         case .live: return "Live Performance"
         case .template: return "Template"
+        case .quickRecord: return "Quick Recording"
         }
     }
 }
@@ -164,16 +170,17 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
 
     /// Guitar path: armed audio track with a light pedalboard seed (Dist / Delay / Rev).
     public static func untitledGuitar(bpm: Double = 120) -> MXProject {
+        let seed = MXGuitarPedalPreset.trackSeed
         let track = MXSessionTrack(
             name: "Guitar",
             kind: .audio,
             category: .guitar,
             isArmed: true,
-            reverbMix: 18,
-            eqMidGain: 1.5,
-            delayMix: 20,
-            delayTime: 0.32,
-            distortionMix: 35
+            reverbMix: seed.reverbMix,
+            eqMidGain: seed.eqMidGain,
+            delayMix: seed.delayMix,
+            delayTime: seed.delayTime,
+            distortionMix: seed.distortionMix
         )
         return MXProject(
             name: "Untitled Guitar",
@@ -189,13 +196,35 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
             name: "Piano",
             kind: .midi,
             category: .keys,
-            isArmed: true
+            isArmed: true,
+            reverbMix: 14,
+            reverbSend: 20,
+            synthBankPresetID: MXSynthBankPreset.trackSeed.rawValue
         )
         return MXProject(
             name: "Untitled MIDI",
             bpm: bpm,
             tracks: [track],
             preset: .midi
+        )
+    }
+
+    /// Drum Machine path: armed MIDI drums track with short kit patch.
+    public static func untitledDrums(bpm: Double = 120) -> MXProject {
+        let track = MXSessionTrack(
+            name: "Drums",
+            kind: .midi,
+            category: .drums,
+            isArmed: true,
+            reverbMix: 8,
+            reverbSend: 12,
+            synthBankPresetID: MXSynthBankPreset.drumKit.rawValue
+        )
+        return MXProject(
+            name: "Untitled Drums",
+            bpm: bpm,
+            tracks: [track],
+            preset: .drums
         )
     }
 }
@@ -211,6 +240,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         case vocal
         case guitar
         case keys
+        case drums
         case imported
     }
 
@@ -246,6 +276,16 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var deEsserEnabled: Bool
     /// De-esser amount 0…100 (maps to ~0…−12 dB peaking cut).
     public var deEsserAmount: Float
+    /// Keys / VI synth bank preset id (`MXSynthBankPreset.rawValue`). Nil for non-MIDI.
+    public var synthBankPresetID: String?
+    /// Muted drum kit parts (`MXDrumPart.rawValue`). Empty = all parts audible.
+    /// Orthogonal to track `isMuted` and clip `takeIndex` (Week 42).
+    public var mutedDrumParts: Set<String>
+    /// Soloed drum kit parts (`MXDrumPart.rawValue`). Empty = no part solo.
+    /// When non-empty, only soloed (and not muted) parts are audible (Week 44).
+    public var soloedDrumParts: Set<String>
+    /// Track volume automation breakpoints (Week 52). Empty = constant `volume`.
+    public var volumeAutomation: [MXAutomationPoint]
 
     public init(
         id: UUID = UUID(),
@@ -268,12 +308,17 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         noiseGateEnabled: Bool = false,
         noiseGateThreshold: Float = 0.02,
         deEsserEnabled: Bool = false,
-        deEsserAmount: Float = 50
+        deEsserAmount: Float = 50,
+        synthBankPresetID: String? = nil,
+        mutedDrumParts: Set<String> = [],
+        soloedDrumParts: Set<String> = [],
+        volumeAutomation: [MXAutomationPoint] = []
     ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.category = category ?? (kind == .midi ? .keys : .vocal)
+        // Note: callers should pass `.drums` explicitly for drum tracks.
         self.isArmed = isArmed
         self.isMuted = isMuted
         self.isSolo = isSolo
@@ -291,6 +336,11 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.noiseGateThreshold = min(max(noiseGateThreshold, 0), 0.2)
         self.deEsserEnabled = deEsserEnabled
         self.deEsserAmount = min(max(deEsserAmount, 0), 100)
+        self.synthBankPresetID = synthBankPresetID
+            ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
+        self.mutedDrumParts = mutedDrumParts
+        self.soloedDrumParts = soloedDrumParts
+        self.volumeAutomation = volumeAutomation.sorted { $0.beat < $1.beat }
     }
 
     public init(from decoder: Decoder) throws {
@@ -317,12 +367,36 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         noiseGateThreshold = min(max(try c.decodeIfPresent(Float.self, forKey: .noiseGateThreshold) ?? 0.02, 0), 0.2)
         deEsserEnabled = try c.decodeIfPresent(Bool.self, forKey: .deEsserEnabled) ?? false
         deEsserAmount = min(max(try c.decodeIfPresent(Float.self, forKey: .deEsserAmount) ?? 50, 0), 100)
+        synthBankPresetID = try c.decodeIfPresent(String.self, forKey: .synthBankPresetID)
+            ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
+        mutedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .mutedDrumParts) ?? []
+        soloedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .soloedDrumParts) ?? []
+        volumeAutomation = (try c.decodeIfPresent([MXAutomationPoint].self, forKey: .volumeAutomation) ?? [])
+            .sorted { $0.beat < $1.beat }
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
+        case synthBankPresetID, mutedDrumParts, soloedDrumParts, volumeAutomation
+    }
+
+    /// Typed mute set for drum part lanes (empty for non-drums / none muted).
+    public var mutedDrumPartSet: Set<MXDrumPart> {
+        MXDrumPart.mutedParts(fromRawValues: mutedDrumParts)
+    }
+
+    public var soloedDrumPartSet: Set<MXDrumPart> {
+        MXDrumPart.mutedParts(fromRawValues: soloedDrumParts)
+    }
+
+    public func isDrumPartMuted(_ part: MXDrumPart) -> Bool {
+        mutedDrumParts.contains(part.rawValue)
+    }
+
+    public func isDrumPartSoloed(_ part: MXDrumPart) -> Bool {
+        soloedDrumParts.contains(part.rawValue)
     }
 }
 
@@ -350,6 +424,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var takeIndex: Int
     /// When false, clip is kept as an alternate take but skipped in playback/bounce.
     public var isActive: Bool
+    /// Piano-roll lite notes (MIDI tracks). Empty for audio clips.
+    public var midiNotes: [MXMIDINote]
 
     public init(
         id: UUID = UUID(),
@@ -364,7 +440,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         fadeInSeconds: Double = 0,
         fadeOutSeconds: Double = 0,
         takeIndex: Int = 0,
-        isActive: Bool = true
+        isActive: Bool = true,
+        midiNotes: [MXMIDINote] = []
     ) {
         self.id = id
         self.trackID = trackID
@@ -379,6 +456,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.fadeOutSeconds = max(0, fadeOutSeconds)
         self.takeIndex = max(0, takeIndex)
         self.isActive = isActive
+        self.midiNotes = midiNotes
     }
 
     /// Back-compat with Week 4 projects that omit trim / fade / take fields.
@@ -397,13 +475,14 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         fadeOutSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
         takeIndex = max(0, try c.decodeIfPresent(Int.self, forKey: .takeIndex) ?? 0)
         isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+        midiNotes = try c.decodeIfPresent([MXMIDINote].self, forKey: .midiNotes) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, trackID, name, startBeat, lengthBeats, audioFileName
         case sourceOffsetSeconds, sourceDurationSeconds
         case gain, fadeInSeconds, fadeOutSeconds
-        case takeIndex, isActive
+        case takeIndex, isActive, midiNotes
     }
 
     /// True when this clip’s beat range overlaps `other` (exclusive ends).
@@ -415,7 +494,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         return a0 < b1 && b0 < a1
     }
 
-    /// Linear envelope at `t` seconds into the audible clip (`duration` = audible length).
+    /// Equal-power envelope at `t` seconds into the audible clip (`duration` = audible length).
+    /// Uses `MXCrossfade.equalPowerIn` / `equalPowerOut` so overlapping seams keep constant power.
     /// When fade-in and fade-out overlap, both are applied and the quieter wins (`min`).
     public func fadeEnvelope(atSeconds t: Double, durationSeconds duration: Double) -> Float {
         guard duration > 1e-6 else { return 1 }
@@ -423,12 +503,12 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         let fadeOut = min(max(0, fadeOutSeconds), duration)
         var env: Float = 1
         if fadeIn > 1e-6, t < fadeIn {
-            env = Float(max(0, min(1, t / fadeIn)))
+            env = MXCrossfade.equalPowerIn(t / fadeIn)
         }
         if fadeOut > 1e-6 {
             let outStart = duration - fadeOut
             if t >= outStart {
-                env = min(env, Float(max(0, min(1, (duration - t) / fadeOut))))
+                env = min(env, MXCrossfade.equalPowerOut((t - outStart) / fadeOut))
             }
         }
         return env

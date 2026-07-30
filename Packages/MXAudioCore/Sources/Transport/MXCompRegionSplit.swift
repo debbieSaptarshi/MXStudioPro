@@ -1,7 +1,7 @@
 import Foundation
 
-/// Logic-style punch comps: split an active take around a punch region and
-/// suggest short abut crossfades (GarageBand / BandLab playlist-comp lite).
+/// Logic / Pro Tools style punch comps: split an active take around a punch
+/// region with short overlapping equal-power crossfades (not abut dips).
 public enum MXCompRegionSplit: Sendable {
 
     /// Default click-guard crossfade at punch seams (~12 ms).
@@ -57,6 +57,9 @@ public enum MXCompRegionSplit: Sendable {
 
     /// Split `sibling` around punch beat range `[punchStartBeat, punchEndBeat)`.
     ///
+    /// Before/after pieces soft-overlap the punch by up to `crossfadeSeconds`
+    /// so equal-power fades can sum without an abut dip.
+    ///
     /// - Parameter secondsBetween: Tempo-map seconds from `fromBeat` to `toBeat` (`to >= from`).
     public static func split(
         sibling: SourceClip,
@@ -85,37 +88,74 @@ public enum MXCompRegionSplit: Sendable {
         let cut0 = min(max(p0, a0), a1)
         let cut1 = min(max(p1, a0), a1)
 
+        let beforeSeconds = secondsBetween(a0, cut0)
+        let afterSeconds = secondsBetween(cut1, a1)
+        let punchSec = secondsBetween(p0, p1)
+        let punchBeats = p1 - p0
+
+        let hasBefore = beforeSeconds >= minFragmentSeconds && cut0 > a0
+        let hasAfter = afterSeconds >= minFragmentSeconds && a1 > cut1
+
+        // Soft X-fade into the punch; if both seams exist, also bound by afterSeconds
+        // and half the punch so before/after X-fades cannot collide mid-punch.
+        var xfSec = 0.0
+        var xfBeats = 0.0
+        if punchSec > 0, hasBefore || hasAfter {
+            xfSec = min(crossfadeSeconds, punchSec)
+            if hasBefore {
+                xfSec = min(xfSec, beforeSeconds)
+            }
+            if hasAfter {
+                xfSec = min(xfSec, afterSeconds)
+            }
+            // Both seams: keep each X-fade ≤ half the punch so they cannot meet.
+            if hasBefore && hasAfter {
+                xfSec = min(xfSec, punchSec / 2)
+            }
+            xfBeats = punchBeats * (xfSec / punchSec)
+
+            // Cap: before must not extend past p1; after must not start before p0.
+            if hasBefore {
+                xfBeats = min(xfBeats, max(0, p1 - cut0))
+            }
+            if hasAfter {
+                xfBeats = min(xfBeats, max(0, cut1 - p0))
+            }
+            if punchBeats > 0 {
+                xfSec = punchSec * (xfBeats / punchBeats)
+            }
+        }
+
         var before: Piece?
         var after: Piece?
         var punchFadeIn: Double = 0
         var punchFadeOut: Double = 0
 
-        let beforeSeconds = secondsBetween(a0, cut0)
-        if beforeSeconds >= minFragmentSeconds, cut0 > a0 {
-            let dur = beforeSeconds
+        if hasBefore {
+            let dur = beforeSeconds + xfSec
             before = Piece(
                 startBeat: a0,
-                lengthBeats: cut0 - a0,
+                lengthBeats: (cut0 - a0) + xfBeats,
                 sourceOffsetSeconds: sibling.sourceOffsetSeconds,
                 sourceDurationSeconds: dur,
                 fadeInSeconds: min(sibling.fadeInSeconds, dur),
-                fadeOutSeconds: min(crossfadeSeconds, dur)
+                fadeOutSeconds: xfSec
             )
-            punchFadeIn = crossfadeSeconds
+            punchFadeIn = xfSec
         }
 
-        let afterSeconds = secondsBetween(cut1, a1)
-        if afterSeconds >= minFragmentSeconds, a1 > cut1 {
-            let dur = afterSeconds
+        if hasAfter {
+            let dur = afterSeconds + xfSec
+            let rawOffset = sibling.sourceOffsetSeconds + secondsBetween(a0, cut1) - xfSec
             after = Piece(
-                startBeat: cut1,
-                lengthBeats: a1 - cut1,
-                sourceOffsetSeconds: sibling.sourceOffsetSeconds + secondsBetween(a0, cut1),
+                startBeat: cut1 - xfBeats,
+                lengthBeats: (a1 - cut1) + xfBeats,
+                sourceOffsetSeconds: max(0, rawOffset),
                 sourceDurationSeconds: dur,
-                fadeInSeconds: min(crossfadeSeconds, dur),
+                fadeInSeconds: xfSec,
                 fadeOutSeconds: min(sibling.fadeOutSeconds, dur)
             )
-            punchFadeOut = crossfadeSeconds
+            punchFadeOut = xfSec
         }
 
         // Keep original as the before piece when present; otherwise deactivate it.

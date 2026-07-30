@@ -6,6 +6,8 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
+**Current focus:** Month 14 (W53–56) — Week 53 step velocity/multi-bar shipped; next W54 clip automation + meet-in-middle fades.
+
 ---
 
 ## Current status
@@ -43,10 +45,28 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **29** | Quiet-room checklist; loop schedule clamp; punch comps lite | **Done (MVP)** ✅ |
 | **30** | Mixer channel strips; insert chain UI; bounce FX parity | **Done (MVP)** ✅ |
 | **31** | Studio shell ↔ Figma layout parity | **Done (MVP)** ✅ Guitar Studio proportions |
-| **32** | Guitar Studio Section (Figma) | **Next** |
-| **33** | Piano Studio Section (Figma) | Planned |
-| **34** | Drum & Others Studio Section (Figma) | Planned |
-| **35** | Quick Landscape Studio Section (Figma) | Planned |
+| **32** | Guitar Studio Section (Figma) | **Done (MVP)** ✅ Pedalboard presets + Dist→Delay→Rev |
+| **33** | Piano Studio Section (Figma) | **Done (MVP)** ✅ Virtual Piano + bank + MIDI capture |
+| **34** | Drum & Others Studio Section (Figma) | **Done (MVP)** ✅ Pads + Hide Tracks + Others labels |
+| **35** | Quick Landscape Studio Section (Figma) | **Done (MVP)** ✅ landscape compact + Quick Recording |
+| **36** | Equal-power crossfades (arrangement) | **Done (MVP)** ✅ overlapping punch X-fades |
+| **37** | Multi-row playlist folder (take lanes) | **Done (MVP)** ✅ one row per takeIndex; collapse chevron |
+| **38** | Playback strip meters (mixer) | **Done (MVP)** ✅ live peak + peak-hold beside faders |
+| **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ Dist→Delay→Rev on armed guitar monitor |
+| **40** | Per-part drum lanes (Kick/Snare/Hats…) | **Done (MVP)** ✅ BandLab-style part columns |
+| **41** | Record orientation lock + landscape chrome | **Done (MVP)** ✅ opt-in portrait lock; densified Rec |
+| **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ mute re-renders WAV beds |
+| **43** | Arrange timeline strip meters | **Done (MVP)** ✅ header meters reuse W38 peaks |
+| **44** | Per-part drum solo (Kick/Snare/Hats… S) | **Done (MVP)** ✅ solo + mute → audible bed |
+| **45** | MIDI quantize lite (16th note starts) | **Done (MVP)** ✅ |
+| **46** | Clip fade wedges on arrange timeline | **Done (MVP)** ✅ |
+| **47** | Stem export (per-track bounce) | **Done (MVP)** ✅ |
+| **48** | Import tempo detect lite | **Done (MVP)** ✅ |
+| **49** | Drum step sequencer lite (16-step × kit) | **Done (MVP)** ✅ |
+| **50** | Drag fade wedges to edit clip fades | **Done (MVP)** ✅ |
+| **51** | Quantize strength / swing + re-quantize | **Done (MVP)** ✅ |
+| **52** | Track volume automation lane lite | **Done (MVP)** ✅ |
+| **53** | Step seq velocity + multi-bar + load from clip | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -217,7 +237,7 @@ Patterned after GarageBand first-record tips, Logic punch comps, BandLab take la
 | **Clamp clip schedules to loop end** | ✅ `MXLoopScheduleClamp` caps `AVAudioPlayerNode` frames so audio doesn’t bleed past loop on hostTime |
 | **Playlist lanes / crossfade comps lite** | ✅ Punch splits active takes into before/after; ~12 ms abut fades; ghost inactive takes; take-lane activation |
 
-**Takes / punch Week 29 limits:** abut fade dips (not overlapping X-fades); ghosts only when inactive takes exist; no always-on multi-row playlist folder.
+**Takes / punch Week 29 limits (superseded where noted):** abut fade dips → Week 36 equal-power X-fades; Week 37 always-on multi-row playlist folder (session-local collapse).
 
 ---
 
@@ -231,17 +251,17 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; bounce Distortion approximation; playback strip meters.
+**Month 10 backlog:** Week 36 equal-power crossfades ✅ → playlist folder ✅ → strip meters ✅ → wet guitar monitor ✅. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
-## Month 9 — Instrument Studio sections *(Weeks 31–35)* **Next**
+## Month 9 — Instrument Studio sections *(Weeks 31–35)* ✅
 
 Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared chrome (header, 60pt lanes, 70pt details, action board) stays one `StudioView`; each section adds mode-specific UI + audio behavior.
 
 **Week 31 (done):** Shell layout parity — timeline fills, details/action board pinned, track headers 60pt, `+ ADD TRACK`, Figma transport cluster. Reference: [`Studio - Guitar`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-85203).
 
-### Week 32 — Guitar Studio Section **Next**
+### Week 32 — Guitar Studio Section ✅
 
 **Figma cluster (≈ y=8476)**
 | Frame | Node | Intent |
@@ -251,13 +271,15 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Select Guitar Effect | [`95:89964`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-89964) | Pedalboard / FX pick |
 
 **Done when (BandLab / GarageBand guitar path)**
-- [ ] Create → Guitar opens shell matching Figma proportions (already close after W31)
-- [ ] Pedalboard sheet matches Select Guitar Effect flow (Dist / Delay / Rev order + presets)
-- [ ] Input monitor defaults on with headphones tip; DI / mic policy clear
-- [ ] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
-- [ ] Demo: record guitar take over a second track → hear FX → bounce
+- [x] Create → Guitar opens shell matching Figma proportions (already close after W31)
+- [x] Pedalboard sheet matches Select Guitar Effect flow (Dist / Delay / Rev order + Clean/Crunch/Lead/Ambient presets)
+- [x] Input monitor defaults on with headphones tip; DI / mic policy clear
+- [x] Armed guitar track shows guitar category chrome (tint, icon, Pedalboard title)
+- [x] Demo: record guitar take over a second track → hear FX → bounce *(cold Rec schedules beds; bounce soft-clip Dist)*
 
-### Week 33 — Piano Studio Section
+**Week 32 notes:** Pedalboard gated on `track.category == .guitar` so vocal lanes in a Guitar project keep Dyn chain. Wet input monitoring shipped in Week 39 (`MXMonitorGuitarFX`).
+
+### Week 33 — Piano Studio Section ✅
 
 **Figma cluster (≈ y=9854)**
 | Frame | Node | Intent |
@@ -268,13 +290,15 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Virtual Piano v2 | [`95:88011`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=95-88011) | Alternate keyboard / octave UI |
 
 **Done when (GarageBand Keyboard / BandLab Keys)**
-- [ ] On-screen keyboard matches Virtual Piano layout (octaves, hold, velocity lite)
-- [ ] Optional MIDI note clips / piano-roll lite (even single-lane draw is enough for MVP)
-- [ ] Piano FX sheet from Piano Midi frame; instrument preset switch (synth bank)
-- [ ] Record button disabled for MIDI-armed track; play keys → audible; export includes rendered audio or stub capture
-- [ ] Demo: Create → VI → play progression → Open FX → bounce with keys bed
+- [x] On-screen keyboard matches Virtual Piano layout (octaves, hold, velocity lite)
+- [x] Optional MIDI note clips / piano-roll lite (even single-lane draw is enough for MVP)
+- [x] Piano FX sheet from Piano Midi frame; instrument preset switch (synth bank)
+- [x] Record button disabled for MIDI-armed track; play keys → audible; export includes rendered audio or stub capture
+- [x] Demo: Create → VI → play progression → Open FX → bounce with keys bed
 
-### Week 34 — Drum & Others Studio Section
+**Week 33 notes:** Performance capture — play keys while transport runs, Stop/pause drops a rendered WAV + piano-roll lite clip. Soft Keys / Warm Pad / Pulse Bass / Pluck / Synthwave bank. Rec stays disabled for MIDI-armed tracks.
+
+### Week 34 — Drum & Others Studio Section ✅
 
 **Figma cluster (≈ y=11232)**
 | Frame | Node | Intent |
@@ -284,14 +308,16 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | (Create hub) Drum / Bass / Sampler tiles | Create Mix | Entry points for “Others” |
 
 **Done when (BandLab Drum Machine / GarageBand Drums)**
-- [ ] Create → Drum (enable tile) opens drum pad surface + timeline
-- [ ] Pad hits trigger drum kit / synth percussion; pattern or one-shot clips on timeline
-- [ ] Drum parts column (kick/snare/hat lanes) or simplified pad → clip workflow
-- [ ] Hide Tracks mode collapses headers to icon rail (Figma `95:85310`) for denser arrange
-- [ ] Bass / Sampler remain “Others”: either lite presets or keep disabled with clear labels
-- [ ] Demo: lay 4-bar beat → layer vocal/guitar → bounce
+- [x] Create → Drum (enable tile) opens drum pad surface + timeline
+- [x] Pad hits trigger drum kit / synth percussion; pattern or one-shot clips on timeline
+- [x] Drum parts column (kick/snare/hat lanes) or simplified pad → clip workflow *(pad → performance capture clip)*
+- [x] Hide Tracks mode collapses headers to icon rail (Figma `95:85310`) for denser arrange
+- [x] Bass / Sampler remain “Others”: either lite presets or keep disabled with clear labels
+- [x] Demo: lay 4-bar beat → layer vocal/guitar → bounce
 
-### Week 35 — Quick Landscape Studio Section
+**Week 34 notes:** 8 GM-ish pads (Kick/Snare/Clap/HH/Tom/Perc/Ride), Drum Kit short one-shot synth, capture on Stop like Piano. Hide Tracks sidebar toggle. Bass/Looper/Sampler labeled “Others — coming soon”.
+
+### Week 35 — Quick Landscape Studio Section ✅
 
 **Figma cluster (≈ y=12610)**
 | Frame | Node | Intent |
@@ -302,20 +328,316 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Quick Recording (portrait) | [`96:58733`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=96-58733) | Minimal capture entry |
 
 **Done when (GarageBand Quick / BandLab quick capture)**
-- [ ] Support landscape orientation for Studio (+ optional lock for record)
-- [ ] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
-- [ ] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
-- [ ] Landscape Virtual Piano usable for VI projects
-- [ ] Demo: rotate phone → arrange 4+ tracks comfortably → rotate back → export
+- [x] Support landscape orientation for Studio (+ optional lock for record) — orientations enabled; record lock shipped in Week 41
+- [x] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
+- [x] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
+- [x] Landscape Virtual Piano usable for VI projects — compact keys (~72pt) + hide details strip
+- [x] Demo: rotate phone → arrange 4+ tracks comfortably → rotate back → export
 
-**Month 9 gate:** Guitar / Piano / Drum / Landscape each have a Figma-faithful entry path and a 60-second demo that produces audible audio in Studio.
+**Week 35 notes:** Auto-collapse track headers in landscape; compact action board / header Collab icon; piano + drum pads shrink for 812×375; Quick Recording skips quiet-room tip.
 
-### Implementation notes (shared)
+**Month 9 gate:** Guitar / Piano / Drum / Landscape each have a Figma-faithful entry path and a 60-second demo that produces audible audio in Studio. ✅
+
+---
+
+## Month 10 — Arrangement depth *(Weeks 36–39)* ✅ ✅
+
+Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab playlist comps; Studio One strip meters.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Done (MVP)** ✅ |
+| **37** | Expanded multi-row playlist folder (always-on take lanes) | **Done (MVP)** ✅ |
+| **38** | Playback strip meters (mixer + optional timeline) | **Done (MVP)** ✅ |
+| **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ |
+
+### Week 36 — Equal-power crossfades ✅
+
+**Done when (Logic / Pro Tools X-fade)**
+- [x] Punch comps create real timeline overlap (~12 ms+) instead of abut dips
+- [x] Equal-power in/out curves (`cos`/`sin`) so `gOut² + gIn² ≈ 1` (`MXCrossfade`)
+- [x] Live schedule + bounce both sum overlapping faded clips without level dip (`fadeEnvelope`)
+- [x] Take-lane activation treats short X-fade overlaps as soft abut (co-active)
+- [x] Unit tests for envelope power + split overlap geometry
+- [x] Demo: punch over a take → seamless splice on play + bounce
+
+**Week 36 notes:** `MXCompRegionSplit` extends before/after into the punch; both seams share `min(xf, punch/2)`. Soft-overlap default 0.08 beats. Manual clip fades also use equal-power.
+
+### Week 37 — Expanded multi-row playlist folder ✅
+
+**Done when (GarageBand / Logic playlist lite)**
+- [x] Multi-take track (≥2 distinct `takeIndex`) expands to one timeline row per take lane
+- [x] Active take editable (`InteractiveStudioClip`); inactive takes on own dimmed rows; tap activates via `setActiveTake`
+- [x] Track header height matches expanded folder height
+- [x] Folder defaults open; chevron collapses to single summary lane (session-local `@State`, not persisted)
+- [x] Takes menu lists one representative clip per `takeIndex`
+- [x] Single-take tracks unchanged (one lane)
+
+**Week 37 notes:** `StudioSessionController.takes(onTrackID:)` returns one rep per takeIndex (prefer active). Ghosts only in expanded playlist rows; collapsed summary shows actives only. No empty lanes, no drag between lanes, no punch/activation math changes.
+
+### Week 38 — Playback strip meters ✅
+
+**Done when (Studio One / Logic / GarageBand mixer meters)**
+- [x] Mixer strips show vertical peak meters beside each fader (`PlaybackStripMeter`)
+- [x] Meters move during playback of audio clips (post-FX reverb-node taps → `trackPlaybackLevels`)
+- [x] Peak hold marker visible (`trackPlaybackPeakHolds`, ~0.995 decay)
+- [x] Mute/solo → meter goes quiet (player / chain volume already zeroed into tap path)
+- [x] Stop → meters decay / zero (`stopPlaybackMeterPolling` + `zeroPlaybackMeters`)
+- [x] Demo: play multi-track mix with mixer open → see per-track activity (`ensurePlaybackMetersRunning` on mixer appear)
+
+**Week 38 notes:** Tap on clip insert reverb (bus 0, 1024). MIDI live: tap `MXTrackChain.trackMixer`. Poll ~33 ms. No timeline lane meters, no LUFS/RMS. Input record meters unchanged.
+
+### Week 39 — Wet guitar input monitoring ✅
+
+**Done when (BandLab / GarageBand guitar monitor)**
+- [x] Armed guitar + Monitor on → hear Dist→Delay→Rev (light EQ mid) while input armed / recording
+- [x] Changing pedalboard preset / Dist·Delay·Rev·EQ updates live monitor without restarting Rec
+- [x] Vocal armed → dry monitor + optional noise gate (no guitar inserts)
+- [x] Monitor off → silence (detach all monitor nodes)
+- [x] Speaker path still prefers Monitor off (existing feedback policy)
+- [x] Recorded WAV remains dry DI (write tap on `inputNode`; FX only on parallel monitor + playback/bounce)
+
+**Week 39 notes:** `MXMonitorGuitarFX` on `MXRecorder`; wet path `input → EQ → Dist → Delay → Rev → monitorMixer → master`. `syncMonitorChain()` pushes armed-track pedal params. Headphones tip mentions pedalboard. AU chain adds some monitor latency vs dry DI.
+
+### Month 10 gate ✅
+
+Equal-power X-fades → playlist folder → strip meters → wet guitar monitor. Arrangement depth MVP complete.
+
+---
+
+## Month 11 — Drum depth + capture chrome *(Weeks 40+)*
+
+Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit Designer.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **40** | Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Done (MVP)** ✅ |
+| **41** | Optional record orientation lock; Record landscape chrome | **Done (MVP)** ✅ |
+| **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ |
+| **43** | Arrange timeline strip meters | **Done (MVP)** ✅ |
+| **44** | Per-part drum solo (Kick/Snare/Hats… S) | **Done (MVP)** ✅ |
+| — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
+
+### Week 40 — Per-part drum lanes ✅
+
+**Done when (BandLab / GarageBand kit columns)**
+- [x] Drum tracks expand into fixed Kick / Snare / Hats / Toms / Perc / Ride rows
+- [x] Pad hits map to parts via shared `MXDrumPart` (same map as `DrumPadView`)
+- [x] One performance clip still owns the WAV bed; each row filters `midiNotes` for that part
+- [x] Empty part columns show faint clip shell (aligned); header lists part labels
+- [x] Chevron collapses part folder to summary lane (session-local `@State`)
+- [x] Multi-take playlist folder (≥2 takes) still wins over part columns
+- [x] Capture names clips `Drums N` / `drums_*.wav`
+- [x] Unit tests for pad→part mapping + note filter
+
+**Week 40 notes:** Parts are arrange UI only — not separate WAVs. Per-part mute shipped in Week 42. Playlist takes remain orthogonal (`takeIndex`). Deferred: step sequencer, SFZ kit choke, nested takes×parts.
+
+### Week 41 — Record orientation lock + landscape chrome ✅
+
+**Done when (GarageBand densify + opt-in lock)**
+- [x] Settings: “Lock portrait while recording” (UserDefaults, default **off**)
+- [x] Lock on → record stays portrait via `MXOrientationLock` + `MXAppDelegate` mask; exit unlocks Studio rotate
+- [x] Lock off → landscape record densifies chrome (Figma `95:81418`): waveform dominant, mixer/tips hidden, compact header/details/Rec
+- [x] Quick Recording uses same chrome/lock path (`RecordVocalView`)
+- [x] Studio arrange landscape + piano/pads unchanged when not in record
+
+**Week 41 notes:** Unlock on `StudioView.onDisappear` to avoid mask leaks. Preference change while recording re-applies immediately. Cloud/backend remains Month 11+ parallel work.
+
+### Week 42 — Per-part drum mute ✅
+
+**Done when (BandLab / GarageBand kit-piece mute)**
+- [x] Each Kick / Snare / Hats / Toms / Perc / Ride row has an **M** toggle in the expanded part folder
+- [x] Mute silences that part in playback + bounce without deleting `midiNotes`
+- [x] Persisted on `MXSessionTrack.mutedDrumParts` (Codable; older projects decode empty)
+- [x] WAV bed re-renders from `excludingMuted` notes on toggle; empty audible → silence WAV
+- [x] New MIDI drum captures store full notes but render bed with current mutes
+- [x] Muted lanes dim in arrange; track-level M still mutes the whole track
+- [x] Live pads stay audible while composing (mute is playback/mix state)
+- [x] Unit tests for mute filter + silence WAV
+
+**Week 42 notes:** Parts remain one shared performance clip (no per-part WAVs). Playlist takes still win over part columns when ≥2 takes. Deferred: nested takes×parts, step sequencer, SFZ choke.
+
+### Week 43 — Arrange timeline strip meters ✅
+
+**Done when (Logic / Pro Tools / BandLab arrange meters)**
+- [x] Each expanded arrange track header shows a live vertical peak meter during playback
+- [x] Same levels as mixer (`trackPlaybackLevels` / peak-hold) — no new AVAudio taps
+- [x] Mute/solo quiet the meter; stop/pause decay/zero via existing poll
+- [x] Playlist / drum-part folders: one meter per parent track (not per sub-row)
+- [x] Collapsed Hide Tracks rail: no meter (layout unchanged)
+- [x] Input record meters unchanged
+
+**Week 43 notes:** Slim 5 pt meter beside M/S in `StudioTrackHeader`. Reuses Week 38 post-FX / trackMixer taps.
+
+### Week 44 — Per-part drum solo ✅
+
+**Done when (BandLab / GarageBand kit-piece solo)**
+- [x] Each Kick / Snare / Hats / Toms / Perc / Ride row has an **S** toggle in the expanded part folder
+- [x] Solo isolates audible parts (mute wins over solo for the same part)
+- [x] Multi-part solo is additive; empty solo set = all unmuted parts audible
+- [x] Persisted on `MXSessionTrack.soloedDrumParts` (Codable; older projects decode empty)
+- [x] WAV bed re-renders via `MXDrumPart.audibleNotes(muted:soloed:)`
+- [x] Live pads stay audible while composing
+- [x] Unit tests for solo + mute interaction
+
+**Week 44 notes:** Same shared performance clip as mute. Nested takes×parts still deferred.
+
+### Month 11 remaining
+
+| Focus | Status |
+|-------|--------|
+| Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
+| Optional: nested takes×drum parts; step sequencer; SFZ choke | Backlog |
+
+---
+
+## Month 12 — SOTA DAW polish *(Weeks 45–48)*
+
+Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ableton / BandLab stem export; Mixed In Key / GarageBand tempo detect.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **45** | MIDI quantize lite — snap captured note starts to 16ths | **Done (MVP)** ✅ |
+| **46** | Clip fade wedges on arrange timeline (visual equal-power fades) | **Done (MVP)** ✅ |
+| **47** | Stem export — one WAV(+M4A) per track from Export sheet | **Done (MVP)** ✅ |
+| **48** | Import tempo detect lite (estimate BPM from imported audio) | **Done (MVP)** ✅ |
+
+### Week 45 — MIDI quantize lite ✅
+
+**Done when (GarageBand / BandLab Quantize)**
+- [x] Pure `MXMIDIQuantize` snaps note `startBeat` to 16th grid; length preserved
+- [x] Studio Settings toggle “Quantize MIDI capture” (default **on**), separate from arrange snap
+- [x] Drum + piano Pause/Stop commit applies quantize to absolute starts before localizing / rendering bed
+- [x] Live pads/keys stay unquantized while playing
+- [x] Unit tests for snap edges, length preserve, empty / bad resolution
+
+**Week 45 notes:** Arrange `snapBeat` shares `MXMIDIQuantize.snapBeat`. Strength / swing deferred.
+
+### Week 46 — Clip fade wedges ✅
+
+**Done when (Logic / Pro Tools fade visualization)**
+- [x] Active arrange clips show equal-power fade-in / fade-out wedges matching `fadeInSeconds` / `fadeOutSeconds`
+- [x] Wedge width converts seconds → beats via project BPM (`MXClipFadeGeometry`)
+- [x] Drawn on `InteractiveStudioClip` (summary, playlist, drum-part lanes); not on ghosts / empty shells
+- [x] Edit remains clip inspector sliders (drag-to-edit deferred)
+- [x] Unit tests for beat width + equal-power gain helpers
+
+### Week 47 — Stem export ✅
+
+**Done when (Ableton / BandLab stem bounce)**
+- [x] Export sheet → “Export stems” bounces each track with audio to its own WAV + M4A
+- [x] Ignores mute/solo (true stems); skips tracks with no active audio files
+- [x] Same loudness toggle as mix bounce (Reels −14 LUFS or peak)
+- [x] Share sheet presents all stem files
+- [x] Per-stem FX / fades via existing `mixClip` path
+
+### Week 48 — Import tempo detect lite ✅
+
+**Done when (Mixed In Key / GarageBand / BandLab tempo detect lite)**
+- [x] Pure `MXTempoDetect` estimates BPM from mono PCM + sampleRate via energy-onset autocorrelation (60–200)
+- [x] Studio `importAudioFile` auto-applies confident estimate via `setBPM` (clamped 40–240); stores `lastDetectedBPM`
+- [x] Detect failure is non-fatal — import still places the clip at the current project BPM
+- [x] Clip `lengthBeats` computed after any tempo update
+- [x] Unit tests: synthetic click trains (90/120/140), silence, short/empty input
+
+**Week 48 notes:** Auto-apply + banner (“Tempo set to N BPM from import”) + transport BPM. Full beat grid / Mixed In Key key+BPM deferred.
+
+---
+
+## Month 13 — Performance + wow polish *(Weeks 49–52)* ✅
+
+Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cubasis / FL Mobile piano roll depth.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **49** | Drum step sequencer lite (16-step × kit parts → MIDI clip) | **Done (MVP)** ✅ |
+| **50** | Drag fade wedges to edit clip fades | **Done (MVP)** ✅ |
+| **51** | Quantize strength / swing + re-quantize selected clip | **Done (MVP)** ✅ |
+| **52** | Volume automation lane lite (track) | **Done (MVP)** ✅ |
+
+### Week 49 — Drum step sequencer lite ✅
+
+**Done when (BandLab / GarageBand Smart Drums lite)**
+- [x] Pure `MXDrumStepSequencer` maps 6 kit rows × 16 steps ↔ MIDI notes
+- [x] Studio Pads / Steps toggle on drums surface; cell tap previews kit hit
+- [x] **Add to timeline** places one-bar MIDI clip + WAV bed at playhead
+- [x] Unit tests: empty, four-on-the-floor, round-trip, toggle bounds
+
+**Week 49 notes:** Fixed velocity / 1 bar only. Pattern library, step cursor, load-from-clip deferred.
+
+### Week 50 — Drag fade wedges ✅
+
+**Done when (Logic / Pro Tools fade drag)**
+- [x] Selected clips show fade-in / fade-out knobs on wedge edges
+- [x] Drag converts Δx → seconds via `MXClipFadeGeometry.seconds`; live wedge preview
+- [x] Commits through `setClipFades` with undo snapshot; inspector sliders still work
+- [x] Inverse geometry unit tests
+
+### Week 51 — Quantize strength / swing ✅
+
+**Done when (GarageBand Strength + Logic Swing)**
+- [x] `MXMIDIQuantize.quantizeStarts` accepts strength 0…1 + swing 0…1 (odd 16ths)
+- [x] Capture commit uses session Strength / Swing; Settings sliders when Quantize on
+- [x] Clip inspector **Re-quantize MIDI** rewrites notes + audible bed
+- [x] Unit tests for strength 0/0.5, swing delay, empty
+
+### Week 52 — Volume automation lane lite ✅
+
+**Done when (Logic / Ableton volume automation lite)**
+- [x] `MXAutomationPoint` + `MXVolumeAutomation` linear interp; persisted on track
+- [x] Track header **A** toggles automation lane; tap add / drag move / tap-again delete
+- [x] Live playhead follows automation; bounce samples per-frame gain
+- [x] Unit tests for interp, upsert, move/remove
+
+**Week 52 notes:** Track-level only (not clip-relative). No pencil draw / pan automation yet.
+
+---
+
+## Month 14 — Award-app DAW depth *(Weeks 53–56)* **In progress**
+
+Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile, CapCut/Reels.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Done (MVP)** ✅ | BandLab / FL Mobile |
+| **54** | Clip-relative volume + pan automation; meet-in-middle fade clamp | **Planned** | Logic / Ableton |
+| **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Planned** | Cubasis / GarageBand |
+| **56** | Latency calibration UX + input monitoring polish | **Planned** | GarageBand / BandLab |
+
+### Week 53 — Step seq velocity + multi-bar + load from clip ✅
+
+**Done when (BandLab / FL Mobile)**
+- [x] Velocity grid `[[UInt8]]` (0=off, 1–127=on); cell opacity + vertical drag
+- [x] Pattern length 1 / 2 / 4 bars; `patternLengthBeats(bars:)` + resize
+- [x] **Load** from selected drums MIDI clip; **Add** advances playhead by pattern length
+- [x] Unit tests: multi-bar round-trip, velocity preserve, inferred bars, louder-wins
+
+**Week 53 notes:** 3-bar patterns via inferred load only (picker is 1/2/4). Step playback cursor deferred.
+
+**SOTA backlog (enter when spare capacity — improve what already ships)**
+- **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
+- **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
+- **Step seq:** Pattern library / copy-paste bars; live step cursor during playback
+- **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
+- **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual
+- **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
+- **Export:** Video + audio Reels export; loudness report sheet after bounce
+- **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
+- **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
+- **Figma parity:** Pixel-pass Create hub + After Record (`95:85026`) + Drum Midi (`95:88141`) once shell features settle
+
+**SOTA next (beyond Month 14)**
+- Nested takes × drum parts; SFZ kit choke
+- Pitch correction / time stretch / harmonies
+- Beat browser + video+audio Reels export
+- Cloud auth / social / AI beyond local MVP
+
+### Implementation notes (shared — Month 9)
 
 1. Prefer **one Studio shell** with `StudioPreset` / track `category` driving overlays (pedalboard, keyboard, drum pads, landscape `ViewThatFits` / size-class layouts).
 2. Ship **vertical slice per week** — UI + audio path — not all Figma variants in one PR.
 3. Reference apps: BandLab (pads + multi-track), GarageBand (keyboard, guitar amps, Quick), Logic (hide tracks density).
-4. Defer: full amp sims, pro piano roll, step sequencer, AUv3 hosting depth.
+4. Defer: full amp sims, pro piano roll depth, AUv3 hosting depth.
 
 ### Closed beta checklist
 
@@ -392,7 +714,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Phone-vocal / Reels quality
 - **HPF on take**
 - **Reels Vocal preset chain**
-- Noise gate / light denoise ✅ Week 27 bounce + Week 28 live/monitor expander (`syncMonitorNoiseGate`)
+- Noise gate / light denoise ✅ Week 27 bounce + Week 28 live/monitor expander (`syncMonitorChain` / vocal gate)
+- Wet guitar monitor ✅ Week 39 `MXMonitorGuitarFX` parallel pedalboard (dry DI write)
 - De-esser ✅ Week 28 (live EQ peaking ~6.5 kHz + bounce `MXBiquad`; Reels Vocal enables light amount)
 - Mono record default for vocals ✅ Week 27+ (`preferMonoVocalRecord` + `MXRecorder.preferMono`)
 - **Export loudness for Reels** ✅ Week 27 (−14 LUFS MVP)
@@ -400,8 +723,8 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 
 ### Later “wow”
 - Pitch correction, time stretch, harmonies
-- Stem export, video+audio Reels export
-- Beat browser / tempo detect from import
+- Stem export ✅ Week 47; video+audio Reels export
+- Beat browser; import tempo detect ✅ Week 48 lite (`MXTempoDetect`)
 
 ---
 
@@ -465,6 +788,12 @@ W1–4 Engine + project + record → clip     ← done (MVP)
             → W27–28 Arrangement + vocal polish ← done
               → W29 Checklist + loop clamp + comps ← done
                 → W30 Mixer strips + bounce FX parity ← done
+                  → W31–35 Instrument Studio sections ← done
+                    → W36–39 Arrangement depth ← done
+                      → W40–44 Drum depth + capture chrome ← done
+                        → W45–48 Quantize + fades + stems + tempo detect ← done
+                          → W49–52 Step seq + drag fades + swing + automation ← done
+                            → W53 velocity/multi-bar ✅ → W54–56 clip auto + piano roll + latency ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -484,6 +813,12 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 27–28 | Arrangement + vocal capture polish |
 | 29 | Quiet-room checklist + loop clamp + punch comps |
 | 30 | Mixer channel strips + bounce FX parity |
+| 31–35 | Guitar / Piano / Drum / Landscape Studio |
+| 36–39 | Arrangement depth (X-fades → playlist → meters → wet monitor) |
+| 40–44 | Drum part lanes + mute/solo + record chrome + timeline meters |
+| 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
+| 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
+| 53–56 | Step velocity / clip automation / piano-roll lite / latency UX |
 
 ---
 

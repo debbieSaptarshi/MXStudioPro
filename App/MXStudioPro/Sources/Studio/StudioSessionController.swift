@@ -28,6 +28,9 @@ public final class StudioSessionController {
     /// True while peak exceeds ~−1 dBFS (linear ≈ 0.89).
     public private(set) var isInputClipping = false
     public private(set) var peakHoldLevel: Float = 0
+    /// Per-track playback peak 0…1 (post-volume estimate from player taps).
+    public private(set) var trackPlaybackLevels: [UUID: Float] = [:]
+    public private(set) var trackPlaybackPeakHolds: [UUID: Float] = [:]
     public private(set) var showClipWarning = false
     public private(set) var headphoneTip: String?
     /// First-record quiet-room checklist (GarageBand / BandLab-style onboarding).
@@ -46,6 +49,9 @@ public final class StudioSessionController {
     public private(set) var playheadTimeLabel: String = "00:00.0"
     public private(set) var bpm: Double = 120
     public private(set) var musicalKey: String = "Cmaj"
+    /// Last BPM estimated from an imported audio file (Week 48). `nil` until a
+    /// confident detect succeeds; not persisted.
+    public private(set) var lastDetectedBPM: Double?
 
     /// Vocal “Cut rumble” — 100 Hz HPF on clip playback path. On by default.
     public var isHighPassEnabled: Bool = true {
@@ -54,13 +60,26 @@ public final class StudioSessionController {
 
     public var isMonitoringEnabled: Bool = false {
         didSet {
+            // Sync topology (guitar wet vs vocal dry) before attaching monitor path.
+            syncMonitorChain()
             recorder?.isMonitoringEnabled = isMonitoringEnabled
-            syncMonitorNoiseGate()
         }
     }
 
     /// Snap move/trim/loop edits to 16th-note grid. Session preference (not persisted).
     public var isSnapEnabled: Bool = true
+
+    /// Snap MIDI note starts to 16ths when committing a pad/keys performance.
+    /// Session preference (not persisted). Independent of arrange `isSnapEnabled`.
+    public var isMIDIQuantizeEnabled: Bool = true
+    /// GarageBand-style quantize strength 0…1 (blend original → grid). Default full snap.
+    public var midiQuantizeStrength: Double = 1 {
+        didSet { midiQuantizeStrength = min(1, max(0, midiQuantizeStrength)) }
+    }
+    /// Logic-style swing 0…1 applied to odd 16ths when quantizing. Default straight.
+    public var midiQuantizeSwing: Double = 0 {
+        didSet { midiQuantizeSwing = min(1, max(0, midiQuantizeSwing)) }
+    }
 
     /// Prefer mono capture when recording on a vocal-category armed track.
     /// Session preference (not persisted). Guitar / import paths leave this unused.
@@ -112,9 +131,14 @@ public final class StudioSessionController {
     public private(set) var graph: MXGraph?
     public private(set) var transport: MXTransport?
 
-    /// True when the armed track is MIDI — drives piano keyboard visibility.
+    /// True when the armed track is keys MIDI — drives Virtual Piano visibility.
     public var showsPianoKeyboard: Bool {
-        armedTrack?.kind == .midi
+        armedTrack?.kind == .midi && armedTrack?.category == .keys
+    }
+
+    /// True when the armed track is drums — drives DrumPad surface visibility.
+    public var showsDrumPads: Bool {
+        armedTrack?.kind == .midi && armedTrack?.category == .drums
     }
 
     /// True when the armed track can accept microphone recording.
@@ -134,6 +158,10 @@ public final class StudioSessionController {
     private var playheadObserver: MXPlayheadObserver?
     private var countInTask: Task<Void, Never>?
     private var meterTask: Task<Void, Never>?
+    private var playbackMeterTask: Task<Void, Never>?
+    /// Updated from audio taps (may be off-main).
+    nonisolated(unsafe) private var clipMeterPeaks: [UUID: Float] = [:]
+    nonisolated(unsafe) private let clipMeterLock = NSLock()
     private var wasPlayingBeforeInterruption = false
     private var autosaveTask: Task<Void, Never>?
     private var clipPlayers: [UUID: AVAudioPlayerNode] = [:]
@@ -152,6 +180,11 @@ public final class StudioSessionController {
     private var recordingStartSample: Int64?
     /// True when record started while transport was already playing (punch-in).
     private var isPunchInRecording = false
+    /// Open MIDI note-ons captured while transport is playing (Piano Studio performance capture).
+    private var pendingMIDINoteOns: [UInt8: (startBeat: Double, velocity: UInt8, trackID: UUID)] = [:]
+    /// Completed MIDI notes waiting to be committed into a clip on stop/pause.
+    private var pendingMIDINotes: [MXMIDINote] = []
+    private var pendingMIDITrackID: UUID?
     private var editStack = StudioEditStack()
     private var clipWarningClearTask: Task<Void, Never>?
     /// Last playhead sample from the observer — used to detect loop wraps.
@@ -183,6 +216,17 @@ public final class StudioSessionController {
             project = existing
         } else if preset == .midi {
             project = (try? MXProjectStore.shared.createMIDIProject()) ?? .untitledMIDI()
+        } else if preset == .drums, let existing = MXProjectStore.shared.loadLastOpened(), existing.preset == .drums {
+            project = existing
+        } else if preset == .drums {
+            project = (try? MXProjectStore.shared.createDrumsProject()) ?? .untitledDrums()
+        } else if preset == .quickRecord {
+            // Fresh vocal project each Quick Recording — GarageBand Quick / BandLab capture.
+            var quick = (try? MXProjectStore.shared.createVocalProject()) ?? .untitledVocal()
+            quick.name = "Quick Recording"
+            quick.presetRaw = StudioPreset.quickRecord.rawValue
+            try? MXProjectStore.shared.save(quick)
+            project = quick
         } else {
             project = MXProject(name: "Untitled \(preset.title)", tracks: [
                 MXSessionTrack(name: "Track 1", kind: .audio, isArmed: true)
@@ -271,6 +315,11 @@ public final class StudioSessionController {
             }
             playheadObserver = observer
             persistSoon()
+
+            // Quick Recording: land on Record Vocal chrome immediately (Figma 96:58733).
+            if preset == .quickRecord {
+                enterRecordMode()
+            }
         } catch {
             phase = .failed(error.localizedDescription)
         }
@@ -287,6 +336,7 @@ public final class StudioSessionController {
         countInTask = nil
         meterTask?.cancel()
         meterTask = nil
+        stopPlaybackMeterPolling()
         autosaveTask?.cancel()
         autosaveTask = nil
         if isRecording {
@@ -330,6 +380,7 @@ public final class StudioSessionController {
         isInterrupted = false
         isRecordMode = false
         inputLevel = 0
+        zeroPlaybackMeters()
         phase = .idle
     }
 
@@ -352,17 +403,26 @@ public final class StudioSessionController {
         countInTask?.cancel()
         countInTask = nil
         isCountingIn = false
+        commitMIDIPerformanceCapture()
         stopClipPlayers()
         transport?.stopAndReturn()
         transport?.seek(toSample: 0)
         metronome?.resetCursor(toSample: 0)
         metronome?.prepareSchedule(fromSample: 0)
         isPlaying = false
+        stopPlaybackMeterPolling()
+        zeroPlaybackMeters()
         playheadBeat = 0
         playheadBar = 1
         playheadBeatInBar = 1
         playheadLabel = "001 Bar / 1 Beat"
         playheadTimeLabel = "00:00.0"
+    }
+
+    /// Ensure playback strip meters poll while mixer is open during play.
+    public func ensurePlaybackMetersRunning() {
+        guard isPlaying else { return }
+        startPlaybackMeterPolling()
     }
 
     // MARK: - Record
@@ -465,9 +525,13 @@ public final class StudioSessionController {
                         }
                     }
                 }
+                // Cold Rec: still schedule other tracks so overdub demos hear FX beds
+                // (BandLab / GarageBand overdub path).
                 transport.record(fromSample: punchSample)
+                scheduleClipPlayers(fromSample: punchSample)
             }
             isPlaying = true
+            startPlaybackMeterPolling()
         } catch {
             isRecording = false
             isPunchInRecording = false
@@ -496,6 +560,8 @@ public final class StudioSessionController {
             isPlaying = false
             isRecording = false
             inputLevel = 0
+            stopPlaybackMeterPolling()
+            zeroPlaybackMeters()
 
             let punchBeat = recordingStartBeat
             let punchSample = recordingStartSample ?? take.startSample
@@ -548,7 +614,8 @@ public final class StudioSessionController {
             if let index = project.tracks.firstIndex(where: { $0.id == trackID }) {
                 // Playlist / crossfade comps lite (Logic punch comps):
                 // split overlapping ACTIVE takes into before/after, keep them
-                // audible outside the punch, and apply ~12 ms abut fades.
+                // audible outside the punch, and apply ~12 ms overlapping
+                // equal-power X-fades.
                 applyPunchCompLite(punch: &committed, trackIndex: index, transport: transport)
                 project.tracks[index].clips.append(committed)
             }
@@ -583,7 +650,7 @@ public final class StudioSessionController {
         }
     }
 
-    /// Split overlapping active takes around a punch clip and suggest abut crossfades.
+    /// Split overlapping active takes around a punch clip with overlapping equal-power X-fades.
     private func applyPunchCompLite(punch: inout MXClip, trackIndex: Int, transport: MXTransport) {
         let punchStart = punch.startBeat
         let punchEnd = punch.startBeat + punch.lengthBeats
@@ -679,8 +746,15 @@ public final class StudioSessionController {
 
     public private(set) var trackLimitMessage: String?
 
+    /// Transient banner after import tempo detect (Week 48+).
+    public private(set) var tempoDetectMessage: String?
+
     public func dismissTrackLimitMessage() {
         trackLimitMessage = nil
+    }
+
+    public func dismissTempoDetectMessage() {
+        tempoDetectMessage = nil
     }
 
     /// Append an empty Vocals/Audio track and arm it (BandLab-style).
@@ -710,16 +784,17 @@ public final class StudioSessionController {
         }
         let guitarIndex = project.tracks.filter { $0.category == .guitar }.count + 1
         let trackName = name ?? (guitarIndex == 1 ? "Guitar" : "Guitar \(guitarIndex)")
+        let seed = MXGuitarPedalPreset.trackSeed
         let track = MXSessionTrack(
             name: trackName,
             kind: .audio,
             category: .guitar,
             isArmed: true,
-            reverbMix: 18,
-            eqMidGain: 1.5,
-            delayMix: 20,
-            delayTime: 0.32,
-            distortionMix: 35
+            reverbMix: seed.reverbMix,
+            eqMidGain: seed.eqMidGain,
+            delayMix: seed.delayMix,
+            delayTime: seed.delayTime,
+            distortionMix: seed.distortionMix
         )
         for i in project.tracks.indices {
             project.tracks[i].isArmed = false
@@ -736,9 +811,47 @@ public final class StudioSessionController {
             trackLimitMessage = "Track limit reached (\(Self.maxTracks))"
             return nil
         }
-        let keysIndex = project.tracks.filter { $0.kind == .midi }.count + 1
+        let keysIndex = project.tracks.filter { $0.category == .keys }.count + 1
         let trackName = name ?? (keysIndex == 1 ? "Piano" : "Piano \(keysIndex)")
-        let track = MXSessionTrack(name: trackName, kind: .midi, category: .keys, isArmed: true)
+        let track = MXSessionTrack(
+            name: trackName,
+            kind: .midi,
+            category: .keys,
+            isArmed: true,
+            reverbMix: 14,
+            reverbSend: 20,
+            synthBankPresetID: MXSynthBankPreset.trackSeed.rawValue
+        )
+        for i in project.tracks.indices {
+            project.tracks[i].isArmed = false
+        }
+        project.tracks.append(track)
+        if let graph {
+            _ = ensureReverbAux(on: graph)
+            attachMIDIInstrument(for: track.id, name: track.name)
+        }
+        persistSoon()
+        return track
+    }
+
+    /// Append a MIDI drums track with Drum Kit patch and arm it.
+    @discardableResult
+    public func addDrumTrack(named name: String? = nil) -> MXSessionTrack? {
+        guard canAddTrack else {
+            trackLimitMessage = "Track limit reached (\(Self.maxTracks))"
+            return nil
+        }
+        let drumIndex = project.tracks.filter { $0.category == .drums }.count + 1
+        let trackName = name ?? (drumIndex == 1 ? "Drums" : "Drums \(drumIndex)")
+        let track = MXSessionTrack(
+            name: trackName,
+            kind: .midi,
+            category: .drums,
+            isArmed: true,
+            reverbMix: 8,
+            reverbSend: 12,
+            synthBankPresetID: MXSynthBankPreset.drumKit.rawValue
+        )
         for i in project.tracks.indices {
             project.tracks[i].isArmed = false
         }
@@ -803,6 +916,14 @@ public final class StudioSessionController {
         }
         try FileManager.default.copyItem(at: sourceURL, to: destURL)
 
+        // Week 48 — estimate BPM before placing the clip so lengthBeats matches
+        // the (possibly updated) project tempo. Failure is non-fatal.
+        if let detected = Self.estimateImportBPM(from: destURL) {
+            lastDetectedBPM = detected
+            setBPM(detected)
+            tempoDetectMessage = "Tempo set to \(Int(detected.rounded())) BPM from import"
+        }
+
         let lengthBeats: Double
         if let transport {
             let endBeat = transport.tempoMap.beat(
@@ -840,6 +961,51 @@ public final class StudioSessionController {
         selectedClipID = clip.id
         persistNow()
         return track
+    }
+
+    /// Read mono PCM from an imported file and run `MXTempoDetect` (Week 48).
+    /// Returns `nil` on I/O failure, silence, or low-confidence estimates.
+    private static func estimateImportBPM(from url: URL, maxSeconds: Double = 20) -> Double? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let format = file.processingFormat
+        let sampleRate = format.sampleRate
+        guard sampleRate > 0 else { return nil }
+
+        let maxFrames = min(file.length, AVAudioFramePosition((maxSeconds * sampleRate).rounded()))
+        guard maxFrames > 0,
+              let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(maxFrames)
+              )
+        else { return nil }
+
+        do {
+            try file.read(into: buffer, frameCount: AVAudioFrameCount(maxFrames))
+        } catch {
+            return nil
+        }
+
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0, let channels = buffer.floatChannelData else { return nil }
+
+        let channelCount = Int(format.channelCount)
+        var mono = [Float](repeating: 0, count: frameCount)
+        if channelCount <= 1 {
+            for i in 0..<frameCount {
+                mono[i] = channels[0][i]
+            }
+        } else {
+            let scale = 1 / Float(channelCount)
+            for i in 0..<frameCount {
+                var sum: Float = 0
+                for c in 0..<channelCount {
+                    sum += channels[c][i]
+                }
+                mono[i] = sum * scale
+            }
+        }
+
+        return MXTempoDetect.estimateBPM(mono: mono, sampleRate: sampleRate)
     }
 
     /// Import a stub AI-generated clip into the current project (Week 18).
@@ -905,6 +1071,7 @@ public final class StudioSessionController {
         let wasPlaying = transport?.isPlaying == true
         if wasPlaying { pausePlayback() }
         rebuildPlayers(for: previous)
+        refreshAllDrumAudibleBeds()
         syncTransportLoop()
         canUndo = editStack.canUndo
         canRedo = editStack.canRedo
@@ -917,6 +1084,7 @@ public final class StudioSessionController {
         let wasPlaying = transport?.isPlaying == true
         if wasPlaying { pausePlayback() }
         rebuildPlayers(for: next)
+        refreshAllDrumAudibleBeds()
         syncTransportLoop()
         canUndo = editStack.canUndo
         canRedo = editStack.canRedo
@@ -965,10 +1133,16 @@ public final class StudioSessionController {
         }
     }
 
-    /// Clips on a track that participate in take picking (2+ clips).
+    /// One representative clip per distinct `takeIndex` for take menus / playlist folders.
+    /// Prefers an active piece when present; otherwise the earliest clip by `startBeat`. Sorted by takeIndex.
     public func takes(onTrackID trackID: UUID) -> [MXClip] {
         guard let track = project.tracks.first(where: { $0.id == trackID }) else { return [] }
-        return track.clips.sorted { $0.takeIndex < $1.takeIndex }
+        let grouped = Dictionary(grouping: track.clips, by: \.takeIndex)
+        return grouped.keys.sorted().compactMap { index in
+            guard let clips = grouped[index], !clips.isEmpty else { return nil }
+            if let active = clips.first(where: \.isActive) { return active }
+            return clips.sorted { $0.startBeat < $1.startBeat }.first
+        }
     }
 
     public func moveSelectedClip(byBeats delta: Double) {
@@ -1043,7 +1217,7 @@ public final class StudioSessionController {
     /// Snap to 16th-note grid when `isSnapEnabled`; otherwise pass through.
     private func snapBeat(_ beat: Double) -> Double {
         guard isSnapEnabled else { return beat }
-        return (beat * 4).rounded() / 4
+        return MXMIDIQuantize.snapBeat(beat)
     }
 
     /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
@@ -1058,7 +1232,8 @@ public final class StudioSessionController {
             scheduleClipPlayers(fromSample: sample)
         } else if let player = clipPlayers[clipID],
                   let track = project.tracks.first(where: { $0.id == clip.trackID }) {
-            player.volume = track.volume * clip.gain
+            let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            player.volume = track.volume * clip.gain * auto
         }
     }
 
@@ -1074,22 +1249,20 @@ public final class StudioSessionController {
         } else {
             audible = clip.lengthBeats * 60.0 / max(project.bpm, 1)
         }
-        var changed = false
+        var nextIn = clip.fadeInSeconds
+        var nextOut = clip.fadeOutSeconds
         if let fadeIn = fadeInSeconds {
-            let next = min(max(0, fadeIn), max(0, audible))
-            if abs(next - clip.fadeInSeconds) > 1e-4 {
-                clip.fadeInSeconds = next
-                changed = true
-            }
+            nextIn = min(max(0, fadeIn), max(0, audible))
         }
         if let fadeOut = fadeOutSeconds {
-            let next = min(max(0, fadeOut), max(0, audible))
-            if abs(next - clip.fadeOutSeconds) > 1e-4 {
-                clip.fadeOutSeconds = next
-                changed = true
-            }
+            nextOut = min(max(0, fadeOut), max(0, audible))
         }
+        let changed =
+            abs(nextIn - clip.fadeInSeconds) > 1e-4 || abs(nextOut - clip.fadeOutSeconds) > 1e-4
         guard changed else { return }
+        pushUndoSnapshot()
+        clip.fadeInSeconds = nextIn
+        clip.fadeOutSeconds = nextOut
         replaceClip(clip)
         persistSoon()
         if transport?.isPlaying == true, let sample = transport?.currentSample {
@@ -1154,6 +1327,42 @@ public final class StudioSessionController {
         persistSoon()
     }
 
+    /// BandLab-style kit-part mute: silence Kick/Snare/Hats… without deleting notes.
+    public func toggleDrumPartMute(trackID: UUID, part: MXDrumPart) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].category == .drums else { return }
+        let key = part.rawValue
+        if project.tracks[index].mutedDrumParts.contains(key) {
+            project.tracks[index].mutedDrumParts.remove(key)
+        } else {
+            project.tracks[index].mutedDrumParts.insert(key)
+        }
+        refreshDrumAudibleBeds(trackID: trackID)
+        persistSoon()
+    }
+
+    /// BandLab-style kit-part solo: when any parts are soloed, only those play.
+    public func toggleDrumPartSolo(trackID: UUID, part: MXDrumPart) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].category == .drums else { return }
+        let key = part.rawValue
+        if project.tracks[index].soloedDrumParts.contains(key) {
+            project.tracks[index].soloedDrumParts.remove(key)
+        } else {
+            project.tracks[index].soloedDrumParts.insert(key)
+        }
+        refreshDrumAudibleBeds(trackID: trackID)
+        persistSoon()
+    }
+
+    public func isDrumPartMuted(trackID: UUID, part: MXDrumPart) -> Bool {
+        project.tracks.first(where: { $0.id == trackID })?.isDrumPartMuted(part) ?? false
+    }
+
+    public func isDrumPartSoloed(trackID: UUID, part: MXDrumPart) -> Bool {
+        project.tracks.first(where: { $0.id == trackID })?.isDrumPartSoloed(part) ?? false
+    }
+
     public func toggleSolo(trackID: UUID) {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].isSolo.toggle()
@@ -1179,6 +1388,7 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].reverbMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1222,6 +1432,7 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].eqMidGain = min(max(gain, -12), 12)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1232,6 +1443,7 @@ public final class StudioSessionController {
             project.tracks[index].delayTime = min(max(time, 0.01), 1)
         }
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
     }
 
@@ -1239,7 +1451,39 @@ public final class StudioSessionController {
         guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
         project.tracks[index].distortionMix = min(max(mix, 0), 100)
         applyTrackFX(trackID: trackID)
+        syncMonitorChain()
         persistSoon()
+    }
+
+    /// Apply a named guitar pedalboard preset (Figma Select Guitar Effect / BandLab amp path).
+    public func applyGuitarPedalPreset(_ preset: MXGuitarPedalPreset, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        let track = project.tracks[index]
+        guard track.category == .guitar else { return }
+        project.tracks[index].distortionMix = preset.distortionMix
+        project.tracks[index].delayMix = preset.delayMix
+        project.tracks[index].delayTime = preset.delayTime
+        project.tracks[index].reverbMix = preset.reverbMix
+        project.tracks[index].eqMidGain = preset.eqMidGain
+        applyTrackFX(trackID: trackID)
+        syncMonitorChain()
+        persistSoon()
+    }
+
+    /// Which named preset (if any) matches the track's current Dist/Delay/Rev/Tone mixes.
+    public func matchingGuitarPedalPreset(for trackID: UUID) -> MXGuitarPedalPreset? {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              track.category == .guitar
+        else { return nil }
+        return MXGuitarPedalPreset.allCases.first {
+            $0.matches(
+                distortionMix: track.distortionMix,
+                delayMix: track.delayMix,
+                delayTime: track.delayTime,
+                reverbMix: track.reverbMix,
+                eqMidGain: track.eqMidGain
+            )
+        }
     }
 
     public func setNoiseGateEnabled(_ enabled: Bool, trackID: UUID) {
@@ -1348,24 +1592,332 @@ public final class StudioSessionController {
 
     public func noteOn(_ note: UInt8, velocity: UInt8 = 100) {
         activeMIDIInstrument()?.noteOn(note, velocity: velocity)
+        captureMIDINoteOn(note, velocity: velocity)
     }
 
     public func noteOff(_ note: UInt8) {
         activeMIDIInstrument()?.noteOff(note)
+        captureMIDINoteOff(note)
+    }
+
+    /// Audition a kit hit without performance capture (step-sequencer cell preview).
+    public func previewNote(_ note: UInt8, velocity: UInt8 = 100) {
+        guard let instrument = activeMIDIInstrument() else { return }
+        instrument.noteOn(note, velocity: velocity)
+        // Hold briefly so the drum envelope can speak (immediate noteOff is silent).
+        let held = note
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            instrument.noteOff(held)
+        }
     }
 
     public func allNotesOff() {
         activeMIDIInstrument()?.allNotesOff()
+        // Close any open capture notes at the current playhead.
+        for note in Array(pendingMIDINoteOns.keys) {
+            captureMIDINoteOff(note)
+        }
+    }
+
+    /// Load a named synth bank preset onto a MIDI / keys track (Piano FX sheet).
+    public func loadSynthBankPreset(_ bank: MXSynthBankPreset, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].kind == .midi else { return }
+        project.tracks[index].synthBankPresetID = bank.rawValue
+        persistSoon()
+        guard let synth = liveInstruments[trackID] else { return }
+        Task {
+            try? await synth.load(.synthPreset(bank.preset))
+        }
+    }
+
+    public func synthBankPreset(for trackID: UUID) -> MXSynthBankPreset {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              let id = track.synthBankPresetID,
+              let bank = MXSynthBankPreset(rawValue: id)
+        else { return .trackSeed }
+        return bank
+    }
+
+    private func activeMIDITrackID() -> UUID? {
+        if let armed = armedTrack, armed.kind == .midi { return armed.id }
+        return project.tracks.first(where: { $0.kind == .midi })?.id
     }
 
     private func activeMIDIInstrument() -> (any MXInstrument)? {
-        if let armed = armedTrack, armed.kind == .midi {
-            return liveInstruments[armed.id]
-        }
-        if let firstMIDI = project.tracks.first(where: { $0.kind == .midi }) {
-            return liveInstruments[firstMIDI.id]
+        if let id = activeMIDITrackID() {
+            return liveInstruments[id]
         }
         return nil
+    }
+
+    /// While transport plays, keys performances are captured into a MIDI clip on stop/pause.
+    private func captureMIDINoteOn(_ note: UInt8, velocity: UInt8) {
+        guard isPlaying, !isRecording, let trackID = activeMIDITrackID() else { return }
+        // Retrigger: close prior note of same pitch.
+        if pendingMIDINoteOns[note] != nil {
+            captureMIDINoteOff(note)
+        }
+        pendingMIDINoteOns[note] = (startBeat: playheadBeat, velocity: max(1, velocity), trackID: trackID)
+        pendingMIDITrackID = trackID
+    }
+
+    private func captureMIDINoteOff(_ note: UInt8) {
+        guard let open = pendingMIDINoteOns.removeValue(forKey: note) else { return }
+        let endBeat = max(open.startBeat + 0.0625, playheadBeat)
+        let length = endBeat - open.startBeat
+        pendingMIDINotes.append(
+            MXMIDINote(
+                note: note,
+                velocity: open.velocity,
+                startBeat: open.startBeat,
+                lengthBeats: length
+            )
+        )
+        pendingMIDITrackID = open.trackID
+    }
+
+    /// Render captured notes to a WAV bed and place an `MXClip` on the MIDI track.
+    private func commitMIDIPerformanceCapture() {
+        // Close still-held notes at the current playhead before committing.
+        for note in Array(pendingMIDINoteOns.keys) {
+            captureMIDINoteOff(note)
+        }
+        var notes = pendingMIDINotes
+        let trackID = pendingMIDITrackID
+        pendingMIDINotes.removeAll()
+        pendingMIDITrackID = nil
+        pendingMIDINoteOns.removeAll()
+        guard let trackID, !notes.isEmpty,
+              let trackIndex = project.tracks.firstIndex(where: { $0.id == trackID })
+        else { return }
+
+        // Quantize absolute starts so the clip lands on the grid (GarageBand-style).
+        if isMIDIQuantizeEnabled {
+            notes = MXMIDIQuantize.quantizeStarts(
+                notes,
+                strength: midiQuantizeStrength,
+                swing: midiQuantizeSwing
+            )
+        }
+
+        let startBeat = notes.map(\.startBeat).min() ?? 0
+        let endBeat = notes.map(\.endBeat).max() ?? startBeat
+        // Shift notes so the clip-local timeline starts at 0.
+        let localNotes = notes.map {
+            MXMIDINote(
+                id: $0.id,
+                note: $0.note,
+                velocity: $0.velocity,
+                startBeat: max(0, $0.startBeat - startBeat),
+                lengthBeats: $0.lengthBeats
+            )
+        }
+        let lengthBeats = max(0.25, endBeat - startBeat)
+        let bank = synthBankPreset(for: trackID)
+        let isDrums = project.tracks[trackIndex].category == .drums
+        let mutedParts = isDrums ? project.tracks[trackIndex].mutedDrumPartSet : []
+        let soloedParts = isDrums ? project.tracks[trackIndex].soloedDrumPartSet : []
+        let audibleNotes = isDrums
+            ? localNotes.audibleDrumNotes(muted: mutedParts, soloed: soloedParts)
+            : localNotes
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let filePrefix = isDrums ? "drums" : "keys"
+        let fileName = "\(filePrefix)_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            try renderMIDIAudibleBed(
+                notes: audibleNotes,
+                to: url,
+                preset: bank.preset,
+                lengthBeats: lengthBeats
+            )
+        } catch {
+            let label = isDrums ? "Drums" : "Keys"
+            recordError = "\(label) capture failed: \(error.localizedDescription)"
+            return
+        }
+
+        pushUndoSnapshot()
+        let clipLabel = isDrums ? "Drums" : "Keys"
+        let clip = MXClip(
+            trackID: trackID,
+            name: "\(clipLabel) \(project.tracks[trackIndex].clips.count + 1)",
+            startBeat: startBeat,
+            lengthBeats: lengthBeats,
+            audioFileName: fileName,
+            sourceDurationSeconds: lengthBeats * 60.0 / max(bpm, 1),
+            midiNotes: localNotes
+        )
+        project.tracks[trackIndex].clips.append(clip)
+        attachPlayer(for: clip)
+        selectedClipID = clip.id
+        persistSoon()
+    }
+
+    /// Place a BandLab-style step-sequencer pattern as a MIDI clip on the armed drums track.
+    ///
+    /// Notes are clip-local (bar starts at 0). The clip is anchored at `playheadBeat`
+    /// (snapped when arrange snap is on). Empty grids are no-ops.
+    /// After a successful place, the playhead advances by the pattern length (BandLab).
+    @discardableResult
+    public func commitDrumStepPattern(_ velocityGrid: [[UInt8]], bars: Int = 1) -> UUID? {
+        let barCount = MXDrumStepSequencer.clampBars(bars)
+        guard MXDrumStepSequencer.hasHits(velocityGrid) else { return nil }
+        let trackID = activeMIDITrackID()
+            ?? project.tracks.first(where: { $0.category == .drums })?.id
+        guard let trackID,
+              let trackIndex = project.tracks.firstIndex(where: { $0.id == trackID }),
+              project.tracks[trackIndex].kind == .midi,
+              project.tracks[trackIndex].category == .drums
+        else {
+            recordError = "Arm a Drums track to place a step pattern."
+            return nil
+        }
+
+        let localNotes = MXDrumStepSequencer.notes(fromVelocityGrid: velocityGrid, bars: barCount)
+        guard !localNotes.isEmpty else { return nil }
+
+        let lengthBeats = MXDrumStepSequencer.patternLengthBeats(bars: barCount)
+        let startBeat = snapBeat(playheadBeat)
+        let bank = synthBankPreset(for: trackID)
+        let mutedParts = project.tracks[trackIndex].mutedDrumPartSet
+        let soloedParts = project.tracks[trackIndex].soloedDrumPartSet
+        let audibleNotes = localNotes.audibleDrumNotes(muted: mutedParts, soloed: soloedParts)
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let fileName = "drums_steps_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            try renderMIDIAudibleBed(
+                notes: audibleNotes,
+                to: url,
+                preset: bank.preset,
+                lengthBeats: lengthBeats
+            )
+        } catch {
+            recordError = "Step pattern failed: \(error.localizedDescription)"
+            return nil
+        }
+
+        pushUndoSnapshot()
+        let clip = MXClip(
+            trackID: trackID,
+            name: "Steps \(project.tracks[trackIndex].clips.count + 1)",
+            startBeat: startBeat,
+            lengthBeats: lengthBeats,
+            audioFileName: fileName,
+            sourceDurationSeconds: lengthBeats * 60.0 / max(bpm, 1),
+            midiNotes: localNotes
+        )
+        project.tracks[trackIndex].clips.append(clip)
+        attachPlayer(for: clip)
+        selectedClipID = clip.id
+        persistSoon()
+        // Advance playhead so the next Add doesn't stack on the same beat.
+        seek(toBeat: startBeat + lengthBeats)
+        return clip.id
+    }
+
+    /// Week 49 boolean-grid overload.
+    @discardableResult
+    public func commitDrumStepPattern(_ grid: [[Bool]]) -> UUID? {
+        commitDrumStepPattern(
+            MXDrumStepSequencer.velocityGrid(fromBool: grid),
+            bars: 1
+        )
+    }
+
+    /// Load the selected drums MIDI clip into a velocity grid + bar count (Week 53).
+    /// Returns `nil` when nothing suitable is selected.
+    public func loadDrumStepPatternFromSelectedClip() -> (grid: [[UInt8]], bars: Int)? {
+        guard let id = selectedClipID, let clip = clip(id) else { return nil }
+        guard !clip.midiNotes.isEmpty else { return nil }
+        guard let track = project.tracks.first(where: { $0.id == clip.trackID }),
+              track.kind == .midi,
+              track.category == .drums
+        else { return nil }
+        // Prefer clip length so sparse hits in a long clip keep trailing empty bars.
+        let fromLength = Int(ceil(max(clip.lengthBeats, 0.25) / 4.0))
+        let fromNotes = MXDrumStepSequencer.inferredBarCount(from: clip.midiNotes)
+        let bars = MXDrumStepSequencer.clampBars(max(fromLength, fromNotes))
+        let grid = MXDrumStepSequencer.velocityGrid(from: clip.midiNotes, bars: bars)
+        guard MXDrumStepSequencer.hasHits(grid) else { return nil }
+        return (grid, bars)
+    }
+
+    /// Whether the selected clip can feed the drum step sequencer.
+    public var canLoadDrumStepPatternFromSelectedClip: Bool {
+        loadDrumStepPatternFromSelectedClip() != nil
+    }
+
+    /// Re-apply capture quantize settings to the selected MIDI clip (Logic Quantize).
+    /// Updates `midiNotes`, re-renders the audible WAV bed, and keeps length/start.
+    @discardableResult
+    public func requantizeSelectedMIDIClip() -> Bool {
+        guard let id = selectedClipID, var clip = clip(id) else { return false }
+        guard !clip.midiNotes.isEmpty else { return false }
+        guard let trackIndex = project.tracks.firstIndex(where: { $0.id == clip.trackID }),
+              project.tracks[trackIndex].kind == .midi
+        else { return false }
+
+        let quantized = MXMIDIQuantize.quantizeStarts(
+            clip.midiNotes,
+            strength: midiQuantizeStrength,
+            swing: midiQuantizeSwing
+        )
+        let identical = zip(clip.midiNotes, quantized).allSatisfy {
+            abs($0.startBeat - $1.startBeat) < 1e-9
+                && abs($0.lengthBeats - $1.lengthBeats) < 1e-9
+        }
+        guard !identical else { return false }
+
+        pushUndoSnapshot()
+        clip.midiNotes = quantized
+        // Expand length if swing pushes a note past the clip end.
+        let endBeat = quantized.map(\.endBeat).max() ?? clip.lengthBeats
+        if endBeat > clip.lengthBeats {
+            clip.lengthBeats = endBeat
+            clip.sourceDurationSeconds = endBeat * 60.0 / max(bpm, 1)
+        }
+
+        let bank = synthBankPreset(for: clip.trackID)
+        let isDrums = project.tracks[trackIndex].category == .drums
+        let audible: [MXMIDINote]
+        if isDrums {
+            audible = quantized.audibleDrumNotes(
+                muted: project.tracks[trackIndex].mutedDrumPartSet,
+                soloed: project.tracks[trackIndex].soloedDrumPartSet
+            )
+        } else {
+            audible = quantized
+        }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let prefix = isDrums ? "drums" : "keys"
+        let fileName = "\(prefix)_q_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            stopClipPlayers()
+            try renderMIDIAudibleBed(
+                notes: audible,
+                to: url,
+                preset: bank.preset,
+                lengthBeats: clip.lengthBeats
+            )
+            clip.audioFileName = fileName
+        } catch {
+            recordError = "Quantize failed: \(error.localizedDescription)"
+            return false
+        }
+
+        replaceClip(clip)
+        attachPlayer(for: clip)
+        persistSoon()
+        if isPlaying, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+        return true
     }
 
     @discardableResult
@@ -1382,10 +1934,13 @@ public final class StudioSessionController {
         guard project.tracks.first(where: { $0.id == trackID })?.kind == .midi else { return }
         guard instrumentChains[trackID] == nil else { return }
 
-        let synth = MXSynthBackend(displayName: name, sampleRate: graph.sampleRate)
+        let bank = synthBankPreset(for: trackID)
+        let synth = MXSynthBackend(displayName: bank.preset.name, sampleRate: graph.sampleRate)
         liveInstruments[trackID] = synth
         let chain = graph.addTrack(name: name, instrument: synth)
         instrumentChains[trackID] = chain
+        // Post-fader peak on track mixer for live MIDI strip meters.
+        installPlaybackMeterTap(on: chain.trackMixer, meterID: trackID)
 
         if let track = project.tracks.first(where: { $0.id == trackID }) {
             let aux = ensureReverbAux(on: graph)
@@ -1394,7 +1949,7 @@ public final class StudioSessionController {
         syncLiveInstrumentMix()
 
         Task { [weak self] in
-            try? await synth.load(.synthPreset(.synthwave1974))
+            try? await synth.load(.synthPreset(bank.preset))
             await MainActor.run {
                 self?.syncLiveInstrumentMix()
             }
@@ -1406,7 +1961,9 @@ public final class StudioSessionController {
             instrument.allNotesOff()
         }
         if let graph {
-            for chain in instrumentChains.values {
+            for (trackID, chain) in instrumentChains {
+                chain.trackMixer.removeTap(onBus: 0)
+                clearClipMeterPeak(trackID)
                 graph.removeTrack(id: chain.id)
             }
         }
@@ -1549,9 +2106,107 @@ public final class StudioSessionController {
         return result
     }
 
+    /// Bounce each track to its own WAV + M4A stem set (ignores mute/solo).
+    public func bounceStems(
+        normalize: Bool = true,
+        loudnessMode: StudioBounceExporter.LoudnessMode = .peakNormalize
+    ) async throws -> StudioBounceExporter.StemsResult {
+        guard !isExporting else {
+            throw StudioBounceExporter.BounceError.writeFailed("Export already in progress")
+        }
+        isExporting = true
+        exportError = nil
+        defer { isExporting = false }
+
+        persistNow()
+        let snapshot = project
+        let audioDir = MXProjectStore.shared.audioDirectory(for: snapshot.id)
+        let exportDir = MXProjectStore.shared.exportsDirectory(for: snapshot.id)
+        let mode = loudnessMode
+        let highPass = isHighPassEnabled
+
+        let result = try await Task.detached(priority: .userInitiated) {
+            try StudioBounceExporter.bounceStems(
+                project: snapshot,
+                audioDirectory: audioDir,
+                outputDirectory: exportDir,
+                normalize: normalize,
+                loudnessMode: mode,
+                highPassEnabled: highPass
+            )
+        }.value
+
+        lastExportURLs = result.allURLs
+        return result
+    }
+
     public func audioURL(for clip: MXClip) -> URL? {
         guard let name = clip.audioFileName else { return nil }
         return MXProjectStore.shared.audioDirectory(for: project.id).appendingPathComponent(name)
+    }
+
+    /// Re-render drum clip WAV beds from full `midiNotes` with current part mutes applied.
+    private func refreshDrumAudibleBeds(trackID: UUID) {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              track.category == .drums
+        else { return }
+        // Stop readers before overwriting WAVs (players may hold the file open).
+        stopClipPlayers()
+        let muted = track.mutedDrumPartSet
+        let soloed = track.soloedDrumPartSet
+        let bank = synthBankPreset(for: trackID)
+        let rate = transport?.sampleRate ?? 48_000
+        for clip in track.clips where !clip.midiNotes.isEmpty {
+            guard let url = audioURL(for: clip) else { continue }
+            let audible = clip.midiNotes.audibleDrumNotes(muted: muted, soloed: soloed)
+            do {
+                try renderMIDIAudibleBed(
+                    notes: audible,
+                    to: url,
+                    preset: bank.preset,
+                    lengthBeats: clip.lengthBeats,
+                    sampleRate: rate
+                )
+            } catch {
+                recordError = "Drum part mute failed: \(error.localizedDescription)"
+            }
+        }
+        if let sample = transport?.currentSample, isPlaying {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    /// Re-sync every drums track bed after undo/redo restores mute state vs disk WAV.
+    private func refreshAllDrumAudibleBeds() {
+        for track in project.tracks where track.category == .drums {
+            refreshDrumAudibleBeds(trackID: track.id)
+        }
+    }
+
+    private func renderMIDIAudibleBed(
+        notes: [MXMIDINote],
+        to url: URL,
+        preset: MXSynthPreset,
+        lengthBeats: Double,
+        sampleRate: Double? = nil
+    ) throws {
+        let rate = sampleRate ?? transport?.sampleRate ?? 48_000
+        if notes.isEmpty {
+            let duration = max(0.05, lengthBeats * 60.0 / max(bpm, 1) + 0.15)
+            try MXMIDIClipRenderer.writeSilenceWAV(
+                durationSeconds: duration,
+                to: url,
+                sampleRate: rate
+            )
+        } else {
+            try MXMIDIClipRenderer.writeWAV(
+                notes: notes,
+                to: url,
+                preset: preset,
+                bpm: bpm,
+                sampleRate: rate
+            )
+        }
     }
 
     // MARK: - Private transport
@@ -1582,15 +2237,19 @@ public final class StudioSessionController {
         transport.play(fromSample: sample)
         scheduleClipPlayers(fromSample: sample)
         isPlaying = true
+        startPlaybackMeterPolling()
     }
 
     private func pausePlayback() {
         countInTask?.cancel()
         countInTask = nil
         isCountingIn = false
+        commitMIDIPerformanceCapture()
         stopClipPlayers()
         transport?.stop()
         isPlaying = false
+        stopPlaybackMeterPolling()
+        zeroPlaybackMeters()
     }
 
     private func scheduleClipPlayers(fromSample sample: Int64) {
@@ -1614,7 +2273,8 @@ public final class StudioSessionController {
                       let url = audioURL(for: clip),
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
-                player.volume = track.volume * clip.gain
+                let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+                player.volume = track.volume * clip.gain * auto
                 player.pan = track.pan
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
@@ -1793,31 +2453,44 @@ public final class StudioSessionController {
         let eq = AVAudioUnitEQ(numberOfBands: 3)
         let delay = AVAudioUnitDelay()
         let distortion = AVAudioUnitDistortion()
-        let comp = Self.makeDynamicsProcessor()
         let reverb = AVAudioUnitReverb()
         configureEQ(eq, for: clip)
         configureDelay(delay, for: clip)
         configureDistortion(distortion, for: clip)
-        configureComp(comp, for: clip)
         configureReverb(reverb, for: clip)
-        // player → EQ → delay → distortion → dynamics → reverb → master
-        graph.connectSourceThroughInsertsToMaster(
-            source: player,
-            inserts: [eq, delay, distortion, comp, reverb]
-        )
+        let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
+        // Gate on track category only so vocal lanes in a Guitar project keep Dyn chain.
+        let isGuitar = track?.category == .guitar
+        // Guitar pedalboard (Figma Select Guitar Effect): Dist → Delay → Rev.
+        // Vocal / general: EQ → Delay → Dist → Dyn → Rev.
+        let inserts: [AVAudioNode]
+        if isGuitar {
+            inserts = [eq, distortion, delay, reverb]
+        } else {
+            let comp = Self.makeDynamicsProcessor()
+            configureComp(comp, for: clip)
+            clipComps[clip.id] = comp
+            inserts = [eq, delay, distortion, comp, reverb]
+        }
+        graph.connectSourceThroughInsertsToMaster(source: player, inserts: inserts)
         clipPlayers[clip.id] = player
         clipEQs[clip.id] = eq
         clipDelays[clip.id] = delay
         clipDistortions[clip.id] = distortion
-        clipComps[clip.id] = comp
         clipReverbs[clip.id] = reverb
-        if let trackID = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })?.id {
+        // Post-FX peak tap (last insert) for mixer strip meters.
+        installPlaybackMeterTap(on: reverb, meterID: clip.id)
+        if let trackID = track?.id {
             applyTrackMix(trackID: trackID)
         }
     }
 
     private func detachPlayer(for id: UUID) {
         guard let graph else {
+            if let reverb = clipReverbs[id] {
+                reverb.removeTap(onBus: 0)
+            }
+            clearClipMeterPeak(id)
             clipPlayers.removeValue(forKey: id)
             clipEQs.removeValue(forKey: id)
             clipDelays.removeValue(forKey: id)
@@ -1832,13 +2505,25 @@ public final class StudioSessionController {
         let distortion = clipDistortions.removeValue(forKey: id)
         let comp = clipComps.removeValue(forKey: id)
         let reverb = clipReverbs.removeValue(forKey: id)
+        // Remove meter tap before disconnecting the chain.
+        reverb?.removeTap(onBus: 0)
+        clearClipMeterPeak(id)
         player?.stop()
+        let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == id }) })
+        let isGuitar = track?.category == .guitar
         var inserts: [AVAudioNode] = []
-        if let eq { inserts.append(eq) }
-        if let delay { inserts.append(delay) }
-        if let distortion { inserts.append(distortion) }
-        if let comp { inserts.append(comp) }
-        if let reverb { inserts.append(reverb) }
+        if isGuitar {
+            if let eq { inserts.append(eq) }
+            if let distortion { inserts.append(distortion) }
+            if let delay { inserts.append(delay) }
+            if let reverb { inserts.append(reverb) }
+        } else {
+            if let eq { inserts.append(eq) }
+            if let delay { inserts.append(delay) }
+            if let distortion { inserts.append(distortion) }
+            if let comp { inserts.append(comp) }
+            if let reverb { inserts.append(reverb) }
+        }
         if let player {
             if inserts.isEmpty {
                 graph.disconnectSourceFromMaster(player)
@@ -1936,8 +2621,8 @@ public final class StudioSessionController {
 
     private func configureDistortion(_ distortion: AVAudioUnitDistortion, for clip: MXClip) {
         let track = project.tracks.first(where: { $0.clips.contains(where: { $0.id == clip.id }) })
-        // Guitar gets a warmer grit; other presets keep the bit-brush texture.
-        if preset == .guitar || track?.category == .guitar {
+        // Guitar gets a warmer grit; other tracks keep the bit-brush texture.
+        if track?.category == .guitar {
             distortion.loadFactoryPreset(.multiBrokenSpeaker)
             distortion.preGain = -3
         } else {
@@ -1985,18 +2670,20 @@ public final class StudioSessionController {
     private func applyTrackMix(trackID: UUID) {
         guard let track = project.tracks.first(where: { $0.id == trackID }) else { return }
         let anySolo = project.tracks.contains(where: \.isSolo)
+        let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
         for clip in track.clips {
             guard let player = clipPlayers[clip.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            player.volume = audible ? track.volume * clip.gain : 0
+            player.volume = audible ? track.volume * clip.gain * autoGain : 0
             player.pan = track.pan
         }
         // Solo/mute changes should refresh all tracks' audible state
         if anySolo || track.isMuted {
             for other in project.tracks where other.id != trackID {
                 let otherAudible = !other.isMuted && (!anySolo || other.isSolo)
+                let otherAuto = MXVolumeAutomation.value(atBeat: playheadBeat, points: other.volumeAutomation)
                 for clip in other.clips {
-                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain : 0
+                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain * otherAuto : 0
                 }
             }
         }
@@ -2009,10 +2696,76 @@ public final class StudioSessionController {
         for track in project.tracks where track.kind == .midi {
             guard let chain = instrumentChains[track.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            chain.volume = audible ? track.volume : 0
+            let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            chain.volume = audible ? track.volume * autoGain : 0
             chain.pan = track.pan
             chain.isMuted = !audible
         }
+    }
+
+    /// Apply volume automation at the playhead for every track (Logic-style live follow).
+    private func applyVolumeAutomationAtPlayhead() {
+        let anySolo = project.tracks.contains(where: \.isSolo)
+        for track in project.tracks {
+            let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            let audible = !track.isMuted && (!anySolo || track.isSolo)
+            for clip in track.clips {
+                guard let player = clipPlayers[clip.id] else { continue }
+                player.volume = audible ? track.volume * clip.gain * autoGain : 0
+            }
+            if track.kind == .midi, let chain = instrumentChains[track.id] {
+                chain.volume = audible ? track.volume * autoGain : 0
+            }
+        }
+    }
+
+    /// Upsert a volume automation breakpoint on a track (Week 52).
+    public func upsertVolumeAutomation(trackID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.upserting(
+            project.tracks[index].volumeAutomation,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func moveVolumeAutomationPoint(trackID: UUID, pointID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.moving(
+            project.tracks[index].volumeAutomation,
+            id: pointID,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func removeVolumeAutomationPoint(trackID: UUID, pointID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.removing(
+            project.tracks[index].volumeAutomation,
+            id: pointID
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    /// Seed a unity hold curve when opening an empty automation lane.
+    public func ensureDefaultVolumeAutomation(trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].volumeAutomation.isEmpty else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = [
+            MXAutomationPoint(beat: 0, value: 1),
+            MXAutomationPoint(beat: 4, value: 1),
+        ]
+        persistSoon()
     }
 
     private func startMeterPolling() {
@@ -2039,13 +2792,144 @@ public final class StudioSessionController {
         }
     }
 
-    /// Push armed-track noise gate settings onto the live monitor expander.
-    private func syncMonitorNoiseGate() {
+    // MARK: - Playback strip meters
+
+    private func startPlaybackMeterPolling() {
+        playbackMeterTask?.cancel()
+        playbackMeterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await MainActor.run {
+                    self?.pollPlaybackMeters()
+                }
+                try? await Task.sleep(nanoseconds: 33_000_000)
+            }
+        }
+    }
+
+    private func stopPlaybackMeterPolling() {
+        playbackMeterTask?.cancel()
+        playbackMeterTask = nil
+    }
+
+    private func pollPlaybackMeters() {
+        guard isPlaying else {
+            zeroPlaybackMeters()
+            return
+        }
+        let peaks = snapshotAndClearClipMeterPeaks()
+        var levels = trackPlaybackLevels
+        var holds = trackPlaybackPeakHolds
+        for track in project.tracks {
+            var raw: Float = 0
+            for clip in track.clips {
+                raw = max(raw, peaks[clip.id] ?? 0)
+            }
+            // Live MIDI instrument peaks are keyed by track id.
+            if instrumentChains[track.id] != nil {
+                raw = max(raw, peaks[track.id] ?? 0)
+            }
+            let previous = levels[track.id] ?? 0
+            let level = max(raw, previous * 0.85)
+            levels[track.id] = level
+            holds[track.id] = max((holds[track.id] ?? 0) * 0.995, level)
+        }
+        // Drop stale track keys no longer in the project.
+        let liveIDs = Set(project.tracks.map(\.id))
+        levels = levels.filter { liveIDs.contains($0.key) }
+        holds = holds.filter { liveIDs.contains($0.key) }
+        trackPlaybackLevels = levels
+        trackPlaybackPeakHolds = holds
+    }
+
+    private func zeroPlaybackMeters() {
+        clearAllClipMeterPeaks()
+        if !trackPlaybackLevels.isEmpty {
+            trackPlaybackLevels = [:]
+        }
+        if !trackPlaybackPeakHolds.isEmpty {
+            trackPlaybackPeakHolds = [:]
+        }
+    }
+
+    private func installPlaybackMeterTap(on node: AVAudioNode, meterID: UUID) {
+        // Avoid AVAudioEngine "tap already installed" if a prior detach was skipped.
+        node.removeTap(onBus: 0)
+        let format = node.outputFormat(forBus: 0)
+        let tapFormat: AVAudioFormat? = format.sampleRate > 0 ? format : nil
+        node.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            let peak = Self.peakLevel(in: buffer)
+            self.storeClipMeterPeak(meterID, peak)
+        }
+    }
+
+    nonisolated private func storeClipMeterPeak(_ id: UUID, _ peak: Float) {
+        clipMeterLock.lock()
+        clipMeterPeaks[id] = peak
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func clearClipMeterPeak(_ id: UUID) {
+        clipMeterLock.lock()
+        clipMeterPeaks.removeValue(forKey: id)
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func clearAllClipMeterPeaks() {
+        clipMeterLock.lock()
+        clipMeterPeaks.removeAll()
+        clipMeterLock.unlock()
+    }
+
+    nonisolated private func snapshotAndClearClipMeterPeaks() -> [UUID: Float] {
+        clipMeterLock.lock()
+        defer { clipMeterLock.unlock() }
+        let copy = clipMeterPeaks
+        clipMeterPeaks.removeAll()
+        return copy
+    }
+
+    /// Peak absolute sample across channels — same algorithm as `MXRecorder.peakLevel`.
+    nonisolated private static func peakLevel(in buffer: AVAudioPCMBuffer) -> Float {
+        guard let channels = buffer.floatChannelData else { return 0 }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return 0 }
+        var peak: Float = 0
+        let channelCount = Int(buffer.format.channelCount)
+        for ch in 0..<channelCount {
+            let data = channels[ch]
+            for i in 0..<frames {
+                peak = max(peak, abs(data[i]))
+            }
+        }
+        return min(1, peak)
+    }
+
+    /// Push armed-track monitor chain: wet guitar pedalboard or dry vocal + optional gate.
+    private func syncMonitorChain() {
         guard let recorder else { return }
         let track = armedTrack
-        let vocalGate = track?.category == .vocal && track?.noiseGateEnabled == true
-        recorder.monitorGateEnabled = vocalGate
-        recorder.monitorGateThreshold = track?.noiseGateThreshold ?? 0.02
+        if let track, track.category == .guitar {
+            recorder.monitorGuitarFX = MXMonitorGuitarFX.clamped(
+                enabled: true,
+                distortionMix: track.distortionMix,
+                delayMix: track.delayMix,
+                delayTime: track.delayTime,
+                reverbMix: track.reverbMix,
+                eqMidGain: track.eqMidGain
+            )
+            recorder.monitorGateEnabled = false
+        } else {
+            recorder.monitorGuitarFX = .disabled
+            let vocalGate = track?.category == .vocal && track?.noiseGateEnabled == true
+            recorder.monitorGateEnabled = vocalGate
+            recorder.monitorGateThreshold = track?.noiseGateThreshold ?? 0.02
+        }
+    }
+
+    /// Compatibility wrapper — prefer `syncMonitorChain()`.
+    private func syncMonitorNoiseGate() {
+        syncMonitorChain()
     }
 
     private func scheduleClipWarningClear() {
@@ -2059,6 +2943,8 @@ public final class StudioSessionController {
     }
 
     private func maybeShowQuietRoomTip() {
+        // Quick Recording (GarageBand Quick): skip onboarding for minimal chrome.
+        guard preset != .quickRecord else { return }
         // Week 29 checklist key — show once even if the Week 5 copy-only tip was seen.
         guard !UserDefaults.standard.bool(forKey: Self.quietRoomChecklistKey) else { return }
         showQuietRoomTip = true
@@ -2088,7 +2974,7 @@ public final class StudioSessionController {
         #if os(iOS)
         let hasHeadphones = Self.currentRouteHasHeadphones()
         // Guitar sessions prefer Monitor on with headphones (BandLab-style).
-        if preset == .guitar && hasHeadphones {
+        if (preset == .guitar || armedTrack?.category == .guitar) && hasHeadphones {
             isMonitoringEnabled = true
         } else if !hasHeadphones {
             isMonitoringEnabled = false
@@ -2096,8 +2982,9 @@ public final class StudioSessionController {
         #else
         isMonitoringEnabled = false
         #endif
+        // Chain first so guitar wet / vocal dry is set before attach.
+        syncMonitorChain()
         recorder?.isMonitoringEnabled = isMonitoringEnabled
-        syncMonitorNoiseGate()
     }
 
     private static func currentRouteHasHeadphones() -> Bool {
@@ -2114,17 +3001,24 @@ public final class StudioSessionController {
     private func refreshRouteTip() {
         #if os(iOS)
         let hasHeadphones = Self.currentRouteHasHeadphones()
+        let isGuitar = preset == .guitar || armedTrack?.category == .guitar
         if hasHeadphones {
-            headphoneTip = isMonitoringEnabled
-                ? (preset == .guitar
-                   ? "Monitoring on — hear yourself while you play."
-                   : nil)
-                : "Headphones connected — turn on Monitor to hear yourself (optional)."
+            if isGuitar {
+                headphoneTip = isMonitoringEnabled
+                    ? "Hearing pedalboard (Dist→Delay→Rev). DI records dry; FX on monitor & playback."
+                    : "Headphones connected — turn on Monitor to hear your pedalboard / DI."
+            } else {
+                headphoneTip = isMonitoringEnabled
+                    ? nil
+                    : "Headphones connected — turn on Monitor to hear yourself (optional)."
+            }
         } else {
             if isMonitoringEnabled {
                 isMonitoringEnabled = false
             }
-            headphoneTip = "Monitoring stays off on speaker to avoid feedback."
+            headphoneTip = isGuitar
+                ? "Speaker monitoring stays off (feedback). Plug in headphones for pedalboard / DI monitor."
+                : "Monitoring stays off on speaker to avoid feedback."
         }
         #else
         headphoneTip = nil
@@ -2234,6 +3128,9 @@ public final class StudioSessionController {
         playheadBar = readout.position.bar
         playheadBeatInBar = readout.position.beat
         playheadTimeLabel = Self.formatTime(readout.seconds)
+        if project.tracks.contains(where: { !$0.volumeAutomation.isEmpty }) {
+            applyVolumeAutomationAtPlayhead()
+        }
     }
 
     private static func formatTime(_ seconds: Double) -> String {

@@ -63,4 +63,45 @@ final class MXTakeLaneActivationTests: XCTestCase {
         let active = MXTakeLaneActivation.activeIDs(afterSelecting: b, clips: clips)
         XCTAssertEqual(active, [b])
     }
+
+    func testSoftOverlappingSequentialTakesStayMutuallyActive() {
+        // Soft X-fade seam (~0.02 beats) should behave like an abut.
+        let verse = UUID()
+        let chorus = UUID()
+        let clips = [
+            ref(verse, take: 0, start: 0, length: 4.02),
+            ref(chorus, take: 1, start: 4, length: 4)
+        ]
+
+        let active = MXTakeLaneActivation.activeIDs(afterSelecting: chorus, clips: clips)
+        XCTAssertEqual(active, [verse, chorus])
+    }
+
+    func testHardOverlapStillExclusive() {
+        let a = UUID()
+        let b = UUID()
+        let clips = [
+            ref(a, take: 0, start: 0, length: 6),
+            ref(b, take: 1, start: 4, length: 4)
+        ]
+
+        let active = MXTakeLaneActivation.activeIDs(afterSelecting: b, clips: clips)
+        XCTAssertEqual(active, [b])
+    }
+
+    func testSoftOverlapPunchStillDeactivatedViaBBox() {
+        // Multi-piece take soft-overlaps punch seams; selecting before still
+        // deactivates punch via bounding-box (not via hard piece overlap).
+        let before = UUID()
+        let after = UUID()
+        let punch = UUID()
+        let clips = [
+            ref(before, take: 0, start: 0, length: 2.024),
+            ref(after, take: 0, start: 3.976, length: 4.024),
+            ref(punch, take: 1, start: 2, length: 2)
+        ]
+
+        let active = MXTakeLaneActivation.activeIDs(afterSelecting: before, clips: clips)
+        XCTAssertEqual(active, [before, after])
+    }
 }
