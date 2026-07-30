@@ -2358,6 +2358,116 @@ public final class StudioSessionController {
         return (mono, sampleRate)
     }
 
+    /// Bake Ableton/BandLab-style time-stretch into an audio clip (Week 70).
+    ///
+    /// Retargets timeline `lengthBeats` while preserving pitch via `MXTimeStretch`.
+    /// Factor clamped to 0.5…2.0 relative to the current audible duration.
+    @discardableResult
+    public func applyTimeStretch(
+        clipID: UUID? = nil,
+        toLengthBeats: Double
+    ) -> Bool {
+        let id = clipID ?? selectedClipID
+        guard let id, var clip = clip(id) else { return false }
+        guard clip.midiNotes.isEmpty else { return false }
+        guard let fileName = clip.audioFileName, !fileName.isEmpty else { return false }
+
+        let targetBeats = max(0.25, toLengthBeats)
+        let currentBeats = max(0.25, clip.lengthBeats)
+        let rawFactor = targetBeats / currentBeats
+        let factor = max(0.5, min(2.0, rawFactor))
+        guard abs(factor - 1) > 1e-4 else { return false }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let sourceURL = audioDir.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            recordError = "Time stretch: missing audio file"
+            return false
+        }
+
+        do {
+            let (mono, sampleRate) = try Self.readClipMonoPCM(
+                url: sourceURL,
+                sourceOffsetSeconds: clip.sourceOffsetSeconds,
+                sourceDurationSeconds: clip.sourceDurationSeconds
+            )
+            guard mono.count > 256 else {
+                recordError = "Time stretch: clip too short"
+                return false
+            }
+
+            let stretched = MXTimeStretch.stretch(
+                mono: mono,
+                sampleRate: sampleRate,
+                factor: factor
+            )
+            guard !stretched.isEmpty else {
+                recordError = "Time stretch produced empty audio"
+                return false
+            }
+
+            pushUndoSnapshot()
+            stopClipPlayers()
+
+            let outName = "stretch_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+            let outURL = audioDir.appendingPathComponent(outName)
+            try StudioBounceExporter.writeWAV(
+                left: stretched,
+                right: stretched,
+                sampleRate: sampleRate,
+                to: outURL
+            )
+
+            let newDuration = Double(stretched.count) / max(sampleRate, 1)
+            let appliedBeats = currentBeats * factor
+            clip.audioFileName = outName
+            clip.sourceOffsetSeconds = 0
+            clip.sourceDurationSeconds = newDuration
+            clip.lengthBeats = max(0.25, appliedBeats)
+            // Stretch clip-local automation to the new length.
+            clip.volumeAutomation = MXVolumeAutomation.clampingBeats(
+                clip.volumeAutomation.map { pt in
+                    MXAutomationPoint(
+                        id: pt.id,
+                        beat: pt.beat * factor,
+                        value: pt.value
+                    )
+                },
+                lengthBeats: clip.lengthBeats
+            )
+            clip.panAutomation = MXPanAutomation.clampingBeats(
+                clip.panAutomation.map { pt in
+                    MXAutomationPoint(
+                        id: pt.id,
+                        beat: pt.beat * factor,
+                        value: pt.value
+                    )
+                },
+                lengthBeats: clip.lengthBeats
+            )
+            // Meet-in-middle fade clamp for new duration.
+            let fades = MXClipFadeGeometry.meetInMiddle(
+                fadeIn: clip.fadeInSeconds,
+                fadeOut: clip.fadeOutSeconds,
+                duration: newDuration,
+                prefer: nil
+            )
+            clip.fadeInSeconds = fades.fadeIn
+            clip.fadeOutSeconds = fades.fadeOut
+
+            replaceClip(clip)
+            attachPlayer(for: clip)
+            persistSoon()
+            if isPlaying, let sample = transport?.currentSample {
+                scheduleClipPlayers(fromSample: sample)
+            }
+            return true
+        } catch {
+            recordError = "Time stretch failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     /// Rewrite selected MIDI clip notes and re-render the audible bed (Weeks 55 / 58).
     @discardableResult
     public func updateMIDINote(

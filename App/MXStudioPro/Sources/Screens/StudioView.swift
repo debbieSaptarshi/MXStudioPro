@@ -26,6 +26,8 @@ public struct StudioView: View {
     /// GarageBand-style pitch correct amount 0…1 (Week 69). Session-local UI.
     @State private var pitchCorrectAmount: Float = 0.7
     @State private var pitchCorrectLimitToKey = true
+    /// Week 70 — target length in beats for time-stretch bake (Ableton/BandLab lite).
+    @State private var timeStretchLengthBeats: Double = 4
     @State private var showPianoRoll = false
     @State private var pianoRollDragUndoArmed = true
     /// Suppress magnet tap after a long-press cycle (W66).
@@ -308,7 +310,7 @@ public struct StudioView: View {
             ScrollView {
                 clipInspectorSheet
             }
-            .presentationDetents([.height(420), .large])
+            .presentationDetents([.height(520), .large])
             .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
@@ -319,6 +321,17 @@ public struct StudioView: View {
             } else if selectedMIDIClipForRoll == nil {
                 showPianoRoll = false
             }
+            if let id,
+               let clip = session.project.tracks.flatMap(\.clips).first(where: { $0.id == id }) {
+                timeStretchLengthBeats = clip.lengthBeats
+            }
+        }
+        .onChange(of: showClipInspector) { _, open in
+            guard open,
+                  let id = session.selectedClipID,
+                  let clip = session.project.tracks.flatMap(\.clips).first(where: { $0.id == id })
+            else { return }
+            timeStretchLengthBeats = clip.lengthBeats
         }
     }
 
@@ -2202,6 +2215,55 @@ public struct StudioView: View {
                         .buttonStyle(.plain)
                         .disabled(pitchCorrectAmount < 0.05)
                         .accessibilityHint("Bakes pitch correction into a new WAV; undo supported")
+                    }
+
+                    // Week 70 — Ableton / BandLab time-stretch lite (audio clips only).
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Stretch length")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Spacer()
+                            Text(String(format: "%.2f beats", timeStretchLengthBeats))
+                                .font(MXFont.body3())
+                                .foregroundStyle(MXColor.lightGrey)
+                                .monospacedDigit()
+                        }
+                        Slider(
+                            value: $timeStretchLengthBeats,
+                            in: max(0.5, clip.lengthBeats * 0.5)...max(clip.lengthBeats * 2, 1),
+                            step: 0.25
+                        )
+                        .tint(MXColor.accent)
+                        .accessibilityLabel("Time stretch target length in beats")
+                        Text("Pitch preserved · 0.5×…2× current length")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey.opacity(0.8))
+
+                        Button {
+                            _ = session.applyTimeStretch(
+                                clipID: clip.id,
+                                toLengthBeats: timeStretchLengthBeats
+                            )
+                            if let updated = session.project.tracks
+                                .flatMap(\.clips)
+                                .first(where: { $0.id == clip.id }) {
+                                timeStretchLengthBeats = updated.lengthBeats
+                            }
+                        } label: {
+                            Label("Apply Time Stretch", systemImage: "arrow.left.and.right")
+                                .font(MXFont.mediumButton())
+                                .foregroundStyle(MXColor.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(MXColor.orange.opacity(0.85))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(abs(timeStretchLengthBeats - clip.lengthBeats) < 0.05)
+                        .accessibilityHint("Bakes pitch-preserving stretch into a new WAV; undo supported")
                     }
                 }
             } else {

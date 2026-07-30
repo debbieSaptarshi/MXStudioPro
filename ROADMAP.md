@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 18 W69 **pitch correction lite** shipped — next W70 time-stretch, W71 LUFS report, W72 cloud spine.
+**Current focus:** Month 18 W70 **time-stretch lite** shipping — next W71 LUFS report, W72 cloud spine.
 
 ---
 
