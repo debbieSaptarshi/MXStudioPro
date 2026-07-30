@@ -2102,6 +2102,16 @@ public struct StudioView: View {
                 }
                 Divider().overlay(MXColor.layer2)
                 settingsToggleRow(
+                    title: "Master limiter",
+                    subtitle: session.isMasterLimiterEnabled
+                        ? "Brickwall on live mix + bounce (~−0.1 dBTP)"
+                        : "Off — bounce can still peak-normalize / LUFS-scale",
+                    isOn: session.isMasterLimiterEnabled
+                ) {
+                    session.isMasterLimiterEnabled.toggle()
+                }
+                Divider().overlay(MXColor.layer2)
+                settingsToggleRow(
                     title: "Lock portrait while recording",
                     subtitle: "Keeps Rec chrome upright; off allows landscape record",
                     isOn: MXOrientationLock.prefersPortraitWhileRecording
@@ -2344,12 +2354,25 @@ public struct StudioView: View {
 
     private var mixerSheet: some View {
         VStack(spacing: 0) {
-            Text("Mixer")
-                .font(MXFont.sectionTitle())
-                .foregroundStyle(MXColor.white)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+            HStack {
+                Text("Mixer")
+                    .font(MXFont.sectionTitle())
+                    .foregroundStyle(MXColor.white)
+                Spacer()
+                Text(session.liveMomentaryLUFSLabel)
+                    .font(MXFont.studioReadout())
+                    .foregroundStyle(
+                        session.liveMomentaryLUFS.isFinite && session.liveMomentaryLUFS > -9
+                            ? MXColor.orange
+                            : MXColor.lightGrey
+                    )
+                    .monospacedDigit()
+                    .accessibilityLabel("Live loudness")
+                    .accessibilityValue(session.liveMomentaryLUFSLabel)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {

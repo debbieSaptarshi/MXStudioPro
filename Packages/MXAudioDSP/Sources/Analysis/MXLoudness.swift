@@ -135,6 +135,28 @@ public enum MXLoudness {
         applyGain(ceiling / peak, left: &left, right: &right)
     }
 
+    // MARK: - Live / momentary (Week 59)
+
+    /// Momentary loudness from a short buffer (GarageBand / Reels live meter lite).
+    ///
+    /// Uses the same ungated mean-square → LUFS map as integrated blocks — not
+    /// K-weighted. Returns `-∞` for silence / empty input.
+    public static func momentaryLUFS(left: [Float],
+                                     right: [Float]? = nil,
+                                     sampleRate: Double = 48_000) -> Float {
+        guard sampleRate > 0, !left.isEmpty else { return -.infinity }
+        let frameCount = right.map { min(left.count, $0.count) } ?? left.count
+        guard frameCount > 0 else { return -.infinity }
+        let z = meanSquarePower(left: left, right: right, start: 0, count: frameCount)
+        return loudnessFromMeanSquare(z)
+    }
+
+    /// Convert channel-summed mean-square power to approximate LUFS.
+    public static func loudnessFromMeanSquare(_ z: Float) -> Float {
+        guard z > 1e-20 else { return -.infinity }
+        return -0.691 + 10 * log10(z)
+    }
+
     /// Soft-knee map toward `ceiling`, then hard clamp.
     private static func softLimitSample(_ x: Float, knee: Float, ceiling: Float) -> Float {
         let a = abs(x)
@@ -170,12 +192,6 @@ public enum MXLoudness {
             sumR += s * s
         }
         return zL + (sumR / Float(count))
-    }
-
-    /// BS.1770 mean-square → LUFS (without K-weighting).
-    private static func loudnessFromMeanSquare(_ z: Float) -> Float {
-        guard z > 1e-20 else { return -.infinity }
-        return -0.691 + 10 * log10(z)
     }
 
     private static func meanSquareFromLoudness(_ lufs: Float) -> Float {

@@ -55,7 +55,8 @@ public enum StudioBounceExporter {
         outputDirectory: URL,
         normalize: Bool = true,
         loudnessMode: LoudnessMode = .peakNormalize,
-        highPassEnabled: Bool = true
+        highPassEnabled: Bool = true,
+        masterLimiterEnabled: Bool = true
     ) throws -> Result {
         let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
         let bpm = max(project.bpm, 1)
@@ -113,16 +114,29 @@ public enum StudioBounceExporter {
                 peakNormalize(left: &left, right: &right, targetPeak: 0.89)
                 appliedMode = .peakNormalize
             case .reelsLUFS:
-                // LUFS path applies the shared master limiter internally via maxPeak.
-                MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                // LUFS path applies the shared master limiter internally via maxPeak
+                // when masterLimiterEnabled is on; otherwise scale only.
+                if masterLimiterEnabled {
+                    MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                } else {
+                    let current = MXLoudness.integratedLUFS(left: left, right: right.isEmpty ? nil : right)
+                    if current.isFinite {
+                        MXLoudness.applyGain(
+                            MXLoudness.gainToTargetLUFS(currentLUFS: current, target: -14),
+                            left: &left,
+                            right: &right
+                        )
+                    }
+                }
                 appliedMode = .reelsLUFS
             }
-            // Peak path: safety brickwall after −1 dBFS normalize. LUFS already
-            // limited; second pass is a no-op when peak ≤ ceiling.
+            if masterLimiterEnabled {
+                applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+            }
+        } else if masterLimiterEnabled {
             applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+            appliedMode = loudnessMode
         } else {
-            // Still protect overs when normalize is off.
-            applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
             appliedMode = loudnessMode
         }
 
@@ -153,7 +167,8 @@ public enum StudioBounceExporter {
         outputDirectory: URL,
         normalize: Bool = true,
         loudnessMode: LoudnessMode = .peakNormalize,
-        highPassEnabled: Bool = true
+        highPassEnabled: Bool = true,
+        masterLimiterEnabled: Bool = true
     ) throws -> StemsResult {
         let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
         let bpm = max(project.bpm, 1)
@@ -206,12 +221,27 @@ public enum StudioBounceExporter {
                     peakNormalize(left: &left, right: &right, targetPeak: 0.89)
                     appliedMode = .peakNormalize
                 case .reelsLUFS:
-                    MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                    if masterLimiterEnabled {
+                        MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                    } else {
+                        let current = MXLoudness.integratedLUFS(left: left, right: right.isEmpty ? nil : right)
+                        if current.isFinite {
+                            MXLoudness.applyGain(
+                                MXLoudness.gainToTargetLUFS(currentLUFS: current, target: -14),
+                                left: &left,
+                                right: &right
+                            )
+                        }
+                    }
                     appliedMode = .reelsLUFS
                 }
+                if masterLimiterEnabled {
+                    applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+                }
+            } else if masterLimiterEnabled {
                 applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+                appliedMode = loudnessMode
             } else {
-                applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
                 appliedMode = loudnessMode
             }
 

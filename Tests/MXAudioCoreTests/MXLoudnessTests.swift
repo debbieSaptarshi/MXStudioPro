@@ -60,6 +60,28 @@ final class MXLoudnessTests: XCTestCase {
         XCTAssertEqual(right[0], 0.4, accuracy: 1e-6)
     }
 
+    // MARK: - Week 59
+
+    func testMomentaryLUFSFromTone() {
+        let (left, right) = makeStereoTone(amplitude: 0.25, seconds: 0.5)
+        let lufs = MXLoudness.momentaryLUFS(left: left, right: right, sampleRate: sampleRate)
+        XCTAssertTrue(lufs.isFinite)
+        XCTAssertGreaterThan(lufs, -60)
+        XCTAssertLessThan(lufs, 0)
+
+        let silence = [Float](repeating: 0, count: 2048)
+        XCTAssertEqual(
+            MXLoudness.momentaryLUFS(left: silence, right: silence, sampleRate: sampleRate),
+            -.infinity
+        )
+    }
+
+    func testLoudnessFromMeanSquareMatchesKnownPoint() {
+        // z = 1 → −0.691 LUFS
+        XCTAssertEqual(MXLoudness.loudnessFromMeanSquare(1), -0.691, accuracy: 1e-4)
+        XCTAssertEqual(MXLoudness.loudnessFromMeanSquare(0), -.infinity)
+    }
+
     // MARK: - Fixtures
 
     private func makeStereoTone(amplitude: Float, seconds: Double, hz: Float = 440) -> ([Float], [Float]) {

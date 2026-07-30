@@ -102,6 +102,33 @@ public final class StudioSessionController {
         }
     }
 
+    /// UserDefaults key for master brickwall preference (Week 59).
+    public static let masterLimiterEnabledDefaultsKey = "mxstudio.masterLimiterEnabled"
+
+    /// Always-on master limiter for live playback + bounce (GarageBand / Reels).
+    /// Persisted in UserDefaults; default **on**.
+    public var isMasterLimiterEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: Self.masterLimiterEnabledDefaultsKey) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Self.masterLimiterEnabledDefaultsKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.masterLimiterEnabledDefaultsKey)
+            syncMasterLimiter()
+        }
+    }
+
+    /// Live momentary LUFS from the master bus (Week 59). `-∞` when silent / stopped.
+    public private(set) var liveMomentaryLUFS: Float = -.infinity
+
+    /// Formatted live LUFS for UI (`"— LUFS"` when silent).
+    public var liveMomentaryLUFSLabel: String {
+        guard liveMomentaryLUFS.isFinite else { return "— LUFS" }
+        return String(format: "%.1f LUFS", liveMomentaryLUFS)
+    }
+
     public private(set) var lastSavedAt: Date?
     public private(set) var saveError: String?
     public private(set) var recordError: String?
@@ -162,6 +189,12 @@ public final class StudioSessionController {
     /// Updated from audio taps (may be off-main).
     nonisolated(unsafe) private var clipMeterPeaks: [UUID: Float] = [:]
     nonisolated(unsafe) private let clipMeterLock = NSLock()
+    /// Master-bus mean-square accumulator for live LUFS (audio-thread writes).
+    nonisolated(unsafe) private var masterMeterSumSquares: Double = 0
+    nonisolated(unsafe) private var masterMeterFrames: Int = 0
+    nonisolated(unsafe) private let masterMeterLock = NSLock()
+    private var masterLimiterEffect: MXMasterLimiterEffect?
+    private var masterLUFSTapInstalled = false
     private var wasPlayingBeforeInterruption = false
     private var autosaveTask: Task<Void, Never>?
     private var clipPlayers: [UUID: AVAudioPlayerNode] = [:]
@@ -287,6 +320,7 @@ public final class StudioSessionController {
             self.phase = .ready
             applyPreferredMonitoring()
             syncMonitorNoiseGate()
+            syncMasterLimiter()
             refreshRouteTip()
             maybeShowQuietRoomTip()
 
@@ -422,6 +456,7 @@ public final class StudioSessionController {
     /// Ensure playback strip meters poll while mixer is open during play.
     public func ensurePlaybackMetersRunning() {
         guard isPlaying else { return }
+        ensureMasterLUFSTap()
         startPlaybackMeterPolling()
     }
 
@@ -2319,6 +2354,7 @@ public final class StudioSessionController {
         let mode = loudnessMode
 
         let highPass = isHighPassEnabled
+        let limiterOn = isMasterLimiterEnabled
         let result = try await Task.detached(priority: .userInitiated) {
             try StudioBounceExporter.bounce(
                 project: snapshot,
@@ -2326,7 +2362,8 @@ public final class StudioSessionController {
                 outputDirectory: exportDir,
                 normalize: normalize,
                 loudnessMode: mode,
-                highPassEnabled: highPass
+                highPassEnabled: highPass,
+                masterLimiterEnabled: limiterOn
             )
         }.value
 
@@ -2352,6 +2389,7 @@ public final class StudioSessionController {
         let exportDir = MXProjectStore.shared.exportsDirectory(for: snapshot.id)
         let mode = loudnessMode
         let highPass = isHighPassEnabled
+        let limiterOn = isMasterLimiterEnabled
 
         let result = try await Task.detached(priority: .userInitiated) {
             try StudioBounceExporter.bounceStems(
@@ -2360,7 +2398,8 @@ public final class StudioSessionController {
                 outputDirectory: exportDir,
                 normalize: normalize,
                 loudnessMode: mode,
-                highPassEnabled: highPass
+                highPassEnabled: highPass,
+                masterLimiterEnabled: limiterOn
             )
         }.value
 
@@ -3139,6 +3178,7 @@ public final class StudioSessionController {
     // MARK: - Playback strip meters
 
     private func startPlaybackMeterPolling() {
+        ensureMasterLUFSTap()
         playbackMeterTask?.cancel()
         playbackMeterTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -3183,6 +3223,7 @@ public final class StudioSessionController {
         holds = holds.filter { liveIDs.contains($0.key) }
         trackPlaybackLevels = levels
         trackPlaybackPeakHolds = holds
+        pollMasterLUFS()
     }
 
     private func zeroPlaybackMeters() {
@@ -3193,6 +3234,103 @@ public final class StudioSessionController {
         if !trackPlaybackPeakHolds.isEmpty {
             trackPlaybackPeakHolds = [:]
         }
+        clearMasterMeterAccumulator()
+        if liveMomentaryLUFS.isFinite {
+            liveMomentaryLUFS = -.infinity
+        }
+    }
+
+    // MARK: - Master limiter + live LUFS (Week 59)
+
+    private func syncMasterLimiter() {
+        guard let graph else { return }
+        if isMasterLimiterEnabled {
+            let effect = masterLimiterEffect ?? MXMasterLimiterEffect()
+            masterLimiterEffect = effect
+            effect.isBypassed = false
+            graph.setMasterInserts([effect])
+        } else if let effect = masterLimiterEffect {
+            effect.isBypassed = true
+            graph.setMasterInserts([])
+            // Keep instance for quick re-enable; graph already detached it.
+            _ = effect
+        } else {
+            graph.setMasterInserts([])
+        }
+        // Re-install LUFS tap after master chain rebuild (taps don't survive reconnect).
+        masterLUFSTapInstalled = false
+        if isPlaying {
+            ensureMasterLUFSTap()
+        }
+    }
+
+    private func ensureMasterLUFSTap() {
+        guard let graph, !masterLUFSTapInstalled else { return }
+        let node = graph.masterBus
+        node.removeTap(onBus: 0)
+        let format = node.outputFormat(forBus: 0)
+        let tapFormat: AVAudioFormat? = format.sampleRate > 0 ? format : nil
+        node.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+            self?.accumulateMasterMeter(buffer)
+        }
+        masterLUFSTapInstalled = true
+    }
+
+    nonisolated private func accumulateMasterMeter(_ buffer: AVAudioPCMBuffer) {
+        guard let channels = buffer.floatChannelData else { return }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+        let channelCount = Int(buffer.format.channelCount)
+        var sum: Double = 0
+        for ch in 0..<max(1, channelCount) {
+            let ptr = channels[ch]
+            for i in 0..<frames {
+                let s = Double(ptr[i])
+                sum += s * s
+            }
+        }
+        // Stereo BS.1770-style: z = zL + zR = (ΣL² + ΣR²) / N.
+        masterMeterLock.lock()
+        masterMeterSumSquares += sum
+        masterMeterFrames += frames
+        // Cap accumulator ~0.5 s so poll cadence can't grow unbounded if paused mid-poll.
+        let maxFrames = 24_000
+        if masterMeterFrames > maxFrames {
+            let scale = Double(maxFrames) / Double(masterMeterFrames)
+            masterMeterSumSquares *= scale
+            masterMeterFrames = maxFrames
+        }
+        masterMeterLock.unlock()
+    }
+
+    private func pollMasterLUFS() {
+        masterMeterLock.lock()
+        let sum = masterMeterSumSquares
+        let frames = masterMeterFrames
+        masterMeterSumSquares = 0
+        masterMeterFrames = 0
+        masterMeterLock.unlock()
+
+        guard frames > 0 else {
+            liveMomentaryLUFS = liveMomentaryLUFS.isFinite ? liveMomentaryLUFS - 1.5 : -.infinity
+            if liveMomentaryLUFS < -70 { liveMomentaryLUFS = -.infinity }
+            return
+        }
+        let z = Float(sum / Double(frames))
+        let measured = MXLoudness.loudnessFromMeanSquare(z)
+        if measured.isFinite {
+            liveMomentaryLUFS = measured
+        } else if liveMomentaryLUFS.isFinite {
+            liveMomentaryLUFS = liveMomentaryLUFS - 1.5
+            if liveMomentaryLUFS < -70 { liveMomentaryLUFS = -.infinity }
+        }
+    }
+
+    nonisolated private func clearMasterMeterAccumulator() {
+        masterMeterLock.lock()
+        masterMeterSumSquares = 0
+        masterMeterFrames = 0
+        masterMeterLock.unlock()
     }
 
     private func installPlaybackMeterTap(on node: AVAudioNode, meterID: UUID) {

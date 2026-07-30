@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 15 (W57–60) — W57–W58 shipped; next W59 master limiter + live LUFS.
+**Current focus:** Month 15 (W57–60) — W57–W59 shipped; next W60 Figma pixel-pass.
 
 ---
 
@@ -71,6 +71,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Done (MVP)** ✅ |
 | **56** | Latency calibration UX + input monitoring polish | **Done (MVP)** ✅ |
 | **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ |
+| **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ |
+| **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -657,7 +659,7 @@ Raise shipped features to award-app bar without blocking cloud work.
 |------|--------|--------|-----------|
 | **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ | Cubasis / Logic |
-| **59** | Master bus limiter + live LUFS meter | **Planned** | GarageBand / Reels |
+| **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ | GarageBand / Reels |
 | **60** | Figma pixel-pass After Record + Drum Midi shells | **Planned** | Figma `95:85026` / `95:88141` |
 
 ### Week 57 — Step pattern library + copy/paste + live cursor ✅
@@ -680,13 +682,23 @@ Raise shipped features to award-app bar without blocking cloud work.
 
 **Week 58 notes:** Multi-select / transpose deferred. Length handle is the right ~25% of each note block.
 
+### Week 59 — Master bus limiter + live LUFS ✅
+
+**Done when (GarageBand / Reels)**
+- [x] Settings **Master limiter** toggle (UserDefaults, default on) → live Dynamics brickwall on `masterBus` + bounce `masterLimiterEnabled`
+- [x] Live momentary LUFS readout on Mixer header (`masterBus` tap → mean-square → LUFS)
+- [x] `MXLoudness.momentaryLUFS` / public `loudnessFromMeanSquare` + unit tests
+- [x] Bounce / stems respect limiter off (still allow peak/LUFS normalize without brickwall)
+
+**Week 59 notes:** Not K-weighted / not broadcast-legal. Live LUFS is momentary (poll window), not integrated program loudness. Loudness report sheet deferred.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
 - **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library
 - **Piano roll:** Multi-select transpose; draw mode; scale lock
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
-- **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual; sidechain lite from kick to bass
+- **Mix:** Sidechain lite from kick to bass; shared reverb send visual; certified LUFS / loudness report sheet
 - **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
 - **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
@@ -861,7 +873,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
-                              → W57–W58 step library + piano-roll depth ✅ ← next W59–60
+                              → W57–W59 step library / piano-roll / master LUFS ✅ ← next W60
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
