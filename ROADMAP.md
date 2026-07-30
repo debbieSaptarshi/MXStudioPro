@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 16 Week 61 **complete** — next W62–64 (multi-select transpose, sidechain, snap resolution).
+**Current focus:** Month 16 Weeks 61–64 **complete** — next cloud / SOTA backlog.
 
 ---
 
@@ -75,6 +75,9 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **59** | Master bus limiter + live LUFS meter | **Done (MVP)** ✅ |
 | **60** | Figma pixel-pass After Record + Drum Midi shells | **Done (MVP)** ✅ |
 | **61** | Step-seq swing independent of MIDI swing + pattern slots | **Done (MVP)** ✅ |
+| **62** | Piano-roll multi-select transpose + scale lock lite | **Done (MVP)** ✅ |
+| **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Done (MVP)** ✅ |
+| **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -224,7 +227,7 @@ Post–closed-beta audio backlog, patterned after BandLab / GarageBand / Logic:
 | **Clip fade in/out + gain** | ✅ `MXClip` fields; live + bounce envelopes; clip inspector sheet |
 | **Export loudness for Reels (−14 LUFS)** | ✅ `MXLoudness` in MXAudioDSP; Export sheet toggle vs peak normalize |
 | **Master limiter on bounce** | ✅ Soft brickwall ≤ ~0.99 after peak/LUFS (`applyMasterLimiter`) |
-| **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board |
+| **Snap-to-grid toggle** | ✅ `isSnapEnabled` (default on); magnet control on action board; W64 resolution picker 1/8·1/16·1/32 + beat grid density |
 | **Mono record default for vocals** | ✅ `preferMonoVocalRecord`; recorder downmix + session channel prefer |
 | **Latency calibration UX** | ✅ Studio gear → settings sheet; `MXLatencyCalibrator` measure/apply; UserDefaults persist |
 | **Noise gate (vocal, bounce + live)** | ✅ Bounce soft-knee; Week 28 live playback expander + monitor gate |
@@ -711,9 +714,9 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
 | **61** | Step-seq swing independent of MIDI swing + pattern slots save/recall | **Done (MVP)** ✅ | BandLab / FL Mobile |
-| **62** | Piano-roll multi-select transpose + scale lock lite | **Planned** | Cubasis / Logic |
-| **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Planned** | Ableton / GarageBand |
-| **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Planned** | Logic / Pro Tools |
+| **62** | Piano-roll multi-select transpose + scale lock lite | **Done (MVP)** ✅ | Cubasis / Logic |
+| **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Done (MVP)** ✅ | Ableton / GarageBand |
+| **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Done (MVP)** ✅ | Logic / Pro Tools |
 
 ### Week 61 — Step swing + pattern slots ✅
 
@@ -726,14 +729,54 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis
 
 **Week 61 notes:** Live cursor stays on the straight 16th grid (FL Mobile). Swing applies at **Add to timeline** only.
 
+### Week 62 — Piano-roll multi-select + scale lock ✅
+
+**Done when (Cubasis multi-select + Logic transpose / scale)**
+- [x] Multi-select `Set<UUID>`; tap = sole select / delete; long-press toggles membership
+- [x] Batch Δ-drag move via `movingMany` / `moveMIDINotes`
+- [x] Transpose chrome ±1 / ±12
+- [x] `MXMIDIScale` Major / Natural Minor + scale lock snap on add/drag (hidden for drums)
+- [x] Unit tests for transpose, movingMany, scale snap
+
+**Week 62 notes:** Draw mode / marquee deferred. Scale lock is session-local UI state.
+
+### Week 63 — Sidechain lite + shared reverb send visual ✅
+
+**Done when (Ableton / GarageBand sidechain + shared send)**
+- [x] Pure `MXSidechainDuck` (Effects): `gain(timeSinceTrigger:amount:attack:release:)` instant-duck → hold → linear release; `secondsSinceKick(playheadBeat:notes:bpm:)` finds the nearest past kick (note 36 / `MXDrumPart.kick`, raw-36 fallback via `isKick`)
+- [x] `MXSessionTrack.sidechainEnabled` (default false) + `sidechainAmount` 0…100 (default 50); Codable decode-with-defaults for back-compat
+- [x] `StudioSessionController.setSidechainEnabled(_:trackID:)` / `setSidechainAmount(_:trackID:)`
+- [x] Duck folded into `applyVolumeAutomationAtPlayhead` + `syncLiveInstrumentMix`: source = drums-category MIDI clip kicks; multiplied into destination clip/live-instrument volume at the playhead; `applyPlayhead` now ticks the mix when any track has sidechain on
+- [x] Mixer UI: compact **SC** toggle + amount on channel strips; **Sidechain** toggle + SC Amt in the FX sheet (hidden on the drum source track); `insertChainBar` shows **SC** chip when armed
+- [x] Shared reverb send visual: **Send** control now on audio strips too (aliases into insert Rev via `setTrackReverbSend`); `insertChainBar` shows **Send** chip when `reverbSend > 0.5` for audio + MIDI
+- [x] Unit tests: `MXSidechainDuck` gain curve (ducked at trigger, ~1 after release, amount 0 → always 1) + `secondsSinceKick` nearest-past-kick / tempo scaling / nil cases
+
+**Week 63 notes:** Apple's `DynamicsProcessor` is self-keyed only, so this is an **envelope duck** (playback mix), not a real key-input sidechain — bounce path unchanged this week. Audio tracks are not rewired into a real aux bus; Send stays aliased to the insert Rev mix (shared visual only).
+
+### Week 64 — Snap resolution + beat grid density ✅
+
+**Done when (Logic / Pro Tools snap resolution)**
+- [x] `StudioSessionController.SnapResolution` enum (1/8 = 0.5, 1/16 = 0.25, 1/32 = 0.125), `Codable` / `CaseIterable`
+- [x] Session `snapResolution` (default 1/16); `snapBeat(_:)` passes `snapResolution.beats` into `MXMIDIQuantize.snapBeat(_:resolution:)`
+- [x] Arrange min-length floors scale to the grid cell (`max(0.125, snapResolution)`) so 1/32 trims tighter
+- [x] `MXMIDIQuantize.eighth` / `.thirtySecond` named constants (sixteenth already existed)
+- [x] Settings segmented picker under Snap toggle (visible when snap on); subtitle reflects current resolution
+- [x] `StudioView.beatNet` draws subdivision lines at snap resolution (bar strong / beat medium / subdiv lighter), capped at 128 lines; `beatsVisible = 8`
+- [x] `MXMIDIQuantizeTests` extended for snapBeat at 0.5 and 0.125 resolutions
+
+**Week 64 notes:** `snapResolution` is a session preference (not persisted), matching `isSnapEnabled`. MIDI/step-seq quantize keeps its own 16th grid — only arrange edits and the beat overlay follow the picker.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns
-- **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library ← Month 16 W61
-- **Piano roll:** Multi-select transpose; draw mode; scale lock ← Month 16 W62
+- **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later
+- **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode later
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
-- **Mix:** Sidechain lite from kick to bass; shared reverb send visual; certified LUFS / loudness report sheet ← Month 16 W63
-- **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation ← Month 16 W64
+- **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet; real key-input sidechain + audio aux bus later
+- **Arrange:** Snap resolution picker (1/8, 1/16, 1/32) ✅ W64; beat grid density ✅ W64; clip gain automation later
+- **Arrange (next SOTA):** Triplet + dotted snap grids (1/8T, 1/16T) so swung/shuffle edits land on musical divisions like Logic/Pro Tools
+- **Arrange (next SOTA):** Snap-resolution readout on the arrange ruler + magnet chrome (show "1/16") so the active grid is visible without opening Settings
+- **Arrange (next SOTA):** Zoom-adaptive grid density — auto-thin subdivision lines as `beatsVisible` grows so dense grids stay legible when zoomed out
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
 - **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
 - **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
@@ -804,13 +847,14 @@ Use this as the menu when a week has spare capacity. **Bold** items are near-ter
 ### Arrangement
 - **Trim / move / delete**
 - Fade in/out, clip gain ✅ Week 27
-- Snap to grid, loop region ✅ Week 27+ (loop + `isSnapEnabled` 16th toggle)
+- Snap to grid, loop region ✅ Week 27+ (loop + `isSnapEnabled`; W64 resolution picker 1/8·1/16·1/32 + beat grid density)
 - Undo/redo ✅ Week 27
 
 ### Mix / FX
 - Full mixer view ✅ Week 30 channel strips
 - Insert chain UI ✅ Week 30 FX chips + Record EQ entry
-- Shared reverb send ✅ MIDI aux; audio Rev on strip
+- Shared reverb send ✅ MIDI aux; audio Rev on strip; W63 Send control + chip on audio strips too
+- Sidechain lite (kick → bass) ✅ W63 envelope duck (`MXSidechainDuck`); real key-input sidechain later
 - Master limiter on bounce ✅ Week 27+ (`StudioBounceExporter.applyMasterLimiter`)
 - Bounce FX parity ✅ Week 30 (HPF/EQ/delay/reverb/comp; Dist deferred)
 
@@ -908,7 +952,10 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
                               → W57–W60 Month 15 SOTA polish ✅
-                                → W61 step swing + slots ✅ ← next W62–64 / cloud
+                                → W61 step swing + slots ✅
+                                  → W62 multi-select transpose + scale lock ✅
+                                    → W63 sidechain lite + shared reverb send visual ✅
+                                      → W64 snap resolution picker + beat grid density ✅ ← next cloud / SOTA backlog
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -937,6 +984,9 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass *(done)* |
 | 61–64 | Step swing / multi-select transpose / sidechain / snap resolution |
 | 61 | Step swing + pattern slots A–D *(done)* |
+| 62 | Piano-roll multi-select + scale lock *(done)* |
+| 63 | Sidechain lite (kick → bass) + shared reverb send visual *(done)* |
+| 64 | Snap resolution picker + beat grid density *(done)* |
 
 ---
 

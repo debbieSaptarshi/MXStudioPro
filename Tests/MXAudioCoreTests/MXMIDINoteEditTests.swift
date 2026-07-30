@@ -66,4 +66,104 @@ final class MXMIDINoteEditTests: XCTestCase {
         let zero = MXMIDINoteEdit.settingVelocity(note, velocity: 0, clipLengthBeats: 4)
         XCTAssertEqual(zero.velocity, 1)
     }
+
+    // MARK: - Week 62 (multi-select)
+
+    func testTransposingOnlySelectedNotes() {
+        let a = MXMIDINote(note: 60, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let b = MXMIDINote(note: 64, velocity: 100, startBeat: 1, lengthBeats: 0.5)
+        let notes = [a, b]
+        let transposed = MXMIDINoteEdit.transposing(
+            notes,
+            ids: [a.id],
+            semitones: 2,
+            clipLengthBeats: 4
+        )
+        XCTAssertEqual(transposed[0].note, 62)
+        XCTAssertEqual(transposed[1].note, 64) // unselected untouched
+    }
+
+    func testTransposingClampsAndPreservesTiming() {
+        let note = MXMIDINote(note: 125, velocity: 90, startBeat: 2, lengthBeats: 0.75)
+        let up = MXMIDINoteEdit.transposing(
+            [note],
+            ids: [note.id],
+            semitones: 12,
+            clipLengthBeats: 8
+        )
+        XCTAssertEqual(up[0].note, 127) // clamped at ceiling
+        XCTAssertEqual(up[0].startBeat, 2, accuracy: 1e-9)
+        XCTAssertEqual(up[0].lengthBeats, 0.75, accuracy: 1e-9)
+
+        let low = MXMIDINote(note: 3, velocity: 90, startBeat: 0, lengthBeats: 0.5)
+        let down = MXMIDINoteEdit.transposing(
+            [low],
+            ids: [low.id],
+            semitones: -12,
+            clipLengthBeats: 4
+        )
+        XCTAssertEqual(down[0].note, 0) // clamped at floor
+    }
+
+    func testTransposingNoOpWhenEmptyOrZero() {
+        let note = MXMIDINote(note: 60, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let sameIDsEmpty = MXMIDINoteEdit.transposing(
+            [note], ids: [], semitones: 5, clipLengthBeats: 4
+        )
+        XCTAssertEqual(sameIDsEmpty[0].note, 60)
+        let sameZero = MXMIDINoteEdit.transposing(
+            [note], ids: [note.id], semitones: 0, clipLengthBeats: 4
+        )
+        XCTAssertEqual(sameZero[0].note, 60)
+    }
+
+    func testMovingManyAppliesDeltaToSelection() {
+        let a = MXMIDINote(note: 60, velocity: 100, startBeat: 1, lengthBeats: 0.5)
+        let b = MXMIDINote(note: 62, velocity: 100, startBeat: 2, lengthBeats: 0.5)
+        let moved = MXMIDINoteEdit.movingMany(
+            [a, b],
+            ids: [a.id, b.id],
+            deltaStartBeats: 0.5,
+            deltaPitch: 3,
+            clipLengthBeats: 8
+        )
+        XCTAssertEqual(moved[0].startBeat, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(moved[0].note, 63)
+        XCTAssertEqual(moved[1].startBeat, 2.5, accuracy: 1e-9)
+        XCTAssertEqual(moved[1].note, 65)
+    }
+
+    func testMovingManyLeavesUnselectedAndClampsToClip() {
+        let a = MXMIDINote(note: 60, velocity: 100, startBeat: 3.5, lengthBeats: 0.5)
+        let b = MXMIDINote(note: 62, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let moved = MXMIDINoteEdit.movingMany(
+            [a, b],
+            ids: [a.id],
+            deltaStartBeats: 2.0, // would push past clip end → clamped
+            deltaPitch: -1,
+            clipLengthBeats: 4
+        )
+        XCTAssertEqual(moved[0].note, 59)
+        XCTAssertLessThanOrEqual(moved[0].endBeat, 4.0 + 1e-9)
+        XCTAssertEqual(moved[1].startBeat, 0, accuracy: 1e-9) // unselected untouched
+        XCTAssertEqual(moved[1].note, 62)
+    }
+
+    func testMovingManyNoOpWhenNoDelta() {
+        let note = MXMIDINote(note: 60, velocity: 100, startBeat: 1, lengthBeats: 0.5)
+        let same = MXMIDINoteEdit.movingMany(
+            [note], ids: [note.id], deltaStartBeats: 0, deltaPitch: 0, clipLengthBeats: 4
+        )
+        XCTAssertEqual(same[0].startBeat, 1, accuracy: 1e-9)
+        XCTAssertEqual(same[0].note, 60)
+    }
+
+    func testRemovingManyByIDs() {
+        let a = MXMIDINote(note: 60, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let b = MXMIDINote(note: 62, velocity: 100, startBeat: 1, lengthBeats: 0.5)
+        let c = MXMIDINote(note: 64, velocity: 100, startBeat: 2, lengthBeats: 0.5)
+        let remaining = MXMIDINoteEdit.removing([a, b, c], ids: [a.id, c.id])
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining[0].id, b.id)
+    }
 }

@@ -66,8 +66,33 @@ public final class StudioSessionController {
         }
     }
 
-    /// Snap move/trim/loop edits to 16th-note grid. Session preference (not persisted).
+    /// Arrange snap grid resolution in quarter-note beats (Logic / Pro Tools style).
+    /// Session preference (not persisted).
+    public enum SnapResolution: Double, CaseIterable, Identifiable, Codable, Sendable {
+        case eighth = 0.5
+        case sixteenth = 0.25
+        case thirtySecond = 0.125
+
+        public var id: Double { rawValue }
+
+        /// Grid resolution in quarter-note beats (feeds `MXMIDIQuantize.snapBeat`).
+        public var beats: Double { rawValue }
+
+        /// Menu / picker label (musical note value).
+        public var displayName: String {
+            switch self {
+            case .eighth: return "1/8"
+            case .sixteenth: return "1/16"
+            case .thirtySecond: return "1/32"
+            }
+        }
+    }
+
+    /// Snap move/trim/loop edits to the grid. Session preference (not persisted).
     public var isSnapEnabled: Bool = true
+
+    /// Arrange snap grid resolution. Session preference (not persisted).
+    public var snapResolution: SnapResolution = .sixteenth
 
     /// Snap MIDI note starts to 16ths when committing a pad/keys performance.
     /// Session preference (not persisted). Independent of arrange `isSnapEnabled`.
@@ -1237,7 +1262,7 @@ public final class StudioSessionController {
     public func trimClipStart(id: UUID, toStartBeat newStartBeat: Double) {
         guard var clip = clip(id), let transport else { return }
         let rightEdge = clip.startBeat + clip.lengthBeats
-        let constrained = max(0, min(newStartBeat, rightEdge - 0.25))
+        let constrained = max(0, min(newStartBeat, rightEdge - minSnapLengthBeats))
         let snappedStart = snapBeat(constrained)
         guard abs(snappedStart - clip.startBeat) > 1e-6 else { return }
 
@@ -1250,7 +1275,7 @@ public final class StudioSessionController {
             clip.sourceDurationSeconds = max(0.05, dur - deltaSeconds)
         }
         clip.startBeat = snappedStart
-        clip.lengthBeats = max(0.25, rightEdge - snappedStart)
+        clip.lengthBeats = max(minSnapLengthBeats, rightEdge - snappedStart)
         let audible: Double
         if let dur = clip.sourceDurationSeconds {
             audible = dur
@@ -1282,7 +1307,7 @@ public final class StudioSessionController {
     /// Trim right edge: `newEndBeat` on timeline; keeps left edge fixed.
     public func trimClipEnd(id: UUID, toEndBeat newEndBeat: Double) {
         guard var clip = clip(id), let transport else { return }
-        let snappedEnd = max(clip.startBeat + 0.25, snapBeat(newEndBeat))
+        let snappedEnd = max(clip.startBeat + minSnapLengthBeats, snapBeat(newEndBeat))
         let newLength = snappedEnd - clip.startBeat
         guard abs(newLength - clip.lengthBeats) > 1e-6 else { return }
 
@@ -1314,10 +1339,17 @@ public final class StudioSessionController {
         }
     }
 
-    /// Snap to 16th-note grid when `isSnapEnabled`; otherwise pass through.
+    /// Snap to the selected grid resolution when `isSnapEnabled`; otherwise pass through.
     private func snapBeat(_ beat: Double) -> Double {
         guard isSnapEnabled else { return beat }
-        return MXMIDIQuantize.snapBeat(beat)
+        return MXMIDIQuantize.snapBeat(beat, resolution: snapResolution.beats)
+    }
+
+    /// Minimum arrange clip length when snapping — one grid cell, floored at 1/32.
+    /// Falls back to a 16th when snap is off so trims stay musically sensible.
+    private var minSnapLengthBeats: Double {
+        guard isSnapEnabled else { return 0.25 }
+        return max(0.125, snapResolution.beats)
     }
 
     /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
@@ -2185,6 +2217,56 @@ public final class StudioSessionController {
         return commitMIDINotes(next, for: &clip, renderBed: true, recordUndo: true)
     }
 
+    /// Delete every selected note (Week 62 multi-select).
+    @discardableResult
+    public func deleteMIDINotes(ids: Set<UUID>) -> Bool {
+        guard !ids.isEmpty else { return false }
+        guard var clip = selectedMIDIClip() else { return false }
+        let next = MXMIDINoteEdit.removing(clip.midiNotes, ids: ids)
+        guard next.count != clip.midiNotes.count else { return false }
+        return commitMIDINotes(next, for: &clip, renderBed: true, recordUndo: true)
+    }
+
+    /// Transpose selected notes by semitones (Logic / Cubasis).
+    @discardableResult
+    public func transposeMIDINotes(
+        ids: Set<UUID>,
+        semitones: Int,
+        renderBed: Bool = true,
+        recordUndo: Bool = true
+    ) -> Bool {
+        guard !ids.isEmpty, semitones != 0 else { return false }
+        guard var clip = selectedMIDIClip() else { return false }
+        let next = MXMIDINoteEdit.transposing(
+            clip.midiNotes,
+            ids: ids,
+            semitones: semitones,
+            clipLengthBeats: clip.lengthBeats
+        )
+        return commitMIDINotes(next, for: &clip, renderBed: renderBed, recordUndo: recordUndo)
+    }
+
+    /// Batch-move selected notes by Δstart / Δpitch (Week 62 multi-select drag).
+    @discardableResult
+    public func moveMIDINotes(
+        ids: Set<UUID>,
+        deltaStartBeats: Double,
+        deltaPitch: Int,
+        renderBed: Bool = true,
+        recordUndo: Bool = true
+    ) -> Bool {
+        guard !ids.isEmpty else { return false }
+        guard var clip = selectedMIDIClip() else { return false }
+        let next = MXMIDINoteEdit.movingMany(
+            clip.midiNotes,
+            ids: ids,
+            deltaStartBeats: deltaStartBeats,
+            deltaPitch: deltaPitch,
+            clipLengthBeats: clip.lengthBeats
+        )
+        return commitMIDINotes(next, for: &clip, renderBed: renderBed, recordUndo: recordUndo)
+    }
+
     /// Force re-render of the selected MIDI clip bed after a drag gesture ends.
     @discardableResult
     public func commitSelectedMIDIClipBed() -> Bool {
@@ -3050,31 +3132,87 @@ public final class StudioSessionController {
     /// Keep live VI graph tracks aligned with their project track mixer state.
     private func syncLiveInstrumentMix() {
         let anySolo = project.tracks.contains(where: \.isSolo)
+        let kicks = sidechainKickTriggers()
         for track in project.tracks where track.kind == .midi {
             guard let chain = instrumentChains[track.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
             let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
-            chain.volume = audible ? track.volume * autoGain : 0
+            let duck = sidechainDuckGain(for: track, kickTriggers: kicks)
+            chain.volume = audible ? track.volume * autoGain * duck : 0
             chain.pan = track.pan
             chain.isMuted = !audible
         }
     }
 
+    // MARK: - Sidechain lite (Week 63 — kick → bass/keys duck)
+
+    /// Absolute-beat kick triggers from every drums-category MIDI clip. The first
+    /// drums track's beat drives the pump; empty when there are no drum clips.
+    private func sidechainKickTriggers() -> [(startBeat: Double, note: UInt8)] {
+        guard project.tracks.contains(where: { $0.sidechainEnabled }) else { return [] }
+        var triggers: [(startBeat: Double, note: UInt8)] = []
+        for track in project.tracks where track.category == .drums {
+            for clip in track.clips where clip.isActive {
+                for note in clip.midiNotes where MXSidechainDuck.isKick(note.note) {
+                    triggers.append((startBeat: clip.startBeat + note.startBeat, note: note.note))
+                }
+            }
+        }
+        return triggers
+    }
+
+    /// Duck gain (0…1) for a sidechain-enabled destination track at the playhead.
+    private func sidechainDuckGain(
+        for track: MXSessionTrack,
+        kickTriggers: [(startBeat: Double, note: UInt8)]
+    ) -> Float {
+        guard track.sidechainEnabled, !kickTriggers.isEmpty else { return 1 }
+        guard let seconds = MXSidechainDuck.secondsSinceKick(
+            playheadBeat: playheadBeat,
+            notes: kickTriggers,
+            bpm: project.bpm
+        ) else { return 1 }
+        let amount = Double(track.sidechainAmount) / 100
+        return Float(MXSidechainDuck.gain(timeSinceTrigger: seconds, amount: amount))
+    }
+
+    /// Toggle kick→track ducking (Week 63). Typically enabled on keys / bass.
+    public func setSidechainEnabled(_ enabled: Bool, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].sidechainEnabled != enabled else { return }
+        project.tracks[index].sidechainEnabled = enabled
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    /// Duck depth 0…100 for a sidechained track.
+    public func setSidechainAmount(_ amount: Float, trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        let clamped = min(max(amount, 0), 100)
+        guard abs(clamped - project.tracks[index].sidechainAmount) > 1e-4 else { return }
+        project.tracks[index].sidechainAmount = clamped
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
     /// Apply volume automation at the playhead for every track (Logic-style live follow).
+    /// Also folds in the Week 63 sidechain duck so kick→track pumping tracks the beat.
     private func applyVolumeAutomationAtPlayhead() {
         let anySolo = project.tracks.contains(where: \.isSolo)
+        let kicks = sidechainKickTriggers()
         for track in project.tracks {
             let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
             let audible = !track.isMuted && (!anySolo || track.isSolo)
+            let duck = sidechainDuckGain(for: track, kickTriggers: kicks)
             for clip in track.clips {
                 guard let player = clipPlayers[clip.id] else { continue }
                 let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
                 let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-                player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto : 0
+                player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto * duck : 0
                 player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
             }
             if track.kind == .midi, let chain = instrumentChains[track.id] {
-                chain.volume = audible ? track.volume * autoGain : 0
+                chain.volume = audible ? track.volume * autoGain * duck : 0
             }
         }
     }
@@ -3690,7 +3828,8 @@ public final class StudioSessionController {
         playheadBeatInBar = readout.position.beat
         playheadTimeLabel = Self.formatTime(readout.seconds)
         if project.tracks.contains(where: { track in
-            !track.volumeAutomation.isEmpty
+            track.sidechainEnabled
+                || !track.volumeAutomation.isEmpty
                 || track.clips.contains(where: {
                     !$0.volumeAutomation.isEmpty || !$0.panAutomation.isEmpty
                 })

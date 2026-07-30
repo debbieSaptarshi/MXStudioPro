@@ -11,6 +11,22 @@ final class MXMIDIQuantizeTests: XCTestCase {
         XCTAssertEqual(MXMIDIQuantize.snapBeat(2.125), 2.25, accuracy: 1e-9)
     }
 
+    func testSnapBeatEighthResolution() {
+        XCTAssertEqual(MXMIDIQuantize.eighth, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.2, resolution: 0.5), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.3, resolution: 0.5), 1.5, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.24, resolution: 0.5), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.25, resolution: 0.5), 0.5, accuracy: 1e-9)
+    }
+
+    func testSnapBeatThirtySecondResolution() {
+        XCTAssertEqual(MXMIDIQuantize.thirtySecond, 0.125, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.18, resolution: 0.125), 0.125, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.0624, resolution: 0.125), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.0626, resolution: 0.125), 0.125, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.0, resolution: 0.125), 1.0, accuracy: 1e-9)
+    }
+
     func testSnapBeatNonPositiveResolutionPassthrough() {
         XCTAssertEqual(MXMIDIQuantize.snapBeat(1.07, resolution: 0), 1.07, accuracy: 1e-9)
         XCTAssertEqual(MXMIDIQuantize.snapBeat(-0.5, resolution: -1), 0, accuracy: 1e-9)

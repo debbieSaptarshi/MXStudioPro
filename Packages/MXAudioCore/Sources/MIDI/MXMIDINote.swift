@@ -125,12 +125,70 @@ public enum MXMIDINoteEdit: Sendable {
         notes.filter { $0.id != id }
     }
 
+    /// Remove every note whose id is in `ids` (Week 62 multi-select).
+    public static func removing(_ notes: [MXMIDINote], ids: Set<UUID>) -> [MXMIDINote] {
+        guard !ids.isEmpty else { return notes }
+        return notes.filter { !ids.contains($0.id) }
+    }
+
     public static func appending(
         _ notes: [MXMIDINote],
         note: MXMIDINote,
         clipLengthBeats: Double
     ) -> [MXMIDINote] {
         notes + [clamping(note, clipLengthBeats: clipLengthBeats)]
+    }
+
+    /// Transpose selected notes by `semitones` (Logic / Cubasis). Pitch clamped 0…127.
+    public static func transposing(
+        _ notes: [MXMIDINote],
+        ids: Set<UUID>,
+        semitones: Int,
+        clipLengthBeats: Double
+    ) -> [MXMIDINote] {
+        guard !ids.isEmpty, semitones != 0 else { return notes }
+        return notes.map { note in
+            guard ids.contains(note.id) else { return note }
+            let raw = Int(note.note) + semitones
+            let pitch = clampPitch(UInt8(min(127, max(0, raw))))
+            return clamping(
+                MXMIDINote(
+                    id: note.id,
+                    note: pitch,
+                    velocity: note.velocity,
+                    startBeat: note.startBeat,
+                    lengthBeats: note.lengthBeats
+                ),
+                clipLengthBeats: clipLengthBeats
+            )
+        }
+    }
+
+    /// Apply the same Δstart / Δpitch to every selected note (batch drag).
+    public static func movingMany(
+        _ notes: [MXMIDINote],
+        ids: Set<UUID>,
+        deltaStartBeats: Double,
+        deltaPitch: Int,
+        clipLengthBeats: Double
+    ) -> [MXMIDINote] {
+        guard !ids.isEmpty else { return notes }
+        guard abs(deltaStartBeats) > 1e-12 || deltaPitch != 0 else { return notes }
+        return notes.map { note in
+            guard ids.contains(note.id) else { return note }
+            let rawPitch = Int(note.note) + deltaPitch
+            let pitch = clampPitch(UInt8(min(127, max(0, rawPitch))))
+            return clamping(
+                MXMIDINote(
+                    id: note.id,
+                    note: pitch,
+                    velocity: note.velocity,
+                    startBeat: note.startBeat + deltaStartBeats,
+                    lengthBeats: note.lengthBeats
+                ),
+                clipLengthBeats: clipLengthBeats
+            )
+        }
     }
 }
 

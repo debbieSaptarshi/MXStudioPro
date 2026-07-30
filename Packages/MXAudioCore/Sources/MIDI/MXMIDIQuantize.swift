@@ -5,8 +5,14 @@ import Foundation
 /// Matches arrangement 16th-note snap: `resolution = 0.25` quarter-note beats.
 /// Live pad/key feel stays free; apply only when committing or re-quantizing a clip.
 public enum MXMIDIQuantize: Sendable {
+    /// Eighth-note grid in quarter-note beats.
+    public static let eighth: Double = 0.5
+
     /// Sixteenth-note grid in quarter-note beats (same as Studio `snapBeat`).
     public static let sixteenth: Double = 0.25
+
+    /// Thirty-second-note grid in quarter-note beats.
+    public static let thirtySecond: Double = 0.125
 
     /// Snap a beat to the nearest multiple of `resolution`.
     /// Non-positive `resolution` returns `max(0, beat)` unchanged.

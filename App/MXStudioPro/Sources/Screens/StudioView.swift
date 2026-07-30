@@ -25,6 +25,9 @@ public struct StudioView: View {
     @State private var showClipInspector = false
     @State private var showPianoRoll = false
     @State private var pianoRollDragUndoArmed = true
+    /// Week 62 piano-roll scale lock (Cubasis / Logic lite).
+    @State private var pianoRollScaleLock = false
+    @State private var pianoRollScale = MXMIDIScale.cMajor
     /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
     @State private var tracksCollapsed = false
     /// Session-local collapse state: tracks in this set are collapsed to one summary lane.
@@ -318,6 +321,15 @@ public struct StudioView: View {
         return clip
     }
 
+    /// Scale lock is musical — drum tracks stay chromatic, so hide the chrome there.
+    private var pianoRollAllowsScaleLock: Bool {
+        guard let id = session.selectedClipID,
+              let clip = session.project.tracks.flatMap(\.clips).first(where: { $0.id == id }),
+              let track = session.project.tracks.first(where: { $0.id == clip.trackID })
+        else { return false }
+        return track.category != .drums
+    }
+
     private static let importAudioTypes: [UTType] = {
         var types: [UTType] = [.audio, .wav, .mp3, .mpeg4Audio]
         if let caf = UTType(filenameExtension: "caf") { types.append(caf) }
@@ -397,11 +409,24 @@ public struct StudioView: View {
                     MIDIPianoRollEditorView(
                         notes: clip.midiNotes,
                         lengthBeats: clip.lengthBeats,
+                        scaleLockEnabled: $pianoRollScaleLock,
+                        scale: $pianoRollScale,
+                        allowsScaleLock: pianoRollAllowsScaleLock,
                         onMove: { id, start, pitch in
                             _ = session.updateMIDINote(
                                 id: id,
                                 startBeat: start,
                                 pitch: pitch,
+                                renderBed: false,
+                                recordUndo: pianoRollDragUndoArmed
+                            )
+                            pianoRollDragUndoArmed = false
+                        },
+                        onBatchMove: { ids, deltaStart, deltaPitch in
+                            _ = session.moveMIDINotes(
+                                ids: ids,
+                                deltaStartBeats: deltaStart,
+                                deltaPitch: deltaPitch,
                                 renderBed: false,
                                 recordUndo: pianoRollDragUndoArmed
                             )
@@ -431,6 +456,9 @@ public struct StudioView: View {
                         },
                         onAdd: { start, pitch in
                             _ = session.addMIDINote(startBeat: start, pitch: pitch)
+                        },
+                        onTranspose: { ids, semitones in
+                            _ = session.transposeMIDINotes(ids: ids, semitones: semitones)
                         },
                         onDelete: { id in
                             _ = session.deleteMIDINote(id: id)
@@ -999,7 +1027,26 @@ public struct StudioView: View {
                 }
                 .frame(height: rulerHeight)
 
-                // Vertical grid lines through lanes
+                // Subdivision grid lines at snap resolution (lighter). Drawn beneath the
+                // beat/bar lines so the stronger downbeats stay legible. Capped so dense
+                // resolutions (1/32) never draw hundreds of lines.
+                if session.isSnapEnabled, session.snapResolution.beats < 1.0 {
+                    let subdivBeats = session.snapResolution.beats
+                    let rawCount = Int((beatsVisible / subdivBeats).rounded())
+                    let subdivCount = min(rawCount, 128)
+                    ForEach(0..<subdivCount, id: \.self) { index in
+                        let subdivBeat = Double(index) * subdivBeats
+                        // Skip positions that coincide with whole-beat lines (drawn below).
+                        if abs(subdivBeat - subdivBeat.rounded()) > 1e-6 {
+                            Rectangle()
+                                .fill(MXColor.layer2.opacity(0.18))
+                                .frame(width: 1, height: max(0, geo.size.height - rulerHeight))
+                                .offset(x: CGFloat(subdivBeat) * pixelsPerBeat, y: rulerHeight)
+                        }
+                    }
+                }
+
+                // Vertical grid lines through lanes (bar = strong, beat = medium)
                 ForEach(0..<Int(beatsVisible), id: \.self) { beat in
                     Rectangle()
                         .fill(beat % session.project.timeSignatureNumerator == 0
@@ -2056,10 +2103,31 @@ public struct StudioView: View {
             VStack(spacing: 0) {
                 settingsToggleRow(
                     title: "Snap to grid",
-                    subtitle: "Move & trim to 16th notes",
+                    subtitle: "Move & trim to \(session.snapResolution.displayName) notes",
                     isOn: session.isSnapEnabled
                 ) {
                     session.isSnapEnabled.toggle()
+                }
+                if session.isSnapEnabled {
+                    Divider().overlay(MXColor.layer2)
+                    HStack(spacing: 12) {
+                        Text("Grid")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                        Spacer()
+                        Picker("Grid", selection: Binding(
+                            get: { session.snapResolution },
+                            set: { session.snapResolution = $0 }
+                        )) {
+                            ForEach(StudioSessionController.SnapResolution.allCases) { res in
+                                Text(res.displayName).tag(res)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 200)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                 }
                 Divider().overlay(MXColor.layer2)
                 settingsToggleRow(
@@ -2622,29 +2690,9 @@ public struct StudioView: View {
                 )
             }
 
-            if isKeys || isDrums {
-                mixerSliderRow(
-                    label: "Send",
-                    valueLabel: String(format: "%.0f", track.reverbSend),
-                    value: Binding(
-                        get: { Double(track.reverbSend) },
-                        set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
-                    ),
-                    range: 0...100,
-                    labelWidth: 56
-                )
-            }
-
-            mixerSliderRow(
-                label: "Rev",
-                valueLabel: String(format: "%.0f", track.reverbMix),
-                value: Binding(
-                    get: { Double(track.reverbMix) },
-                    set: { session.setTrackReverbMix(Float($0), trackID: track.id) }
-                ),
-                range: 0...100,
-                labelWidth: 56
-            )
+            // Send (shared reverb visual) → Rev → Sidechain, grouped to stay under
+            // the SwiftUI ViewBuilder child limit for this large row.
+            sendReverbSidechainRows(for: track)
 
             if track.category == .vocal {
                 Toggle(isOn: Binding(
@@ -2821,25 +2869,30 @@ public struct StudioView: View {
                     .monospacedDigit()
             }
 
-            if track.kind == .midi {
-                VStack(spacing: 2) {
-                    Text("Send")
-                        .font(MXFont.caption())
-                        .foregroundStyle(MXColor.grey)
-                    Slider(
-                        value: Binding(
-                            get: { Double(track.reverbSend) },
-                            set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
-                        ),
-                        in: 0...100
-                    )
-                    .tint(MXColor.teal)
-                    .controlSize(.mini)
-                    Text(String(format: "%.0f", track.reverbSend))
-                        .font(MXFont.caption())
-                        .foregroundStyle(MXColor.lightGrey)
-                        .monospacedDigit()
-                }
+            // Shared reverb send (Week 63 MVP B): audio strips alias Send → Rev mix.
+            VStack(spacing: 2) {
+                Text("Send")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                Slider(
+                    value: Binding(
+                        get: { Double(track.reverbSend) },
+                        set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
+                    ),
+                    in: 0...100
+                )
+                .tint(MXColor.teal)
+                .controlSize(.mini)
+                Text(String(format: "%.0f", track.reverbSend))
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.lightGrey)
+                    .monospacedDigit()
+            }
+
+            // Sidechain lite (Week 63 MVP A): duck to the kick. Source = drums, so
+            // the kit track itself has no SC control.
+            if track.category != .drums {
+                sidechainStripControl(for: track)
             }
 
             if track.category == .vocal {
@@ -2874,13 +2927,121 @@ public struct StudioView: View {
         )
     }
 
+    /// Compact sidechain toggle + amount for the narrow mixer channel strip.
+    @ViewBuilder
+    private func sidechainStripControl(for track: MXSessionTrack) -> some View {
+        VStack(spacing: 3) {
+            Button {
+                session.setSidechainEnabled(!track.sidechainEnabled, trackID: track.id)
+            } label: {
+                Text("SC")
+                    .font(MXFont.caption())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(track.sidechainEnabled ? MXColor.black : MXColor.lightGrey)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(track.sidechainEnabled ? MXColor.teal : MXColor.black)
+                    )
+                    .overlay {
+                        if !track.sidechainEnabled {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sidechain duck to kick")
+
+            if track.sidechainEnabled {
+                Slider(
+                    value: Binding(
+                        get: { Double(track.sidechainAmount) },
+                        set: { session.setSidechainAmount(Float($0), trackID: track.id) }
+                    ),
+                    in: 0...100
+                )
+                .tint(MXColor.teal)
+                .controlSize(.mini)
+            }
+        }
+    }
+
+    /// Send (shared reverb visual) + Rev + Sidechain grouped for the FX sheet row.
+    @ViewBuilder
+    private func sendReverbSidechainRows(for track: MXSessionTrack) -> some View {
+        // Shared reverb send (Week 63 MVP B): shown on audio strips too — for
+        // audio tracks Send aliases into the insert Rev mix.
+        mixerSliderRow(
+            label: "Send",
+            valueLabel: String(format: "%.0f", track.reverbSend),
+            value: Binding(
+                get: { Double(track.reverbSend) },
+                set: { session.setTrackReverbSend(Float($0), trackID: track.id) }
+            ),
+            range: 0...100,
+            labelWidth: 56
+        )
+
+        mixerSliderRow(
+            label: "Rev",
+            valueLabel: String(format: "%.0f", track.reverbMix),
+            value: Binding(
+                get: { Double(track.reverbMix) },
+                set: { session.setTrackReverbMix(Float($0), trackID: track.id) }
+            ),
+            range: 0...100,
+            labelWidth: 56
+        )
+
+        // Sidechain lite (Week 63 MVP A): duck to the first drums track's kick.
+        // Hidden on the drum track itself since it is the trigger source.
+        if track.category != .drums {
+            sidechainFXControls(for: track)
+        }
+    }
+
+    /// Sidechain toggle + amount slider for the wider FX sheet row.
+    @ViewBuilder
+    private func sidechainFXControls(for track: MXSessionTrack) -> some View {
+        Toggle(isOn: Binding(
+            get: { track.sidechainEnabled },
+            set: { session.setSidechainEnabled($0, trackID: track.id) }
+        )) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sidechain")
+                    .font(MXFont.caption())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MXColor.white)
+                Text("Ducks to the kick — pumps with the beat (Ableton style)")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
+        }
+        .tint(MXColor.teal)
+
+        if track.sidechainEnabled {
+            mixerSliderRow(
+                label: "SC Amt",
+                valueLabel: String(format: "%.0f", track.sidechainAmount),
+                value: Binding(
+                    get: { Double(track.sidechainAmount) },
+                    set: { session.setSidechainAmount(Float($0), trackID: track.id) }
+                ),
+                range: 0...100,
+                labelWidth: 56
+            )
+        }
+    }
+
     /// Fixed live-order insert chips (visual; no drag-reorder).
     private func insertChainBar(for track: MXSessionTrack) -> some View {
         let isGuitar = track.category == .guitar
         let isKeys = track.category == .keys
         let isDrums = track.category == .drums
         // Guitar: Dist → Dly → Rev. Keys/Drums: Synth → Send → Rev. Vocal: HPF → EQ → …
-        let stages: [(label: String, active: Bool)]
+        var stages: [(label: String, active: Bool)]
         if isGuitar {
             stages = [
                 ("Dist", track.distortionMix > 0.5),
@@ -2902,6 +3063,15 @@ public struct StudioView: View {
                 ("Dyn", track.reelsVocalEnabled || track.noiseGateEnabled),
                 ("Rev", track.reverbMix > 0.5),
             ]
+        }
+        // Shared reverb send visual (Week 63 MVP B): audio + guitar strips show a
+        // Send chip once the send is active (keys/drums already list it above).
+        if !isKeys && !isDrums && track.reverbSend > 0.5 {
+            stages.append(("Send", true))
+        }
+        // Sidechain lite (Week 63 MVP A): SC chip once ducking is armed (non-drums).
+        if !isDrums && track.sidechainEnabled {
+            stages.append(("SC", true))
         }
         let activeFill = isGuitar ? MXColor.teal : ((isKeys || isDrums) ? MXColor.orange : MXColor.accent)
         return ScrollView(.horizontal, showsIndicators: false) {

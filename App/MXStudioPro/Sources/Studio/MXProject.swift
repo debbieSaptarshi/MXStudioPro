@@ -286,6 +286,11 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var soloedDrumParts: Set<String>
     /// Track volume automation breakpoints (Week 52). Empty = constant `volume`.
     public var volumeAutomation: [MXAutomationPoint]
+    /// Sidechain "lite" ducking to the kick (Week 63). When on, this track's
+    /// playback volume dips on each kick hit (envelope duck, not a real key input).
+    public var sidechainEnabled: Bool
+    /// Sidechain duck depth 0…100 (0 = none, 100 = full duck at the hit).
+    public var sidechainAmount: Float
 
     public init(
         id: UUID = UUID(),
@@ -312,7 +317,9 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         synthBankPresetID: String? = nil,
         mutedDrumParts: Set<String> = [],
         soloedDrumParts: Set<String> = [],
-        volumeAutomation: [MXAutomationPoint] = []
+        volumeAutomation: [MXAutomationPoint] = [],
+        sidechainEnabled: Bool = false,
+        sidechainAmount: Float = 50
     ) {
         self.id = id
         self.name = name
@@ -341,6 +348,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.mutedDrumParts = mutedDrumParts
         self.soloedDrumParts = soloedDrumParts
         self.volumeAutomation = volumeAutomation.sorted { $0.beat < $1.beat }
+        self.sidechainEnabled = sidechainEnabled
+        self.sidechainAmount = min(max(sidechainAmount, 0), 100)
     }
 
     public init(from decoder: Decoder) throws {
@@ -373,6 +382,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         soloedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .soloedDrumParts) ?? []
         volumeAutomation = (try c.decodeIfPresent([MXAutomationPoint].self, forKey: .volumeAutomation) ?? [])
             .sorted { $0.beat < $1.beat }
+        sidechainEnabled = try c.decodeIfPresent(Bool.self, forKey: .sidechainEnabled) ?? false
+        sidechainAmount = min(max(try c.decodeIfPresent(Float.self, forKey: .sidechainAmount) ?? 50, 0), 100)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -380,6 +391,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
         case synthBankPresetID, mutedDrumParts, soloedDrumParts, volumeAutomation
+        case sidechainEnabled, sidechainAmount
     }
 
     /// Typed mute set for drum part lanes (empty for non-drums / none muted).
