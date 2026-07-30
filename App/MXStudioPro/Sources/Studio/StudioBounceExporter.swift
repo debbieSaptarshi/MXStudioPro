@@ -356,10 +356,8 @@ public enum StudioBounceExporter {
         guard framesToRead > 0, let data = buffer.floatChannelData else { return }
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
-        let baseGain = track.volume * clip.gain
         let trackPan = track.pan
         let hasTrackAutomation = !track.volumeAutomation.isEmpty
-        let hasClipVolAutomation = !clip.volumeAutomation.isEmpty
         let hasClipPanAutomation = !clip.panAutomation.isEmpty
         let sidechainOn = track.sidechainEnabled && !kickTriggers.isEmpty
         let sidechainAmount = Double(track.sidechainAmount) / 100
@@ -478,9 +476,7 @@ public enum StudioBounceExporter {
             let trackAuto = hasTrackAutomation
                 ? MXVolumeAutomation.value(atBeat: beat, points: track.volumeAutomation)
                 : MXVolumeAutomation.unity
-            let clipAuto = hasClipVolAutomation
-                ? clip.volumeAutomationGain(atProjectBeat: beat)
-                : MXVolumeAutomation.unity
+            let clipGain = clip.effectiveGain(atProjectBeat: beat)
             let panOffset = hasClipPanAutomation
                 ? clip.panAutomationOffset(atProjectBeat: beat)
                 : MXPanAutomation.center
@@ -496,7 +492,7 @@ public enum StudioBounceExporter {
             } else {
                 duck = 1
             }
-            let gain = baseGain * trackAuto * clipAuto * duck
+            let gain = track.volume * clipGain * trackAuto * duck
             let leftGain = gain * min(1, max(0, 1 - pan))
             let rightGain = gain * min(1, max(0, 1 + pan))
             left[di] += mono * leftGain

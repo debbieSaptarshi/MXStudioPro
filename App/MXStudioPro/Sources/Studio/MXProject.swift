@@ -426,7 +426,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var sourceOffsetSeconds: Double
     /// Seconds of audio used from the file (right trim). `nil` = remainder of file.
     public var sourceDurationSeconds: Double?
-    /// Linear clip gain (0.1…4). 1 = unity. Multiplies track volume.
+    /// Linear clip gain (0.1…2). 1 = unity. Multiplies track volume (relative mode).
     public var gain: Float
     /// Fade-in length in seconds from the audible clip start.
     public var fadeInSeconds: Double
@@ -438,10 +438,12 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var isActive: Bool
     /// Piano-roll lite notes (MIDI tracks). Empty for audio clips.
     public var midiNotes: [MXMIDINote]
-    /// Clip-local volume automation (beats from clip start). Empty = constant `gain`.
+    /// Clip-local volume / gain automation (beats from clip start). Empty = constant `gain`.
     public var volumeAutomation: [MXAutomationPoint]
     /// Clip-local pan offset automation (−1…1). Empty = no offset (use track pan).
     public var panAutomation: [MXAutomationPoint]
+    /// Relative (× `gain`) vs absolute (lane replaces `gain` when non-empty). Week 77.
+    public var gainAutomationMode: MXClipGainAutomationMode
 
     public init(
         id: UUID = UUID(),
@@ -459,7 +461,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         isActive: Bool = true,
         midiNotes: [MXMIDINote] = [],
         volumeAutomation: [MXAutomationPoint] = [],
-        panAutomation: [MXAutomationPoint] = []
+        panAutomation: [MXAutomationPoint] = [],
+        gainAutomationMode: MXClipGainAutomationMode = .relative
     ) {
         self.id = id
         self.trackID = trackID
@@ -469,7 +472,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.audioFileName = audioFileName
         self.sourceOffsetSeconds = max(0, sourceOffsetSeconds)
         self.sourceDurationSeconds = sourceDurationSeconds.map { max(0.05, $0) }
-        self.gain = min(max(gain, 0.1), 4)
+        self.gain = min(max(gain, MXClipGainAutomation.minGain), MXClipGainAutomation.maxGain)
         let audibleHint = sourceDurationSeconds.map { max(0.05, $0) }
             ?? max(0.05, lengthBeats * 60.0 / 120.0)
         let fades = MXClipFadeGeometry.meetInMiddle(
@@ -484,6 +487,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.midiNotes = midiNotes
         self.volumeAutomation = MXVolumeAutomation.clampingBeats(volumeAutomation, lengthBeats: lengthBeats)
         self.panAutomation = MXPanAutomation.clampingBeats(panAutomation, lengthBeats: lengthBeats)
+        self.gainAutomationMode = gainAutomationMode
     }
 
     /// Back-compat with Week 4 projects that omit trim / fade / take fields.
@@ -497,7 +501,10 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         audioFileName = try c.decodeIfPresent(String.self, forKey: .audioFileName)
         sourceOffsetSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .sourceOffsetSeconds) ?? 0)
         sourceDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .sourceDurationSeconds).map { max(0.05, $0) }
-        gain = min(max(try c.decodeIfPresent(Float.self, forKey: .gain) ?? 1, 0.1), 4)
+        gain = min(
+            max(try c.decodeIfPresent(Float.self, forKey: .gain) ?? 1, MXClipGainAutomation.minGain),
+            MXClipGainAutomation.maxGain
+        )
         let rawIn = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeInSeconds) ?? 0)
         let rawOut = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
         let audibleHint = sourceDurationSeconds
@@ -516,6 +523,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
             try c.decodeIfPresent([MXAutomationPoint].self, forKey: .panAutomation) ?? [],
             lengthBeats: lengthBeats
         )
+        gainAutomationMode = try c.decodeIfPresent(MXClipGainAutomationMode.self, forKey: .gainAutomationMode)
+            ?? .relative
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -523,7 +532,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         case sourceOffsetSeconds, sourceDurationSeconds
         case gain, fadeInSeconds, fadeOutSeconds
         case takeIndex, isActive, midiNotes
-        case volumeAutomation, panAutomation
+        case volumeAutomation, panAutomation, gainAutomationMode
     }
 
     /// True when this clip’s beat range overlaps `other` (exclusive ends).
@@ -571,6 +580,16 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         let local = localBeat(atProjectBeat: projectBeat)
         guard local <= lengthBeats + 1e-6 else { return MXVolumeAutomation.unity }
         return MXVolumeAutomation.value(atBeat: local, points: volumeAutomation)
+    }
+
+    /// Clip contribution after applying relative/absolute gain automation mode (Week 77).
+    public func effectiveGain(atProjectBeat projectBeat: Double) -> Float {
+        MXClipGainAutomation.effectiveGain(
+            clipGain: gain,
+            mode: gainAutomationMode,
+            automationValue: volumeAutomationGain(atProjectBeat: projectBeat),
+            hasAutomation: !volumeAutomation.isEmpty
+        )
     }
 
     /// Pan offset at a project beat (0 when empty).

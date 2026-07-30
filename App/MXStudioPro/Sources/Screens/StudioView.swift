@@ -68,7 +68,7 @@ public struct StudioView: View {
         var label: String {
             switch self {
             case .trackVolume: return "Track"
-            case .clipVolume: return "Clip Vol"
+            case .clipVolume: return "Clip Gain"
             case .clipPan: return "Clip Pan"
             }
         }
@@ -1328,7 +1328,11 @@ public struct StudioView: View {
                     track.clips.first(where: { $0.id == id })
                 }
                 VStack(spacing: 2) {
-                    automationModePicker(trackID: track.id, mode: mode, hasSelectedClip: selectedClip != nil)
+                    automationModePicker(
+                        trackID: track.id,
+                        mode: mode,
+                        selectedClip: selectedClip
+                    )
                     automationLaneContent(
                         track: track,
                         mode: mode,
@@ -1345,8 +1349,9 @@ public struct StudioView: View {
     private func automationModePicker(
         trackID: UUID,
         mode: AutomationLaneMode,
-        hasSelectedClip: Bool
+        selectedClip: MXClip?
     ) -> some View {
+        let hasSelectedClip = selectedClip != nil
         HStack(spacing: 4) {
             ForEach(AutomationLaneMode.allCases) { option in
                 let enabled = option == .trackVolume || hasSelectedClip
@@ -1384,8 +1389,40 @@ public struct StudioView: View {
                 .disabled(!enabled)
             }
             Spacer(minLength: 0)
+            if mode == .clipVolume, let clip = selectedClip {
+                clipGainModeToggle(clip: clip)
+            }
         }
         .padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private func clipGainModeToggle(clip: MXClip) -> some View {
+        HStack(spacing: 2) {
+            ForEach(MXClipGainAutomationMode.allCases, id: \.self) { option in
+                Button {
+                    session.setClipGainAutomationMode(option, clipID: clip.id)
+                } label: {
+                    Text(option == .relative ? "Rel" : "Abs")
+                        .font(MXFont.caption())
+                        .foregroundStyle(
+                            clip.gainAutomationMode == option ? MXColor.accent : MXColor.grey
+                        )
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(
+                                    clip.gainAutomationMode == option
+                                        ? MXColor.accent.opacity(0.18)
+                                        : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option == .relative ? "Relative clip gain" : "Absolute clip gain")
+            }
+        }
     }
 
     @ViewBuilder
@@ -1443,7 +1480,7 @@ public struct StudioView: View {
                     }
                 )
             } else {
-                Text("Select a clip for clip volume automation")
+                Text("Select a clip for clip gain automation")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -2090,10 +2127,19 @@ public struct StudioView: View {
                             get: { Double(clip.gain) },
                             set: { session.setClipGain(Float($0), clipID: clip.id) }
                         ),
-                        in: 0.1...2.0,
+                        in: Double(MXClipGainAutomation.minGain)...Double(MXClipGainAutomation.maxGain),
                         step: 0.05
                     )
                     .tint(MXColor.accent)
+                    if !clip.volumeAutomation.isEmpty {
+                        Text(
+                            clip.gainAutomationMode == .absolute
+                                ? "Absolute: lane sets gain (slider unused while curve exists)"
+                                : "Relative: lane multiplies this gain"
+                        )
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {

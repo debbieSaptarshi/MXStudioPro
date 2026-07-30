@@ -72,4 +72,48 @@ final class MXVolumeAutomationTests: XCTestCase {
         XCTAssertEqual(points.count, 1)
         XCTAssertEqual(points[0].value, -1, accuracy: 1e-6)
     }
+
+    func testClipGainRelativeMultiplies() {
+        let relative = MXClipGainAutomation.effectiveGain(
+            clipGain: 0.5,
+            mode: .relative,
+            automationValue: 1.5,
+            hasAutomation: true
+        )
+        XCTAssertEqual(relative, 0.75, accuracy: 1e-5)
+        let empty = MXClipGainAutomation.effectiveGain(
+            clipGain: 0.5,
+            mode: .relative,
+            automationValue: 1.5,
+            hasAutomation: false
+        )
+        XCTAssertEqual(empty, 0.5, accuracy: 1e-5)
+    }
+
+    func testClipGainAbsoluteReplaces() {
+        let absolute = MXClipGainAutomation.effectiveGain(
+            clipGain: 0.5,
+            mode: .absolute,
+            automationValue: 1.25,
+            hasAutomation: true
+        )
+        XCTAssertEqual(absolute, 1.25, accuracy: 1e-5)
+        let empty = MXClipGainAutomation.effectiveGain(
+            clipGain: 0.8,
+            mode: .absolute,
+            automationValue: 1.25,
+            hasAutomation: false
+        )
+        XCTAssertEqual(empty, 0.8, accuracy: 1e-5)
+    }
+
+    func testClipGainClampsStatic() {
+        let high = MXClipGainAutomation.effectiveGain(
+            clipGain: 9,
+            mode: .relative,
+            automationValue: 1,
+            hasAutomation: false
+        )
+        XCTAssertEqual(high, MXClipGainAutomation.maxGain, accuracy: 1e-5)
+    }
 }

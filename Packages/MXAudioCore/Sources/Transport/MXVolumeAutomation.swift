@@ -177,3 +177,39 @@ public enum MXPanAutomation: Sendable {
         min(maxValue, max(minValue, value))
     }
 }
+
+/// Logic / Ableton-style clip gain automation modes (Week 77).
+///
+/// Lane values stay linear gain **0…2** (1 = unity), matching `MXVolumeAutomation`.
+public enum MXClipGainAutomationMode: String, Codable, Equatable, Sendable, CaseIterable {
+    /// Multiply static `clip.gain` by the automation curve (empty curve = unity).
+    case relative
+    /// Automation curve **is** the gain when non-empty; empty curve falls back to `clip.gain`.
+    case absolute
+}
+
+/// Resolve clip contribution to the mix gain chain (before track volume / duck).
+public enum MXClipGainAutomation: Sendable {
+    public static let minGain: Float = 0.1
+    public static let maxGain: Float = 2
+
+    /// Effective clip gain at a sample / playhead.
+    /// - `automationValue`: evaluated lane (pass `MXVolumeAutomation.unity` when empty).
+    /// - `hasAutomation`: whether the clip has any gain automation points.
+    public static func effectiveGain(
+        clipGain: Float,
+        mode: MXClipGainAutomationMode,
+        automationValue: Float,
+        hasAutomation: Bool
+    ) -> Float {
+        let staticGain = min(maxGain, max(minGain, clipGain))
+        switch mode {
+        case .relative:
+            let auto = hasAutomation ? automationValue : MXVolumeAutomation.unity
+            return staticGain * auto
+        case .absolute:
+            guard hasAutomation else { return staticGain }
+            return min(maxGain, max(0, automationValue))
+        }
+    }
+}

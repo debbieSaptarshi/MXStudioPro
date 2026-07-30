@@ -1437,10 +1437,10 @@ public final class StudioSessionController {
         return max(0.125, snapResolution.beats)
     }
 
-    /// Clip gain in linear units (0.1…4). BandLab / GarageBand style clip volume.
+    /// Clip gain in linear units (0.1…2). BandLab / GarageBand style clip volume.
     public func setClipGain(_ gain: Float, clipID: UUID) {
         guard var clip = clip(clipID) else { return }
-        let clamped = min(max(gain, 0.1), 4)
+        let clamped = min(max(gain, MXClipGainAutomation.minGain), MXClipGainAutomation.maxGain)
         guard abs(clamped - clip.gain) > 1e-4 else { return }
         clip.gain = clamped
         replaceClip(clip)
@@ -1450,11 +1450,28 @@ public final class StudioSessionController {
         } else if let player = clipPlayers[clipID],
                   let track = project.tracks.first(where: { $0.id == clip.trackID }) {
             let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
-            let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
             let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-            player.volume = track.volume * clip.gain * auto * clipAuto
+            player.volume = track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * auto
             player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
         }
+    }
+
+    /// Relative vs absolute clip gain automation (Logic / Ableton, Week 77).
+    public func setClipGainAutomationMode(_ mode: MXClipGainAutomationMode, clipID: UUID) {
+        guard var clip = clip(clipID) else { return }
+        guard clip.gainAutomationMode != mode else { return }
+        pushUndoSnapshot()
+        clip.gainAutomationMode = mode
+        if mode == .absolute, clip.volumeAutomation.isEmpty {
+            let seed = min(MXVolumeAutomation.maxValue, max(MXVolumeAutomation.minValue, clip.gain))
+            clip.volumeAutomation = [
+                MXAutomationPoint(beat: 0, value: seed),
+                MXAutomationPoint(beat: max(0.25, clip.lengthBeats), value: seed),
+            ]
+        }
+        replaceClip(clip)
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
     }
 
     /// Fade-in / fade-out in seconds (Logic / Ableton style clip fades).
@@ -3171,9 +3188,8 @@ public final class StudioSessionController {
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
                 let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
-                let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
                 let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-                player.volume = track.volume * clip.gain * auto * clipAuto
+                player.volume = track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * auto
                 player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
@@ -3573,9 +3589,10 @@ public final class StudioSessionController {
         for clip in track.clips {
             guard let player = clipPlayers[clip.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
             let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-            player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto : 0
+            player.volume = audible
+                ? track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * autoGain
+                : 0
             player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
         }
         // Solo/mute changes should refresh all tracks' audible state
@@ -3584,9 +3601,8 @@ public final class StudioSessionController {
                 let otherAudible = !other.isMuted && (!anySolo || other.isSolo)
                 let otherAuto = MXVolumeAutomation.value(atBeat: playheadBeat, points: other.volumeAutomation)
                 for clip in other.clips {
-                    let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
                     clipPlayers[clip.id]?.volume = otherAudible
-                        ? other.volume * clip.gain * otherAuto * clipAuto
+                        ? other.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * otherAuto
                         : 0
                     if let player = clipPlayers[clip.id] {
                         let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
@@ -3674,9 +3690,10 @@ public final class StudioSessionController {
             let duck = sidechainDuckGain(for: track, kickTriggers: kicks)
             for clip in track.clips {
                 guard let player = clipPlayers[clip.id] else { continue }
-                let clipAuto = clip.volumeAutomationGain(atProjectBeat: playheadBeat)
                 let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-                player.volume = audible ? track.volume * clip.gain * autoGain * clipAuto * duck : 0
+                player.volume = audible
+                    ? track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * autoGain * duck
+                    : 0
                 player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
             }
             if track.kind == .midi, let chain = instrumentChains[track.id] {
