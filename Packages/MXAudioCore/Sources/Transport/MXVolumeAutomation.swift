@@ -1,19 +1,20 @@
 import Foundation
 
-/// One volume automation breakpoint (Logic / Ableton lane lite).
+/// One automation breakpoint (Logic / Ableton lane lite).
 ///
-/// `value` is a linear gain multiplier (0…2). Unity = 1. Multiplies track volume.
+/// For **volume** lanes, `value` is linear gain 0…2 (1 = unity).
+/// For **pan** lanes, `value` is −1…1 (0 = center) — see `MXPanAutomation`.
 public struct MXAutomationPoint: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
-    /// Absolute project beat.
+    /// Beat position (project-absolute for tracks; clip-local for clip automation).
     public var beat: Double
-    /// Linear gain 0…2 (1 = unity).
+    /// Lane-dependent value (see type docs).
     public var value: Float
 
     public init(id: UUID = UUID(), beat: Double, value: Float) {
         self.id = id
         self.beat = max(0, beat)
-        self.value = min(2, max(0, value))
+        self.value = value
     }
 }
 
@@ -76,5 +77,103 @@ public enum MXVolumeAutomation: Sendable {
         next[idx].beat = max(0, beat)
         next[idx].value = min(maxValue, max(minValue, value))
         return next.sorted { $0.beat < $1.beat }
+    }
+
+    /// Clamp point beats into `[0, lengthBeats]` (clip-local automation).
+    public static func clampingBeats(
+        _ points: [MXAutomationPoint],
+        lengthBeats: Double
+    ) -> [MXAutomationPoint] {
+        let end = max(0, lengthBeats)
+        return points.map { point in
+            var p = point
+            p.beat = min(end, max(0, p.beat))
+            p.value = min(maxValue, max(minValue, p.value))
+            return p
+        }.sorted { $0.beat < $1.beat }
+    }
+}
+
+/// Pan automation helpers (Ableton / Logic clip pan lane lite).
+///
+/// `value` on points is −1…1. Empty curve → 0 (no offset). Outside range → endpoint hold.
+public enum MXPanAutomation: Sendable {
+    public static let center: Float = 0
+    public static let minValue: Float = -1
+    public static let maxValue: Float = 1
+
+    public static func value(atBeat beat: Double, points: [MXAutomationPoint]) -> Float {
+        guard !points.isEmpty else { return center }
+        let sorted = points.sorted { $0.beat < $1.beat }
+        if beat <= sorted[0].beat { return clamp(sorted[0].value) }
+        if beat >= sorted[sorted.count - 1].beat { return clamp(sorted[sorted.count - 1].value) }
+        for i in 0..<(sorted.count - 1) {
+            let a = sorted[i]
+            let b = sorted[i + 1]
+            if beat >= a.beat && beat <= b.beat {
+                let span = b.beat - a.beat
+                if span < 1e-9 { return clamp(b.value) }
+                let t = Float((beat - a.beat) / span)
+                return clamp(a.value + (b.value - a.value) * t)
+            }
+        }
+        return center
+    }
+
+    public static func upserting(
+        _ points: [MXAutomationPoint],
+        beat: Double,
+        value: Float,
+        toleranceBeats: Double = 0.08
+    ) -> [MXAutomationPoint] {
+        var next = points
+        let clampedBeat = max(0, beat)
+        let clampedValue = clamp(value)
+        if let idx = next.firstIndex(where: { abs($0.beat - clampedBeat) <= toleranceBeats }) {
+            next[idx].beat = clampedBeat
+            next[idx].value = clampedValue
+        } else {
+            next.append(MXAutomationPoint(beat: clampedBeat, value: clampedValue))
+        }
+        return next.sorted { $0.beat < $1.beat }
+    }
+
+    public static func moving(
+        _ points: [MXAutomationPoint],
+        id: UUID,
+        beat: Double,
+        value: Float
+    ) -> [MXAutomationPoint] {
+        guard let idx = points.firstIndex(where: { $0.id == id }) else { return points }
+        var next = points
+        next[idx].beat = max(0, beat)
+        next[idx].value = clamp(value)
+        return next.sorted { $0.beat < $1.beat }
+    }
+
+    public static func removing(_ points: [MXAutomationPoint], id: UUID) -> [MXAutomationPoint] {
+        points.filter { $0.id != id }
+    }
+
+    public static func clampingBeats(
+        _ points: [MXAutomationPoint],
+        lengthBeats: Double
+    ) -> [MXAutomationPoint] {
+        let end = max(0, lengthBeats)
+        return points.map { point in
+            var p = point
+            p.beat = min(end, max(0, p.beat))
+            p.value = clamp(p.value)
+            return p
+        }.sorted { $0.beat < $1.beat }
+    }
+
+    /// Combine track pan with clip pan offset, clamped to −1…1.
+    public static func combined(trackPan: Float, clipOffset: Float) -> Float {
+        clamp(trackPan + clipOffset)
+    }
+
+    private static func clamp(_ value: Float) -> Float {
+        min(maxValue, max(minValue, value))
     }
 }

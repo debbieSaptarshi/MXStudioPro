@@ -426,6 +426,10 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
     public var isActive: Bool
     /// Piano-roll lite notes (MIDI tracks). Empty for audio clips.
     public var midiNotes: [MXMIDINote]
+    /// Clip-local volume automation (beats from clip start). Empty = constant `gain`.
+    public var volumeAutomation: [MXAutomationPoint]
+    /// Clip-local pan offset automation (−1…1). Empty = no offset (use track pan).
+    public var panAutomation: [MXAutomationPoint]
 
     public init(
         id: UUID = UUID(),
@@ -441,7 +445,9 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         fadeOutSeconds: Double = 0,
         takeIndex: Int = 0,
         isActive: Bool = true,
-        midiNotes: [MXMIDINote] = []
+        midiNotes: [MXMIDINote] = [],
+        volumeAutomation: [MXAutomationPoint] = [],
+        panAutomation: [MXAutomationPoint] = []
     ) {
         self.id = id
         self.trackID = trackID
@@ -452,11 +458,20 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         self.sourceOffsetSeconds = max(0, sourceOffsetSeconds)
         self.sourceDurationSeconds = sourceDurationSeconds.map { max(0.05, $0) }
         self.gain = min(max(gain, 0.1), 4)
-        self.fadeInSeconds = max(0, fadeInSeconds)
-        self.fadeOutSeconds = max(0, fadeOutSeconds)
+        let audibleHint = sourceDurationSeconds.map { max(0.05, $0) }
+            ?? max(0.05, lengthBeats * 60.0 / 120.0)
+        let fades = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: fadeInSeconds,
+            fadeOut: fadeOutSeconds,
+            duration: audibleHint
+        )
+        self.fadeInSeconds = fades.fadeIn
+        self.fadeOutSeconds = fades.fadeOut
         self.takeIndex = max(0, takeIndex)
         self.isActive = isActive
         self.midiNotes = midiNotes
+        self.volumeAutomation = MXVolumeAutomation.clampingBeats(volumeAutomation, lengthBeats: lengthBeats)
+        self.panAutomation = MXPanAutomation.clampingBeats(panAutomation, lengthBeats: lengthBeats)
     }
 
     /// Back-compat with Week 4 projects that omit trim / fade / take fields.
@@ -471,11 +486,24 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         sourceOffsetSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .sourceOffsetSeconds) ?? 0)
         sourceDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .sourceDurationSeconds).map { max(0.05, $0) }
         gain = min(max(try c.decodeIfPresent(Float.self, forKey: .gain) ?? 1, 0.1), 4)
-        fadeInSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeInSeconds) ?? 0)
-        fadeOutSeconds = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
+        let rawIn = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeInSeconds) ?? 0)
+        let rawOut = max(0, try c.decodeIfPresent(Double.self, forKey: .fadeOutSeconds) ?? 0)
+        let audibleHint = sourceDurationSeconds
+            ?? max(0.05, lengthBeats * 60.0 / 120.0)
+        let fades = MXClipFadeGeometry.meetInMiddle(fadeIn: rawIn, fadeOut: rawOut, duration: audibleHint)
+        fadeInSeconds = fades.fadeIn
+        fadeOutSeconds = fades.fadeOut
         takeIndex = max(0, try c.decodeIfPresent(Int.self, forKey: .takeIndex) ?? 0)
         isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
         midiNotes = try c.decodeIfPresent([MXMIDINote].self, forKey: .midiNotes) ?? []
+        volumeAutomation = MXVolumeAutomation.clampingBeats(
+            try c.decodeIfPresent([MXAutomationPoint].self, forKey: .volumeAutomation) ?? [],
+            lengthBeats: lengthBeats
+        )
+        panAutomation = MXPanAutomation.clampingBeats(
+            try c.decodeIfPresent([MXAutomationPoint].self, forKey: .panAutomation) ?? [],
+            lengthBeats: lengthBeats
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -483,6 +511,7 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         case sourceOffsetSeconds, sourceDurationSeconds
         case gain, fadeInSeconds, fadeOutSeconds
         case takeIndex, isActive, midiNotes
+        case volumeAutomation, panAutomation
     }
 
     /// True when this clip’s beat range overlaps `other` (exclusive ends).
@@ -496,11 +525,16 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
 
     /// Equal-power envelope at `t` seconds into the audible clip (`duration` = audible length).
     /// Uses `MXCrossfade.equalPowerIn` / `equalPowerOut` so overlapping seams keep constant power.
-    /// When fade-in and fade-out overlap, both are applied and the quieter wins (`min`).
+    /// Fades are meet-in-middle clamped so they never exceed `duration` combined.
     public func fadeEnvelope(atSeconds t: Double, durationSeconds duration: Double) -> Float {
         guard duration > 1e-6 else { return 1 }
-        let fadeIn = min(max(0, fadeInSeconds), duration)
-        let fadeOut = min(max(0, fadeOutSeconds), duration)
+        let fades = MXClipFadeGeometry.meetInMiddle(
+            fadeIn: fadeInSeconds,
+            fadeOut: fadeOutSeconds,
+            duration: duration
+        )
+        let fadeIn = fades.fadeIn
+        let fadeOut = fades.fadeOut
         var env: Float = 1
         if fadeIn > 1e-6, t < fadeIn {
             env = MXCrossfade.equalPowerIn(t / fadeIn)
@@ -512,5 +546,26 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
             }
         }
         return env
+    }
+
+    /// Clip-local beat for a project playhead (0 when before clip).
+    public func localBeat(atProjectBeat projectBeat: Double) -> Double {
+        max(0, projectBeat - startBeat)
+    }
+
+    /// Volume automation gain at a project beat (unity when empty / outside).
+    public func volumeAutomationGain(atProjectBeat projectBeat: Double) -> Float {
+        guard !volumeAutomation.isEmpty else { return MXVolumeAutomation.unity }
+        let local = localBeat(atProjectBeat: projectBeat)
+        guard local <= lengthBeats + 1e-6 else { return MXVolumeAutomation.unity }
+        return MXVolumeAutomation.value(atBeat: local, points: volumeAutomation)
+    }
+
+    /// Pan offset at a project beat (0 when empty).
+    public func panAutomationOffset(atProjectBeat projectBeat: Double) -> Float {
+        guard !panAutomation.isEmpty else { return MXPanAutomation.center }
+        let local = localBeat(atProjectBeat: projectBeat)
+        guard local <= lengthBeats + 1e-6 else { return MXPanAutomation.center }
+        return MXPanAutomation.value(atBeat: local, points: panAutomation)
     }
 }

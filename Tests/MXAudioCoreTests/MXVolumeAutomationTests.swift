@@ -42,4 +42,34 @@ final class MXVolumeAutomationTests: XCTestCase {
         XCTAssertEqual(points.count, 1)
         XCTAssertEqual(points[0].id, b.id)
     }
+
+    func testClampBeatsToClipLength() {
+        let points = [
+            MXAutomationPoint(beat: -1, value: 0.5),
+            MXAutomationPoint(beat: 5, value: 1.5),
+        ]
+        let clamped = MXVolumeAutomation.clampingBeats(points, lengthBeats: 4)
+        XCTAssertEqual(clamped[0].beat, 0, accuracy: 1e-9)
+        XCTAssertEqual(clamped[1].beat, 4, accuracy: 1e-9)
+    }
+
+    func testPanAutomationInterpAndCombine() {
+        let points = [
+            MXAutomationPoint(beat: 0, value: -1),
+            MXAutomationPoint(beat: 2, value: 1),
+        ]
+        XCTAssertEqual(MXPanAutomation.value(atBeat: 1, points: points), 0, accuracy: 1e-5)
+        XCTAssertEqual(MXPanAutomation.value(atBeat: 3, points: []), 0, accuracy: 1e-6)
+        XCTAssertEqual(MXPanAutomation.combined(trackPan: 0.5, clipOffset: 0.8), 1, accuracy: 1e-6)
+        XCTAssertEqual(MXPanAutomation.combined(trackPan: -0.5, clipOffset: -0.8), -1, accuracy: 1e-6)
+    }
+
+    func testPanUpsertClamp() {
+        var points: [MXAutomationPoint] = []
+        points = MXPanAutomation.upserting(points, beat: 1, value: 2)
+        XCTAssertEqual(points[0].value, 1, accuracy: 1e-6)
+        points = MXPanAutomation.upserting(points, beat: 1.01, value: -2)
+        XCTAssertEqual(points.count, 1)
+        XCTAssertEqual(points[0].value, -1, accuracy: 1e-6)
+    }
 }

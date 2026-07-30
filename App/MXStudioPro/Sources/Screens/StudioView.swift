@@ -31,11 +31,27 @@ public struct StudioView: View {
     @State private var collapsedDrumPartTrackIDs: Set<UUID> = []
     /// Tracks showing volume automation lane (Week 52).
     @State private var automationLaneTrackIDs: Set<UUID> = []
+    /// Per-track automation lane target (Week 54 clip-relative).
+    @State private var automationLaneModes: [UUID: AutomationLaneMode] = [:]
     /// Pads vs BandLab-style 16-step sequencer (Week 49).
     @State private var drumInputMode: DrumInputMode = .pads
     @State private var drumStepVelocityGrid: [[UInt8]] = MXDrumStepSequencer.emptyVelocityGrid(bars: 1)
     @State private var drumStepBars: Int = 1
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private enum AutomationLaneMode: String, CaseIterable, Identifiable {
+        case trackVolume
+        case clipVolume
+        case clipPan
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .trackVolume: return "Track"
+            case .clipVolume: return "Clip Vol"
+            case .clipPan: return "Clip Pan"
+            }
+        }
+    }
 
     private enum DrumInputMode: String, CaseIterable, Identifiable {
         case pads
@@ -103,7 +119,7 @@ public struct StudioView: View {
             height = trackLaneHeight
         }
         if automationLaneTrackIDs.contains(track.id) {
-            height += automationLaneHeight
+            height += automationLaneHeight + 18
         }
         return height
     }
@@ -1024,22 +1040,165 @@ public struct StudioView: View {
             }
 
             if isAutomationLaneVisible(track) {
+                let mode = automationLaneModes[track.id] ?? .trackVolume
+                let selectedClip = session.selectedClipID.flatMap { id in
+                    track.clips.first(where: { $0.id == id })
+                }
+                VStack(spacing: 2) {
+                    automationModePicker(trackID: track.id, mode: mode, hasSelectedClip: selectedClip != nil)
+                    automationLaneContent(
+                        track: track,
+                        mode: mode,
+                        selectedClip: selectedClip,
+                        pixelsPerBeat: pixelsPerBeat
+                    )
+                }
+                .frame(height: automationLaneHeight + 18)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func automationModePicker(
+        trackID: UUID,
+        mode: AutomationLaneMode,
+        hasSelectedClip: Bool
+    ) -> some View {
+        HStack(spacing: 4) {
+            ForEach(AutomationLaneMode.allCases) { option in
+                let enabled = option == .trackVolume || hasSelectedClip
+                Button {
+                    guard enabled else { return }
+                    automationLaneModes[trackID] = option
+                    switch option {
+                    case .trackVolume:
+                        session.ensureDefaultVolumeAutomation(trackID: trackID)
+                    case .clipVolume:
+                        if let id = session.selectedClipID {
+                            session.ensureDefaultClipVolumeAutomation(clipID: id)
+                        }
+                    case .clipPan:
+                        if let id = session.selectedClipID {
+                            session.ensureDefaultClipPanAutomation(clipID: id)
+                        }
+                    }
+                } label: {
+                    Text(option.label)
+                        .font(MXFont.caption())
+                        .foregroundStyle(
+                            mode == option
+                                ? MXColor.orange
+                                : (enabled ? MXColor.lightGrey : MXColor.grey.opacity(0.5))
+                        )
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(mode == option ? MXColor.orange.opacity(0.18) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private func automationLaneContent(
+        track: MXSessionTrack,
+        mode: AutomationLaneMode,
+        selectedClip: MXClip?,
+        pixelsPerBeat: CGFloat
+    ) -> some View {
+        switch mode {
+        case .trackVolume:
+            VolumeAutomationLaneView(
+                points: track.volumeAutomation,
+                pixelsPerBeat: pixelsPerBeat,
+                beatsVisible: beatsVisible,
+                height: automationLaneHeight,
+                valueMin: MXVolumeAutomation.minValue,
+                valueMax: MXVolumeAutomation.maxValue,
+                beatOffset: 0,
+                beatMax: nil,
+                onAdd: { beat, value in
+                    session.upsertVolumeAutomation(trackID: track.id, beat: beat, value: value)
+                },
+                onMove: { id, beat, value in
+                    session.moveVolumeAutomationPoint(trackID: track.id, pointID: id, beat: beat, value: value)
+                },
+                onDelete: { id in
+                    session.removeVolumeAutomationPoint(trackID: track.id, pointID: id)
+                }
+            )
+        case .clipVolume:
+            if let clip = selectedClip {
                 VolumeAutomationLaneView(
-                    points: track.volumeAutomation,
+                    points: clip.volumeAutomation,
                     pixelsPerBeat: pixelsPerBeat,
                     beatsVisible: beatsVisible,
                     height: automationLaneHeight,
+                    valueMin: MXVolumeAutomation.minValue,
+                    valueMax: MXVolumeAutomation.maxValue,
+                    beatOffset: clip.startBeat,
+                    beatMax: clip.lengthBeats,
                     onAdd: { beat, value in
-                        session.upsertVolumeAutomation(trackID: track.id, beat: beat, value: value)
+                        session.upsertClipVolumeAutomation(clipID: clip.id, beat: beat, value: value)
                     },
                     onMove: { id, beat, value in
-                        session.moveVolumeAutomationPoint(trackID: track.id, pointID: id, beat: beat, value: value)
+                        session.moveClipVolumeAutomationPoint(
+                            clipID: clip.id,
+                            pointID: id,
+                            beat: beat,
+                            value: value
+                        )
                     },
                     onDelete: { id in
-                        session.removeVolumeAutomationPoint(trackID: track.id, pointID: id)
+                        session.removeClipVolumeAutomationPoint(clipID: clip.id, pointID: id)
                     }
                 )
-                .frame(height: automationLaneHeight)
+            } else {
+                Text("Select a clip for clip volume automation")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .padding(.leading, 8)
+            }
+        case .clipPan:
+            if let clip = selectedClip {
+                VolumeAutomationLaneView(
+                    points: clip.panAutomation,
+                    pixelsPerBeat: pixelsPerBeat,
+                    beatsVisible: beatsVisible,
+                    height: automationLaneHeight,
+                    valueMin: MXPanAutomation.minValue,
+                    valueMax: MXPanAutomation.maxValue,
+                    beatOffset: clip.startBeat,
+                    beatMax: clip.lengthBeats,
+                    centerValue: 0,
+                    onAdd: { beat, value in
+                        session.upsertClipPanAutomation(clipID: clip.id, beat: beat, value: value)
+                    },
+                    onMove: { id, beat, value in
+                        session.moveClipPanAutomationPoint(
+                            clipID: clip.id,
+                            pointID: id,
+                            beat: beat,
+                            value: value
+                        )
+                    },
+                    onDelete: { id in
+                        session.removeClipPanAutomationPoint(clipID: clip.id, pointID: id)
+                    }
+                )
+            } else {
+                Text("Select a clip for clip pan automation")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .padding(.leading, 8)
             }
         }
     }
@@ -3163,12 +3322,20 @@ private struct GhostStudioClip: View {
 
 // MARK: - Volume automation lane (Logic / Ableton lite)
 
-/// Track volume automation polyline under arrange clips (Week 52).
+/// Track / clip automation polyline under arrange clips (Weeks 52 / 54).
 private struct VolumeAutomationLaneView: View {
     let points: [MXAutomationPoint]
     let pixelsPerBeat: CGFloat
     let beatsVisible: Double
     let height: CGFloat
+    var valueMin: Float = MXVolumeAutomation.minValue
+    var valueMax: Float = MXVolumeAutomation.maxValue
+    /// Project-beat offset applied when drawing (clip-local points → timeline).
+    var beatOffset: Double = 0
+    /// When set, edits clamp to `[0, beatMax]` in the point’s native beat space.
+    var beatMax: Double? = nil
+    /// Reference line value (unity for volume, center for pan).
+    var centerValue: Float = 1
     var onAdd: (_ beat: Double, _ value: Float) -> Void
     var onMove: (_ id: UUID, _ beat: Double, _ value: Float) -> Void
     var onDelete: (_ id: UUID) -> Void
@@ -3185,9 +3352,9 @@ private struct VolumeAutomationLaneView: View {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(MXColor.layer2.opacity(0.55))
 
-                // Unity reference line
+                // Reference line (unity / center)
                 Path { path in
-                    let y = yPosition(for: 1, height: h)
+                    let y = yPosition(for: centerValue, height: h)
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: w, y: y))
                 }
@@ -3195,9 +3362,15 @@ private struct VolumeAutomationLaneView: View {
 
                 Path { path in
                     guard let first = sorted.first else { return }
-                    path.move(to: CGPoint(x: xPosition(for: first.beat), y: yPosition(for: first.value, height: h)))
+                    path.move(to: CGPoint(
+                        x: xPosition(for: first.beat + beatOffset),
+                        y: yPosition(for: first.value, height: h)
+                    ))
                     for point in sorted.dropFirst() {
-                        path.addLine(to: CGPoint(x: xPosition(for: point.beat), y: yPosition(for: point.value, height: h)))
+                        path.addLine(to: CGPoint(
+                            x: xPosition(for: point.beat + beatOffset),
+                            y: yPosition(for: point.value, height: h)
+                        ))
                     }
                 }
                 .stroke(MXColor.accent, lineWidth: 1.5)
@@ -3208,16 +3381,17 @@ private struct VolumeAutomationLaneView: View {
                         .overlay(Circle().strokeBorder(MXColor.white.opacity(0.85), lineWidth: 1))
                         .frame(width: 12, height: 12)
                         .position(
-                            x: xPosition(for: point.beat),
+                            x: xPosition(for: point.beat + beatOffset),
                             y: yPosition(for: point.value, height: h)
                         )
                         .gesture(
                             DragGesture(minimumDistance: 1)
                                 .onChanged { value in
                                     selectedPointID = point.id
-                                    let beat = max(0, Double(value.location.x / pixelsPerBeat))
+                                    let projectBeat = max(0, Double(value.location.x / pixelsPerBeat))
+                                    let localBeat = clampBeat(projectBeat - beatOffset)
                                     let gain = valueFromY(value.location.y, height: h)
-                                    onMove(point.id, beat, gain)
+                                    onMove(point.id, localBeat, gain)
                                 }
                         )
                         .onTapGesture {
@@ -3228,21 +3402,30 @@ private struct VolumeAutomationLaneView: View {
                                 selectedPointID = point.id
                             }
                         }
-                        .accessibilityLabel("Volume point")
-                        .accessibilityValue(String(format: "%.0f%% at beat %.2f", point.value * 100, point.beat))
+                        .accessibilityLabel("Automation point")
+                        .accessibilityValue(String(format: "%.2f at beat %.2f", point.value, point.beat))
                         .accessibilityHint("Drag to move. Tap twice to delete.")
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture { location in
-                let beat = max(0, Double(location.x / pixelsPerBeat))
+                let projectBeat = max(0, Double(location.x / pixelsPerBeat))
+                let localBeat = clampBeat(projectBeat - beatOffset)
                 let gain = valueFromY(location.y, height: h)
-                onAdd(beat, gain)
+                onAdd(localBeat, gain)
             }
             .frame(width: w, height: h)
         }
-        .accessibilityLabel("Volume automation")
+        .accessibilityLabel("Automation lane")
         .accessibilityHint("Tap to add a point")
+    }
+
+    private func clampBeat(_ beat: Double) -> Double {
+        let lower = max(0, beat)
+        if let beatMax {
+            return min(beatMax, lower)
+        }
+        return lower
     }
 
     private func xPosition(for beat: Double) -> CGFloat {
@@ -3250,15 +3433,16 @@ private struct VolumeAutomationLaneView: View {
     }
 
     private func yPosition(for value: Float, height: CGFloat) -> CGFloat {
-        let t = CGFloat((value - MXVolumeAutomation.minValue) / (MXVolumeAutomation.maxValue - MXVolumeAutomation.minValue))
+        let span = max(1e-6, valueMax - valueMin)
+        let t = CGFloat((value - valueMin) / span)
         return height * (1 - min(1, max(0, t)))
     }
 
     private func valueFromY(_ y: CGFloat, height: CGFloat) -> Float {
-        guard height > 0 else { return 1 }
+        guard height > 0 else { return centerValue }
         let t = 1 - min(1, max(0, y / height))
-        let span = MXVolumeAutomation.maxValue - MXVolumeAutomation.minValue
-        return MXVolumeAutomation.minValue + Float(t) * span
+        let span = valueMax - valueMin
+        return valueMin + Float(t) * span
     }
 }
 

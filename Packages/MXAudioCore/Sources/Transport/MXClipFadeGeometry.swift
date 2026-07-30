@@ -22,4 +22,50 @@ public enum MXClipFadeGeometry: Sendable {
     public static func fadeOutGain(_ t: Double) -> Double {
         Double(MXCrossfade.equalPowerOut(t))
     }
+
+    /// Logic / Pro Tools meet-in-middle: `fadeIn + fadeOut` never exceeds `duration`.
+    ///
+    /// - Parameters:
+    ///   - fadeIn / fadeOut: Requested lengths (seconds). Negative values clamp to 0.
+    ///   - duration: Audible clip length (seconds).
+    ///   - prefer: Which edge to preserve when the sum overflows (`nil` = shrink both equally).
+    public static func meetInMiddle(
+        fadeIn: Double,
+        fadeOut: Double,
+        duration: Double,
+        prefer: FadeEdge? = nil
+    ) -> (fadeIn: Double, fadeOut: Double) {
+        let dur = max(0, duration)
+        var inn = min(max(0, fadeIn), dur)
+        var out = min(max(0, fadeOut), dur)
+        let sum = inn + out
+        guard sum > dur, dur > 1e-9 else {
+            return (inn, out)
+        }
+        let overflow = sum - dur
+        switch prefer {
+        case .fadeIn:
+            out = max(0, out - overflow)
+            inn = min(inn, dur - out)
+        case .fadeOut:
+            inn = max(0, inn - overflow)
+            out = min(out, dur - inn)
+        case nil:
+            // Shrink both proportionally (Logic default when both dragged / trim).
+            if sum > 1e-9 {
+                let scale = dur / sum
+                inn *= scale
+                out *= scale
+            } else {
+                inn = 0
+                out = 0
+            }
+        }
+        return (inn, out)
+    }
+
+    public enum FadeEdge: Sendable {
+        case fadeIn
+        case fadeOut
+    }
 }
