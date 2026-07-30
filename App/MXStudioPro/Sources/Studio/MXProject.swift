@@ -458,7 +458,8 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         return a0 < b1 && b0 < a1
     }
 
-    /// Linear envelope at `t` seconds into the audible clip (`duration` = audible length).
+    /// Equal-power envelope at `t` seconds into the audible clip (`duration` = audible length).
+    /// Uses `MXCrossfade.equalPowerIn` / `equalPowerOut` so overlapping seams keep constant power.
     /// When fade-in and fade-out overlap, both are applied and the quieter wins (`min`).
     public func fadeEnvelope(atSeconds t: Double, durationSeconds duration: Double) -> Float {
         guard duration > 1e-6 else { return 1 }
@@ -466,12 +467,12 @@ public struct MXClip: Codable, Identifiable, Equatable, Sendable {
         let fadeOut = min(max(0, fadeOutSeconds), duration)
         var env: Float = 1
         if fadeIn > 1e-6, t < fadeIn {
-            env = Float(max(0, min(1, t / fadeIn)))
+            env = MXCrossfade.equalPowerIn(t / fadeIn)
         }
         if fadeOut > 1e-6 {
             let outStart = duration - fadeOut
             if t >= outStart {
-                env = min(env, Float(max(0, min(1, (duration - t) / fadeOut))))
+                env = min(env, MXCrossfade.equalPowerOut((t - outStart) / fadeOut))
             }
         }
         return env

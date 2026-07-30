@@ -578,7 +578,8 @@ public final class StudioSessionController {
             if let index = project.tracks.firstIndex(where: { $0.id == trackID }) {
                 // Playlist / crossfade comps lite (Logic punch comps):
                 // split overlapping ACTIVE takes into before/after, keep them
-                // audible outside the punch, and apply ~12 ms abut fades.
+                // audible outside the punch, and apply ~12 ms overlapping
+                // equal-power X-fades.
                 applyPunchCompLite(punch: &committed, trackIndex: index, transport: transport)
                 project.tracks[index].clips.append(committed)
             }
@@ -613,7 +614,7 @@ public final class StudioSessionController {
         }
     }
 
-    /// Split overlapping active takes around a punch clip and suggest abut crossfades.
+    /// Split overlapping active takes around a punch clip with overlapping equal-power X-fades.
     private func applyPunchCompLite(punch: inout MXClip, trackIndex: Int, transport: MXTransport) {
         let punchStart = punch.startBeat
         let punchEnd = punch.startBeat + punch.lengthBeats

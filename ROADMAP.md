@@ -47,7 +47,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **33** | Piano Studio Section (Figma) | **Done (MVP)** ✅ Virtual Piano + bank + MIDI capture |
 | **34** | Drum & Others Studio Section (Figma) | **Done (MVP)** ✅ Pads + Hide Tracks + Others labels |
 | **35** | Quick Landscape Studio Section (Figma) | **Done (MVP)** ✅ landscape compact + Quick Recording |
-| **36** | Equal-power crossfades (arrangement) | **Next** |
+| **36** | Equal-power crossfades (arrangement) | **Done (MVP)** ✅ overlapping punch X-fades |
+| **37** | Multi-row playlist folder (take lanes) | **Next** |
 
 ### Figma anchors (shipped / in use)
 
@@ -327,20 +328,22 @@ Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab pl
 
 | Week | Focus | Status |
 |------|--------|--------|
-| **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Next** |
-| 37 | Expanded multi-row playlist folder (always-on take lanes) | Planned |
+| **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Done (MVP)** ✅ |
+| 37 | Expanded multi-row playlist folder (always-on take lanes) | **Next** |
 | 38 | Playback strip meters (mixer + optional timeline) | Planned |
 | 39 | Wet input monitoring for guitar pedalboard | Planned |
 
-### Week 36 — Equal-power crossfades **Next**
+### Week 36 — Equal-power crossfades ✅
 
 **Done when (Logic / Pro Tools X-fade)**
-- [ ] Punch comps create real timeline overlap (~12 ms+) instead of abut dips
-- [ ] Equal-power in/out curves (`cos`/`sin`) so `gOut² + gIn² ≈ 1`
-- [ ] Live schedule + bounce both sum overlapping faded clips without level dip
-- [ ] Take-lane activation treats short X-fade overlaps as soft abut (co-active)
-- [ ] Unit tests for envelope power + split overlap geometry
-- [ ] Demo: punch over a take → seamless splice on play + bounce
+- [x] Punch comps create real timeline overlap (~12 ms+) instead of abut dips
+- [x] Equal-power in/out curves (`cos`/`sin`) so `gOut² + gIn² ≈ 1` (`MXCrossfade`)
+- [x] Live schedule + bounce both sum overlapping faded clips without level dip (`fadeEnvelope`)
+- [x] Take-lane activation treats short X-fade overlaps as soft abut (co-active)
+- [x] Unit tests for envelope power + split overlap geometry
+- [x] Demo: punch over a take → seamless splice on play + bounce
+
+**Week 36 notes:** `MXCompRegionSplit` extends before/after into the punch; both seams share `min(xf, punch/2)`. Soft-overlap default 0.08 beats. Manual clip fades also use equal-power.
 
 ### Implementation notes (shared — Month 9)
 
