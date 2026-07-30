@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 19 (W73–74) **complete** — next W75 real sidechain bounce + W76 K-weighted LUFS.
+**Current focus:** Month 19 (W73–76) **complete** — next Month 20 SOTA polish (clip gain automation, Reels video+audio, MXPacks download, Figma Create hub).
 
 ---
 
@@ -885,8 +885,8 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 |------|--------|--------|-----------|
 | **73** | Vocal harmonies lite (1–2 voice stack bake) | **Done (MVP)** ✅ | CapCut / BandLab |
 | **74** | Beat browser + one-shot pack import | **Done (MVP)** ✅ | BandLab / Loopcloud |
-| **75** | Real key-input sidechain + bounce duck parity | **Planned** | Ableton / Logic |
-| **76** | K-weighted LUFS upgrade + inter-sample true peak | **Planned** | ITU BS.1770 / YouTube |
+| **75** | Real key-input sidechain + bounce duck parity | **Done (MVP)** ✅ | Ableton / Logic |
+| **76** | K-weighted LUFS upgrade + inter-sample true peak | **Done (MVP)** ✅ | ITU BS.1770 / YouTube |
 
 ### Week 73 — Vocal harmonies lite ✅
 
@@ -909,26 +909,60 @@ Raise shipped DAW features toward award-winning mobile music apps (BandLab, Gara
 
 **Week 74 notes:** Procedural first-party stubs only — not licensed Loopcloud packs / MXPacks download. Create hub Sampler tile still disabled.
 
-**SOTA backlog (enter when spare capacity — improve what already ships)**
-- **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
-- **Drums:** SFZ kit choke groups; nested takes × part columns
-- **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later
-- **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ✅ W68
-- **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
-- **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
-- **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
-- **Export:** Video + audio Reels export; loudness report sheet after bounce ✅ W71
-- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ✅ W70; harmonies ✅ W73; beat browser ✅ W74
-- **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
-- **Figma parity:** Create hub + landscape 812×375 second pass; After Record chrome re-audit vs `95:85026`
-- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; inter-sample true-peak ← W76; sidechain on bounce path ← W75; audio→aux reverb bus; K-weighted LUFS ← W76; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels export; real MXPacks / Loopcloud catalog
+### Week 75 — Sidechain bounce duck parity ✅
 
-**SOTA next (Month 19 remainder / beyond)**
-- Nested takes × drum parts; SFZ kit choke
-- Video+audio Reels export; real MXPacks download
-- Cloud auth / social / AI beyond local MVP
-- Real key-input sidechain + audio→aux reverb bus ← W75
-- Bezier automation; K-weighted LUFS ← W76
+**Done when (Ableton / Logic key-input lite)**
+- [x] `MXSidechainDuck.duckGain(atBeat:kicks:bpm:amount:)` shared helper
+- [x] `StudioBounceExporter.sidechainKickTriggers` mirrors playback kick key list
+- [x] Bounce / stems `mixClip` multiplies envelope duck when destination `sidechainEnabled`
+- [x] Playback uses the same `duckGain` helper
+- [x] Unit tests for duckGain convenience
+
+**Week 75 notes:** Still envelope duck keyed from drums MIDI kicks — not Apple DynamicsProcessor external key-input AU. Audio→aux reverb bus deferred.
+
+### Week 76 — K-weighted LUFS + inter-sample true peak ✅
+
+**Done when (ITU BS.1770 / YouTube loudness lite)**
+- [x] `MXLoudness.kWeight` — pre-filter + RLB (BS.1770-4 @ 48 kHz coeffs)
+- [x] Integrated + momentary LUFS run on K-weighted buffers (gating unchanged)
+- [x] `truePeakLinear` / `truePeakDB` — 4× linear oversample inter-sample peak
+- [x] `Report.truePeakDBFS` uses inter-sample TP; export footer “K-weighted LUFS”
+- [x] Unit tests: K-weight bass vs treble, TP ≥ sample peak, normalize still ~−14
+
+**Week 76 notes:** Not a certified broadcast meter / full ITU TP FIR. 48 kHz coeffs used for all rates (primary project rate).
+
+## Month 20 — Award-app polish *(Weeks 77–80)* **Planned**
+
+Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCut, YouTube Loudness.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **77** | Clip gain automation lane (arrange + bounce) | **Planned** | Logic / Ableton |
+| **78** | Video + audio Reels export lite | **Planned** | CapCut / Instagram |
+| **79** | MXPacks bundled catalog + install path | **Planned** | BandLab / Loopcloud |
+| **80** | Figma Create hub + landscape second pass | **Planned** | Figma `96:72447` / `97:113250` |
+
+**SOTA backlog (enter when spare capacity — improve what already ships)**
+- **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better; input latency auto-calibrate UX polish beyond W56
+- **Drums:** SFZ kit choke groups; nested takes × part columns; pad velocity curves
+- **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later; live MIDI out from steps
+- **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ✅ W68; chord paint / velocity-while-draw
+- **Automation:** Bezier / curved automation; relative vs absolute clip gain modes ← W77; track pan automation lane
+- **Mix:** Sidechain lite ✅ W63 + bounce parity ✅ W75; shared reverb send visual ✅ W63; K-weighted LUFS ✅ W76; audio→aux reverb bus; compressor makeup / sidechain listen
+- **Arrange:** Snap/grid SOTA ✅ W64–67; clip gain automation ← W77; take-lane crossfade dial; freeze/bounce-in-place track
+- **Export:** Loudness report ✅ W71/W76; video + audio Reels ← W78; stem loudness cards; AAX/WAV 24-bit option
+- **Wow:** Pitch correct ✅ W69; time-stretch ✅ W70; harmonies ✅ W73; beat browser ✅ W74; formant-aware pitch; warp markers
+- **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
+- **Packs:** Procedural beats ✅ W74; MXPacks download/install ← W79; licensed one-shot packs
+- **Figma parity:** Create hub + landscape 812×375 second pass ← W80; After Record chrome re-audit vs `95:85026`
+- **SOTA polish candidates:** Clip gain automation ← W77; take-lane crossfade dial; audio→aux reverb bus; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels ← W78; offline render progress HUD; Haptic metronome accents
+
+**SOTA next (Month 20)**
+- Clip gain automation; freeze track
+- Video+audio Reels export; MXPacks catalog
+- Figma Create hub / landscape second pass
+- Audio→aux reverb bus; Bezier automation
+- Formant-aware pitch / warp markers
 
 ## Month 18 implementation notes
 
@@ -1100,7 +1134,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
-                                    → W74 Month 19 beat browser ✅ ← next W75–76
+                                    → W73–W76 Month 19 ✅ ← next Month 20
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -1130,7 +1164,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 61–64 | Step swing / multi-select / sidechain / snap resolution *(done)* |
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
-| 73–76 | Harmonies ✅ / beat browser ✅ / real sidechain / K-weighted LUFS |
+| 73–76 | Harmonies ✅ / beat browser ✅ / sidechain bounce ✅ / K-weighted LUFS ✅ |
+| 77–80 | Clip gain auto / Reels A+V / MXPacks / Figma Create hub |
 
 ---
 
