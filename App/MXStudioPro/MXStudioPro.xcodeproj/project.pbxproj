@@ -48,6 +48,7 @@
 		C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005B /* DrumPadView.swift */; };
 		C1A00101AAAA00010000005C /* DrumStepSequencerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */; };
 		C1A00101AAAA000100000065 /* MXOrientationLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000064 /* MXOrientationLock.swift */; };
+		C1A00101AAAA00010000005E /* MIDIPianoRollEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000005F /* MIDIPianoRollEditorView.swift */; };
 		C1A00101AAAA00010000003E /* MXDiscoverStudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */; };
 		C1A00101AAAA000100000040 /* DemoTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000041 /* DemoTemplatesView.swift */; };
 		C1A00101AAAA000100000042 /* LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000043 /* LearnView.swift */; };
@@ -101,6 +102,7 @@
 		C1A00101AAAA00010000005B /* DrumPadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumPadView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrumStepSequencerView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000064 /* MXOrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXOrientationLock.swift; sourceTree = "<group>"; };
+		C1A00101AAAA00010000005F /* MIDIPianoRollEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIPianoRollEditorView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003F /* MXDiscoverStudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDiscoverStudioBridge.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000041 /* DemoTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoTemplatesView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000043 /* LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnView.swift; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 				C1A00101AAAA000100000031 /* PianoKeyboardView.swift */,
 				C1A00101AAAA00010000005B /* DrumPadView.swift */,
 				C1A00101AAAA00010000005D /* DrumStepSequencerView.swift */,
+				C1A00101AAAA00010000005F /* MIDIPianoRollEditorView.swift */,
 				C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */,
 				C1A00101AAAA000100000025 /* StudioEditStack.swift */,
 				C1A00101AAAA000100000019 /* StudioSessionController.swift */,
@@ -357,6 +360,7 @@
 				C1A00101AAAA00010000005A /* DrumPadView.swift in Sources */,
 				C1A00101AAAA00010000005C /* DrumStepSequencerView.swift in Sources */,
 				C1A00101AAAA000100000065 /* MXOrientationLock.swift in Sources */,
+				C1A00101AAAA00010000005E /* MIDIPianoRollEditorView.swift in Sources */,
 				C1A00101AAAA000100000009 /* StudioSessionController.swift in Sources */,
 				C1A00101AAAA00010000000A /* StudioView.swift in Sources */,
 				C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */,

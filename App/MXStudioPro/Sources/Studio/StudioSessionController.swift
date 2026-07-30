@@ -1642,6 +1642,38 @@ public final class StudioSessionController {
         calibrationError = nil
     }
 
+    /// Manual latency offset in milliseconds (GarageBand-style fine tune). Clamped 0…80 ms.
+    public func setLatencyCompensationMilliseconds(_ ms: Double) {
+        let sr = calibrator?.sampleRate
+            ?? (project.sampleRate > 0 ? project.sampleRate : 48_000)
+        let frames = Int((max(0, min(80, ms)) / 1_000 * sr).rounded())
+        if let calibrator {
+            calibrator.setCompensationFrames(frames)
+        } else {
+            UserDefaults.standard.set(max(0, frames), forKey: MXLatencyCalibrator.compensationFramesDefaultsKey)
+        }
+        lastCalibrationSummary = frames > 0
+            ? String(format: "Manual %.1f ms · %d frames", Double(frames) / sr * 1_000, frames)
+            : nil
+        calibrationError = nil
+    }
+
+    /// Clear persisted compensation (BandLab reset).
+    public func clearLatencyCompensation() {
+        if let calibrator {
+            calibrator.setCompensationFrames(0)
+        } else {
+            UserDefaults.standard.set(0, forKey: MXLatencyCalibrator.compensationFramesDefaultsKey)
+        }
+        lastCalibrationSummary = nil
+        calibrationError = nil
+    }
+
+    /// True when headphones / BT audio is the current output route.
+    public var headphonesConnected: Bool {
+        Self.currentRouteHasHeadphones()
+    }
+
     // MARK: - Live MIDI instrument
 
     public func noteOn(_ note: UInt8, velocity: UInt8 = 100) {
@@ -1969,6 +2001,129 @@ public final class StudioSessionController {
         attachPlayer(for: clip)
         persistSoon()
         if isPlaying, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
+        return true
+    }
+
+    /// Rewrite selected MIDI clip notes and re-render the audible bed (Week 55).
+    @discardableResult
+    public func updateMIDINote(
+        id noteID: UUID,
+        startBeat: Double,
+        pitch: UInt8,
+        renderBed: Bool = true,
+        recordUndo: Bool = true
+    ) -> Bool {
+        guard var clip = selectedMIDIClip() else { return false }
+        guard let existing = clip.midiNotes.first(where: { $0.id == noteID }) else { return false }
+        let updated = MXMIDINoteEdit.moving(
+            existing,
+            startBeat: startBeat,
+            pitch: pitch,
+            clipLengthBeats: clip.lengthBeats
+        )
+        let next = MXMIDINoteEdit.replacing(
+            clip.midiNotes,
+            id: noteID,
+            with: updated,
+            clipLengthBeats: clip.lengthBeats
+        )
+        return commitMIDINotes(next, for: &clip, renderBed: renderBed, recordUndo: recordUndo)
+    }
+
+    @discardableResult
+    public func addMIDINote(startBeat: Double, pitch: UInt8) -> Bool {
+        guard var clip = selectedMIDIClip() else { return false }
+        let note = MXMIDINoteEdit.making(
+            pitch: pitch,
+            startBeat: startBeat,
+            clipLengthBeats: clip.lengthBeats
+        )
+        let next = MXMIDINoteEdit.appending(clip.midiNotes, note: note, clipLengthBeats: clip.lengthBeats)
+        return commitMIDINotes(next, for: &clip, renderBed: true, recordUndo: true)
+    }
+
+    @discardableResult
+    public func deleteMIDINote(id noteID: UUID) -> Bool {
+        guard var clip = selectedMIDIClip() else { return false }
+        guard clip.midiNotes.contains(where: { $0.id == noteID }) else { return false }
+        let next = MXMIDINoteEdit.removing(clip.midiNotes, id: noteID)
+        return commitMIDINotes(next, for: &clip, renderBed: true, recordUndo: true)
+    }
+
+    /// Force re-render of the selected MIDI clip bed after a drag gesture ends.
+    @discardableResult
+    public func commitSelectedMIDIClipBed() -> Bool {
+        guard var clip = selectedMIDIClip() else { return false }
+        return commitMIDINotes(clip.midiNotes, for: &clip, renderBed: true, recordUndo: false)
+    }
+
+    private func selectedMIDIClip() -> MXClip? {
+        guard let id = selectedClipID, let clip = clip(id) else { return nil }
+        guard let track = project.tracks.first(where: { $0.id == clip.trackID }),
+              track.kind == .midi
+        else { return nil }
+        return clip
+    }
+
+    @discardableResult
+    private func commitMIDINotes(
+        _ notes: [MXMIDINote],
+        for clip: inout MXClip,
+        renderBed: Bool,
+        recordUndo: Bool
+    ) -> Bool {
+        guard let trackIndex = project.tracks.firstIndex(where: { $0.id == clip.trackID }),
+              project.tracks[trackIndex].kind == .midi
+        else { return false }
+
+        if recordUndo { pushUndoSnapshot() }
+        clip.midiNotes = notes
+        let endBeat = notes.map(\.endBeat).max() ?? 0
+        if endBeat > clip.lengthBeats {
+            clip.lengthBeats = endBeat
+            clip.sourceDurationSeconds = endBeat * 60.0 / max(bpm, 1)
+        }
+
+        if renderBed {
+            let bank = synthBankPreset(for: clip.trackID)
+            let isDrums = project.tracks[trackIndex].category == .drums
+            let audible: [MXMIDINote]
+            if isDrums {
+                audible = notes.audibleDrumNotes(
+                    muted: project.tracks[trackIndex].mutedDrumPartSet,
+                    soloed: project.tracks[trackIndex].soloedDrumPartSet
+                )
+            } else {
+                audible = notes
+            }
+
+            let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+            let prefix = isDrums ? "drums" : "keys"
+            let fileName = "\(prefix)_edit_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+            let url = audioDir.appendingPathComponent(fileName)
+            do {
+                stopClipPlayers()
+                try renderMIDIAudibleBed(
+                    notes: audible,
+                    to: url,
+                    preset: bank.preset,
+                    lengthBeats: clip.lengthBeats
+                )
+                clip.audioFileName = fileName
+            } catch {
+                recordError = "MIDI edit failed: \(error.localizedDescription)"
+                return false
+            }
+        }
+
+        replaceClip(clip)
+        if renderBed {
+            attachPlayer(for: clip)
+        }
+        persistSoon()
+        if renderBed, isPlaying, let sample = transport?.currentSample {
             scheduleClipPlayers(fromSample: sample)
         }
         return true
@@ -3298,7 +3453,12 @@ public final class StudioSessionController {
         playheadBar = readout.position.bar
         playheadBeatInBar = readout.position.beat
         playheadTimeLabel = Self.formatTime(readout.seconds)
-        if project.tracks.contains(where: { !$0.volumeAutomation.isEmpty }) {
+        if project.tracks.contains(where: { track in
+            !track.volumeAutomation.isEmpty
+                || track.clips.contains(where: {
+                    !$0.volumeAutomation.isEmpty || !$0.panAutomation.isEmpty
+                })
+        }) {
             applyVolumeAutomationAtPlayhead()
         }
     }
