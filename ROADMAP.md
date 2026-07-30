@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 14 (W53–56) — W53–W54 shipped; next W55 piano-roll lite.
+**Current focus:** Month 14 (W53–56) — W53–W55 shipped; next W56 latency calibration UX.
 
 ---
 
@@ -68,6 +68,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **52** | Track volume automation lane lite | **Done (MVP)** ✅ |
 | **53** | Step seq velocity + multi-bar + load from clip | **Done (MVP)** ✅ |
 | **54** | Clip-relative vol/pan automation + meet-in-middle fades | **Done (MVP)** ✅ |
+| **55** | Piano-roll lite (edit note start/pitch) | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -602,7 +603,7 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 |------|--------|--------|-----------|
 | **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Done (MVP)** ✅ | BandLab / FL Mobile |
 | **54** | Clip-relative volume + pan automation; meet-in-middle fade clamp | **Done (MVP)** ✅ | Logic / Ableton |
-| **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Planned** | Cubasis / GarageBand |
+| **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Done (MVP)** ✅ | Cubasis / GarageBand |
 | **56** | Latency calibration UX + input monitoring polish | **Planned** | GarageBand / BandLab |
 
 ### Week 53 — Step seq velocity + multi-bar + load from clip ✅
@@ -626,10 +627,21 @@ Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, F
 
 **Week 54 notes:** Clip pan is offset added to track pan (clamped −1…1). Bezier / pencil draw deferred.
 
+### Week 55 — Piano-roll lite ✅
+
+**Done when (Cubasis / GarageBand)**
+- [x] `MXMIDINoteEdit` clamp / move / add / remove helpers + unit tests
+- [x] Session `updateMIDINote` / `addMIDINote` / `deleteMIDINote` re-render audible bed
+- [x] `MIDIPianoRollEditorView` — drag pitch/start, tap add, tap-again delete
+- [x] Clip inspector **Edit Piano Roll** opens the editor for MIDI clips
+
+**Week 55 notes:** Note length resize and multi-select deferred. Drum clips share the same editor.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
 - **Step seq:** Pattern library / copy-paste bars; live step cursor during playback
+- **Piano roll:** Note length drag handles; velocity lane; multi-select transpose
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual; sidechain lite from kick to bass
 - **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
@@ -805,7 +817,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                       → W40–44 Drum depth + capture chrome ← done
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
-                            → W53–54 ✅ → W55–56 piano-roll lite + latency UX ← next
+                            → W53–55 ✅ → W56 latency calibration UX ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.

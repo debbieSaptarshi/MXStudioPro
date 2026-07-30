@@ -22,6 +22,8 @@ public struct StudioView: View {
     @State private var showTunerSheet = false
     @State private var showCollabSheet = false
     @State private var showClipInspector = false
+    @State private var showPianoRoll = false
+    @State private var pianoRollDragUndoArmed = true
     /// Figma Studio – Hide Tracks (`95:85310`): collapse headers to an icon rail.
     @State private var tracksCollapsed = false
     /// Session-local collapse state: tracks in this set are collapsed to one summary lane.
@@ -292,8 +294,23 @@ public struct StudioView: View {
                 .preferredColorScheme(.dark)
         }
         .onChange(of: session.selectedClipID) { _, id in
-            if id == nil { showClipInspector = false }
+            if id == nil {
+                showClipInspector = false
+                showPianoRoll = false
+            } else if selectedMIDIClipForRoll == nil {
+                showPianoRoll = false
+            }
         }
+    }
+
+    /// Selected MIDI clip suitable for the Week 55 piano-roll editor.
+    private var selectedMIDIClipForRoll: MXClip? {
+        guard let id = session.selectedClipID,
+              let clip = session.project.tracks.flatMap(\.clips).first(where: { $0.id == id }),
+              let track = session.project.tracks.first(where: { $0.id == clip.trackID }),
+              track.kind == .midi
+        else { return nil }
+        return clip
     }
 
     private static let importAudioTypes: [UTType] = {
@@ -362,6 +379,34 @@ public struct StudioView: View {
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)
+                }
+                if showPianoRoll, let clip = selectedMIDIClipForRoll {
+                    MIDIPianoRollEditorView(
+                        notes: clip.midiNotes,
+                        lengthBeats: clip.lengthBeats,
+                        onMove: { id, start, pitch in
+                            _ = session.updateMIDINote(
+                                id: id,
+                                startBeat: start,
+                                pitch: pitch,
+                                renderBed: false,
+                                recordUndo: pianoRollDragUndoArmed
+                            )
+                            pianoRollDragUndoArmed = false
+                        },
+                        onMoveEnded: {
+                            _ = session.commitSelectedMIDIClipBed()
+                            pianoRollDragUndoArmed = true
+                        },
+                        onAdd: { start, pitch in
+                            _ = session.addMIDINote(startBeat: start, pitch: pitch)
+                        },
+                        onDelete: { id in
+                            _ = session.deleteMIDINote(id: id)
+                        }
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 actionBoard
                     .fixedSize(horizontal: false, vertical: true)
@@ -1801,6 +1846,25 @@ public struct StudioView: View {
                         )
                 }
                 .buttonStyle(.plain)
+
+                if !clip.midiNotes.isEmpty || session.project.tracks.first(where: { $0.id == clip.trackID })?.kind == .midi {
+                    Button {
+                        showClipInspector = false
+                        showPianoRoll = true
+                    } label: {
+                        Label("Edit Piano Roll", systemImage: "pianokeys")
+                            .font(MXFont.mediumButton())
+                            .foregroundStyle(MXColor.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(MXColor.accent.opacity(0.9))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Open Cubasis-style note editor for this clip")
+                }
 
                 if !clip.midiNotes.isEmpty {
                     Button {

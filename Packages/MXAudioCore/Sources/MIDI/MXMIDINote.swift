@@ -26,6 +26,92 @@ public struct MXMIDINote: Codable, Equatable, Sendable, Identifiable {
     public var endBeat: Double { startBeat + lengthBeats }
 }
 
+/// Piano-roll lite note mutation helpers (Week 55 — Cubasis / GarageBand).
+public enum MXMIDINoteEdit: Sendable {
+    public static let minPitch: UInt8 = 0
+    public static let maxPitch: UInt8 = 127
+    public static let defaultLengthBeats: Double = 0.25
+    public static let defaultVelocity: UInt8 = 100
+
+    /// Clamp pitch into 0…127.
+    public static func clampPitch(_ note: UInt8) -> UInt8 {
+        min(maxPitch, max(minPitch, note))
+    }
+
+    /// Keep note start ≥ 0 and end ≤ `clipLengthBeats` (shortens length if needed).
+    public static func clamping(_ note: MXMIDINote, clipLengthBeats: Double) -> MXMIDINote {
+        let length = max(0.25, clipLengthBeats)
+        var next = note
+        next.note = clampPitch(note.note)
+        next.velocity = min(127, max(1, note.velocity))
+        next.lengthBeats = max(0.0625, note.lengthBeats)
+        next.startBeat = min(max(0, note.startBeat), max(0, length - next.lengthBeats))
+        if next.startBeat + next.lengthBeats > length {
+            next.lengthBeats = max(0.0625, length - next.startBeat)
+        }
+        return next
+    }
+
+    /// Move start and/or pitch; length preserved unless it would exceed the clip.
+    public static func moving(
+        _ note: MXMIDINote,
+        startBeat: Double? = nil,
+        pitch: UInt8? = nil,
+        clipLengthBeats: Double
+    ) -> MXMIDINote {
+        var next = note
+        if let startBeat { next.startBeat = startBeat }
+        if let pitch { next.note = pitch }
+        return clamping(next, clipLengthBeats: clipLengthBeats)
+    }
+
+    /// Insert a new note at `startBeat` / `pitch` with default length.
+    public static func making(
+        pitch: UInt8,
+        startBeat: Double,
+        clipLengthBeats: Double,
+        lengthBeats: Double = defaultLengthBeats,
+        velocity: UInt8 = defaultVelocity
+    ) -> MXMIDINote {
+        clamping(
+            MXMIDINote(
+                note: pitch,
+                velocity: velocity,
+                startBeat: startBeat,
+                lengthBeats: lengthBeats
+            ),
+            clipLengthBeats: clipLengthBeats
+        )
+    }
+
+    /// Replace a note by id inside an array.
+    public static func replacing(
+        _ notes: [MXMIDINote],
+        id: UUID,
+        with updated: MXMIDINote,
+        clipLengthBeats: Double
+    ) -> [MXMIDINote] {
+        guard let idx = notes.firstIndex(where: { $0.id == id }) else { return notes }
+        var next = notes
+        var note = updated
+        note.id = id
+        next[idx] = clamping(note, clipLengthBeats: clipLengthBeats)
+        return next
+    }
+
+    public static func removing(_ notes: [MXMIDINote], id: UUID) -> [MXMIDINote] {
+        notes.filter { $0.id != id }
+    }
+
+    public static func appending(
+        _ notes: [MXMIDINote],
+        note: MXMIDINote,
+        clipLengthBeats: Double
+    ) -> [MXMIDINote] {
+        notes + [clamping(note, clipLengthBeats: clipLengthBeats)]
+    }
+}
+
 /// Offline render of MIDI notes through `MXSynthEngine` → PCM WAV (Piano Studio bounce bed).
 ///
 /// `MXSynthEngine` applies queued events at the start of each render block (frameOffset
