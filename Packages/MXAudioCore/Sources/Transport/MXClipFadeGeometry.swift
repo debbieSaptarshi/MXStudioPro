@@ -7,6 +7,11 @@ public enum MXClipFadeGeometry: Sendable {
         max(0, fadeSeconds) * max(bpm, 1) / 60.0
     }
 
+    /// Inverse of `widthBeats` — beats on the timeline → fade duration in seconds.
+    public static func seconds(widthBeats: Double, bpm: Double) -> Double {
+        max(0, widthBeats) * 60.0 / max(bpm, 1)
+    }
+
     /// Equal-power fade-in attenuation used to draw the wedge height (0 = silent, 1 = full).
     /// Progress `t` is 0…1 across the fade-in region.
     public static func fadeInGain(_ t: Double) -> Double {

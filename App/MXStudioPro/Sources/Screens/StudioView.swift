@@ -972,7 +972,8 @@ public struct StudioView: View {
                             onSelect: { session.selectClip(clip.id) },
                             onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
                             onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
-                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                            onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
                         )
                     }
                 }
@@ -981,7 +982,7 @@ public struct StudioView: View {
     }
 
     private func emptyLaneHint(for track: MXSessionTrack) -> String {
-        if track.category == .drums { return "Tap pads below · Play to capture" }
+        if track.category == .drums { return "Pads or Steps · Add pattern to timeline" }
         if track.kind == .midi { return "Play the keys below" }
         return "Tap ● to record"
     }
@@ -1039,7 +1040,8 @@ public struct StudioView: View {
                             onSelect: { session.selectClip(clip.id) },
                             onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
                             onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
-                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                            onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                            onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
                         )
                     }
                 }
@@ -1079,7 +1081,8 @@ public struct StudioView: View {
                         onSelect: { session.selectClip(clip.id) },
                         onMove: { session.moveClip(id: clip.id, toStartBeat: $0) },
                         onTrimStart: { session.trimClipStart(id: clip.id, toStartBeat: $0) },
-                        onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) }
+                        onTrimEnd: { session.trimClipEnd(id: clip.id, toEndBeat: $0) },
+                        onFadeChange: { session.setClipFades(fadeInSeconds: $0, fadeOutSeconds: $1, clipID: clip.id) }
                     )
                 } else {
                     GhostStudioClip(
@@ -3027,7 +3030,7 @@ private struct GhostStudioClip: View {
 
 // MARK: - Clip fade wedges (Logic / Pro Tools visual)
 
-/// Equal-power fade-in / fade-out overlays on arrange clips (edit via inspector).
+/// Equal-power fade-in / fade-out overlays on arrange clips (drag handles when selected).
 private struct StudioClipFadeWedges: View {
     let fadeInSeconds: Double
     let fadeOutSeconds: Double
@@ -3080,7 +3083,7 @@ private struct StudioClipFadeWedges: View {
     }
 }
 
-// MARK: - Interactive clip (select / move / trim)
+// MARK: - Interactive clip (select / move / trim / fade)
 
 private struct InteractiveStudioClip: View {
     let clip: MXClip
@@ -3096,16 +3099,21 @@ private struct InteractiveStudioClip: View {
     var onMove: (_ toStartBeat: Double) -> Void
     var onTrimStart: (_ toStartBeat: Double) -> Void
     var onTrimEnd: (_ toEndBeat: Double) -> Void
+    /// Logic-style drag edit for fade-in / fade-out (Week 50).
+    var onFadeChange: (_ fadeInSeconds: Double?, _ fadeOutSeconds: Double?) -> Void = { _, _ in }
 
     private var rollNotes: [MXMIDINote] { displayNotes ?? clip.midiNotes }
 
     private let handleWidth: CGFloat = 14
+    private let fadeHandleSize: CGFloat = 16
 
     @State private var activeDrag: DragKind?
     @State private var dragDeltaX: CGFloat = 0
+    @State private var previewFadeIn: Double?
+    @State private var previewFadeOut: Double?
 
     private enum DragKind {
-        case move, trimStart, trimEnd
+        case move, trimStart, trimEnd, fadeIn, fadeOut
     }
 
     private var baseWidth: CGFloat {
@@ -3119,7 +3127,7 @@ private struct InteractiveStudioClip: View {
     private var displayX: CGFloat {
         switch activeDrag {
         case .move, .trimStart: return baseX + dragDeltaX
-        case .trimEnd, .none: return baseX
+        case .trimEnd, .fadeIn, .fadeOut, .none: return baseX
         }
     }
 
@@ -3127,8 +3135,16 @@ private struct InteractiveStudioClip: View {
         switch activeDrag {
         case .trimStart: return max(24, baseWidth - dragDeltaX)
         case .trimEnd: return max(24, baseWidth + dragDeltaX)
-        case .move, .none: return baseWidth
+        case .move, .fadeIn, .fadeOut, .none: return baseWidth
         }
+    }
+
+    private var displayFadeIn: Double { previewFadeIn ?? clip.fadeInSeconds }
+    private var displayFadeOut: Double { previewFadeOut ?? clip.fadeOutSeconds }
+
+    private var maxFadeSeconds: Double {
+        if let duration = clip.sourceDurationSeconds { return max(0, duration) }
+        return max(0, clip.lengthBeats * 60.0 / max(bpm, 1))
     }
 
     var body: some View {
@@ -3155,10 +3171,10 @@ private struct InteractiveStudioClip: View {
                     .opacity(isSelected ? 1 : 0.92)
             }
 
-            // Logic / Pro Tools equal-power fade wedges (visual only; edit via inspector).
+            // Logic / Pro Tools equal-power fade wedges (drag when selected — Week 50).
             StudioClipFadeWedges(
-                fadeInSeconds: clip.fadeInSeconds,
-                fadeOutSeconds: clip.fadeOutSeconds,
+                fadeInSeconds: displayFadeIn,
+                fadeOutSeconds: displayFadeOut,
                 bpm: bpm,
                 pixelsPerBeat: pixelsPerBeat,
                 clipWidth: displayWidth,
@@ -3185,6 +3201,9 @@ private struct InteractiveStudioClip: View {
                 }
                 .frame(width: displayWidth, height: clipHeight)
 
+                fadeInHandle
+                fadeOutHandle
+
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(MXColor.white.opacity(0.06))
                     .frame(width: displayWidth, height: clipHeight)
@@ -3201,6 +3220,46 @@ private struct InteractiveStudioClip: View {
         } else {
             base
         }
+    }
+
+    private var fadeInHandleX: CGFloat {
+        let beats = MXClipFadeGeometry.widthBeats(fadeSeconds: displayFadeIn, bpm: bpm)
+        return min(displayWidth - fadeHandleSize, max(0, CGFloat(beats) * pixelsPerBeat - fadeHandleSize / 2))
+    }
+
+    private var fadeOutHandleX: CGFloat {
+        let beats = MXClipFadeGeometry.widthBeats(fadeSeconds: displayFadeOut, bpm: bpm)
+        let outW = min(displayWidth, CGFloat(beats) * pixelsPerBeat)
+        return max(0, displayWidth - outW - fadeHandleSize / 2)
+    }
+
+    private var fadeInHandle: some View {
+        fadeHandleKnob
+            .position(x: fadeInHandleX + fadeHandleSize / 2, y: fadeHandleSize / 2 + 2)
+            .highPriorityGesture(fadeInGesture)
+            .accessibilityLabel("Fade in")
+            .accessibilityValue(String(format: "%.2f seconds", displayFadeIn))
+            .accessibilityHint("Drag to adjust fade in")
+    }
+
+    private var fadeOutHandle: some View {
+        fadeHandleKnob
+            .position(x: fadeOutHandleX + fadeHandleSize / 2, y: fadeHandleSize / 2 + 2)
+            .highPriorityGesture(fadeOutGesture)
+            .accessibilityLabel("Fade out")
+            .accessibilityValue(String(format: "%.2f seconds", displayFadeOut))
+            .accessibilityHint("Drag to adjust fade out")
+    }
+
+    private var fadeHandleKnob: some View {
+        Circle()
+            .fill(MXColor.accent)
+            .overlay(
+                Circle()
+                    .strokeBorder(MXColor.white.opacity(0.85), lineWidth: 1)
+            )
+            .frame(width: fadeHandleSize, height: fadeHandleSize)
+            .contentShape(Circle().scale(1.4))
     }
 
     private var trimHandle: some View {
@@ -3262,6 +3321,45 @@ private struct InteractiveStudioClip: View {
                 activeDrag = nil
                 dragDeltaX = 0
                 onTrimEnd(newEnd)
+            }
+    }
+
+    private var fadeInGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                activeDrag = .fadeIn
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeInSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats + Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeIn = nextSec
+            }
+            .onEnded { value in
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeInSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats + Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeIn = nil
+                activeDrag = nil
+                onFadeChange(nextSec, nil)
+            }
+    }
+
+    private var fadeOutGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                activeDrag = .fadeOut
+                // Drag left widens fade-out (Logic / Pro Tools).
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeOutSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats - Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeOut = nextSec
+            }
+            .onEnded { value in
+                let baseBeats = MXClipFadeGeometry.widthBeats(fadeSeconds: clip.fadeOutSeconds, bpm: bpm)
+                let nextBeats = max(0, baseBeats - Double(value.translation.width / pixelsPerBeat))
+                let nextSec = min(maxFadeSeconds, MXClipFadeGeometry.seconds(widthBeats: nextBeats, bpm: bpm))
+                previewFadeOut = nil
+                activeDrag = nil
+                onFadeChange(nil, nextSec)
             }
     }
 }
