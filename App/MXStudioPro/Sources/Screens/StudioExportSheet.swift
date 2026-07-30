@@ -17,6 +17,8 @@ struct StudioExportSheet: View {
     @State private var shareURLs: [URL] = []
     /// Reels / TikTok loudness (~−14 LUFS) vs peak normalize (~−1 dBFS).
     @State private var useReelsLoudness = true
+    /// CapCut / Instagram vertical MP4 (Week 78).
+    @State private var includeReelsVideo = false
 
     private enum Phase: Equatable {
         case options
@@ -31,6 +33,7 @@ struct StudioExportSheet: View {
     private enum RetryAction: Equatable {
         case share
         case stems
+        case reelsVideo
         case publish
         case copyLink
     }
@@ -140,14 +143,42 @@ struct StudioExportSheet: View {
                     .fill(MXColor.layer2)
             )
 
+            Toggle(isOn: $includeReelsVideo) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Reels video (9:16 MP4)")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                    Text("Gradient + title over bounced mix for Instagram / TikTok.")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .tint(MXColor.accent)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+
             VStack(spacing: 10) {
                 exportOption(
                     title: "Share File",
-                    subtitle: "WAV + M4A to Files, AirDrop, Messages…",
+                    subtitle: includeReelsVideo
+                        ? "WAV + M4A + vertical MP4…"
+                        : "WAV + M4A to Files, AirDrop, Messages…",
                     systemImage: "square.and.arrow.up",
                     tint: MXColor.accent
                 ) {
                     Task { await shareFiles() }
+                }
+
+                exportOption(
+                    title: "Share Reels video",
+                    subtitle: "720×1280 MP4 with mix audio",
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    tint: MXColor.orange
+                ) {
+                    Task { await shareReelsVideo() }
                 }
 
                 exportOption(
@@ -444,6 +475,7 @@ struct StudioExportSheet: View {
                     switch retry {
                     case .share: Task { await shareFiles() }
                     case .stems: Task { await shareStems() }
+                    case .reelsVideo: Task { await shareReelsVideo() }
                     case .publish: Task { await publishToSocials() }
                     case .copyLink: copyLink()
                     }
@@ -489,16 +521,43 @@ struct StudioExportSheet: View {
 
     @MainActor
     private func shareFiles() async {
-        phase = .working("Bouncing mix…")
+        phase = .working(includeReelsVideo ? "Bouncing + rendering Reels…" : "Bouncing mix…")
         do {
             let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
-            let result = try await session.bounceMix(normalize: true, loudnessMode: mode)
-            lastBounce = result
-            shareURLs = [result.wavURL, result.m4aURL]
-            let format = mode == .reelsLUFS ? "WAV + M4A · −14 LUFS" : "WAV + M4A · peak"
-            phase = .shareSuccess(format: format)
+            if includeReelsVideo {
+                let pair = try await session.exportReelsVideo(normalize: true, loudnessMode: mode)
+                lastBounce = pair.bounce
+                shareURLs = [pair.bounce.wavURL, pair.bounce.m4aURL, pair.video.mp4URL]
+                let loud = mode == .reelsLUFS ? "−14 LUFS" : "peak"
+                phase = .shareSuccess(
+                    format: "\(pair.video.size.width)×\(pair.video.size.height) MP4 + WAV/M4A · \(loud)"
+                )
+            } else {
+                let result = try await session.bounceMix(normalize: true, loudnessMode: mode)
+                lastBounce = result
+                shareURLs = [result.wavURL, result.m4aURL]
+                let format = mode == .reelsLUFS ? "WAV + M4A · −14 LUFS" : "WAV + M4A · peak"
+                phase = .shareSuccess(format: format)
+            }
         } catch {
             phase = .error(message: error.localizedDescription, retry: .share)
+        }
+    }
+
+    @MainActor
+    private func shareReelsVideo() async {
+        phase = .working("Rendering Reels video…")
+        do {
+            let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
+            let pair = try await session.exportReelsVideo(normalize: true, loudnessMode: mode)
+            lastBounce = pair.bounce
+            shareURLs = [pair.video.mp4URL]
+            let loud = mode == .reelsLUFS ? "−14 LUFS" : "peak"
+            phase = .shareSuccess(
+                format: "\(pair.video.size.width)×\(pair.video.size.height) MP4 · \(loud)"
+            )
+        } catch {
+            phase = .error(message: error.localizedDescription, retry: .reelsVideo)
         }
     }
 

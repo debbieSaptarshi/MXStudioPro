@@ -91,6 +91,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **75** | Sidechain bounce duck parity | **Done (MVP)** ✅ |
 | **76** | K-weighted LUFS + inter-sample true peak | **Done (MVP)** ✅ |
 | **77** | Clip gain automation Rel/Abs | **Done (MVP)** ✅ |
+| **78** | Video + audio Reels export lite | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -943,7 +944,7 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
 | **77** | Clip gain automation lane (arrange + bounce) | **Done (MVP)** ✅ | Logic / Ableton |
-| **78** | Video + audio Reels export lite | **Planned** | CapCut / Instagram |
+| **78** | Video + audio Reels export lite | **Done (MVP)** ✅ | CapCut / Instagram |
 | **79** | MXPacks bundled catalog + install path | **Planned** | BandLab / Loopcloud |
 | **80** | Figma Create hub + landscape second pass | **Planned** | Figma `96:72447` / `97:113250` |
 
@@ -959,6 +960,16 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 
 **Week 77 notes:** Not Bezier curves / on-clip overlay / track pan lane. Absolute uses lane 0…2 as gain when non-empty.
 
+### Week 78 — Video + audio Reels export lite ✅
+
+**Done when (CapCut / Instagram Reels vertical)**
+- [x] Pure `MXReelsVideoGeometry` — 720×1280 / 1080×1920, duration clamp ≤90s, frame count / PTS
+- [x] `StudioReelsVideoExporter` — AVAssetWriter H.264 + AAC; brand gradient + title still; mux bounced audio
+- [x] Session `exportReelsVideo` bounce → MP4; Export sheet toggle + **Share Reels video**
+- [x] Unit tests for geometry helpers
+
+**Week 78 notes:** Still-frame video only — not camera footage, stickers, animated waveform, or Instagram Graph upload.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better; input latency auto-calibrate UX polish beyond W56
 - **Drums:** SFZ kit choke groups; nested takes × part columns; pad velocity curves
@@ -967,18 +978,17 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain ✅ W77; track pan automation lane
 - **Mix:** Sidechain lite ✅ W63 + bounce parity ✅ W75; shared reverb send visual ✅ W63; K-weighted LUFS ✅ W76; audio→aux reverb bus; compressor makeup / sidechain listen
 - **Arrange:** Snap/grid SOTA ✅ W64–67; clip gain automation ✅ W77; take-lane crossfade dial; freeze/bounce-in-place track
-- **Export:** Loudness report ✅ W71/W76; video + audio Reels ← W78; stem loudness cards; AAX/WAV 24-bit option
+- **Export:** Loudness report ✅ W71/W76; video + audio Reels ✅ W78; stem loudness cards; AAX/WAV 24-bit option; animated waveform video
 - **Wow:** Pitch correct ✅ W69; time-stretch ✅ W70; harmonies ✅ W73; beat browser ✅ W74; formant-aware pitch; warp markers
 - **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
 - **Packs:** Procedural beats ✅ W74; MXPacks download/install ← W79; licensed one-shot packs
 - **Figma parity:** Create hub + landscape 812×375 second pass ← W80; After Record chrome re-audit vs `95:85026`
-- **SOTA polish candidates:** Take-lane crossfade dial; audio→aux reverb bus; SFZ kit choke; nested takes×parts; Bezier automation; video+audio Reels ← W78; offline render progress HUD; Haptic metronome accents
+- **SOTA polish candidates:** Take-lane crossfade dial; audio→aux reverb bus; SFZ kit choke; nested takes×parts; Bezier automation; offline render progress HUD; Haptic metronome accents
 
 **SOTA next (Month 20 remaining)**
-- Video+audio Reels export; MXPacks catalog
-- Figma Create hub / landscape second pass
+- MXPacks catalog; Figma Create hub / landscape second pass
 - Audio→aux reverb bus; Bezier automation
-- Formant-aware pitch / warp markers; freeze track
+- Formant-aware pitch / warp markers; freeze track; animated Reels waveform
 
 ## Month 18 implementation notes
 
@@ -1150,7 +1160,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
-                                    → W73–W76 Month 19 ✅ ← next Month 20
+                                    → W73–W76 Month 19 ✅
+                                      → W77–W80 Month 20 ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -1181,7 +1192,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw *(done)* |
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
 | 73–76 | Harmonies ✅ / beat browser ✅ / sidechain bounce ✅ / K-weighted LUFS ✅ |
-| 77–80 | Clip gain auto / Reels A+V / MXPacks / Figma Create hub |
+| 77–80 | Clip gain Rel/Abs ✅ / Reels A+V ✅ / MXPacks / Figma Create hub |
 
 ---
 

@@ -3018,6 +3018,27 @@ public final class StudioSessionController {
         return result
     }
 
+    /// Bounce mix then mux a 9:16 Reels MP4 (CapCut / Instagram lite — Week 78).
+    public func exportReelsVideo(
+        normalize: Bool = true,
+        loudnessMode: StudioBounceExporter.LoudnessMode = .reelsLUFS
+    ) async throws -> (bounce: StudioBounceExporter.Result, video: StudioReelsVideoExporter.Result) {
+        let bounce = try await bounceMix(normalize: normalize, loudnessMode: loudnessMode)
+        let exportDir = MXProjectStore.shared.exportsDirectory(for: project.id)
+        let title = project.name
+        let audioURL = bounce.m4aURL
+        let video = try await Task.detached(priority: .userInitiated) {
+            try await StudioReelsVideoExporter.export(
+                audioURL: audioURL,
+                outputDirectory: exportDir,
+                baseName: title,
+                options: StudioReelsVideoExporter.Options(title: title)
+            )
+        }.value
+        lastExportURLs = [bounce.wavURL, bounce.m4aURL, video.mp4URL]
+        return (bounce, video)
+    }
+
     /// Bounce each track to its own WAV + M4A stem set (ignores mute/solo).
     public func bounceStems(
         normalize: Bool = true,
