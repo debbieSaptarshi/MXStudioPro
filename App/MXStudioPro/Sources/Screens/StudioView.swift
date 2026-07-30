@@ -218,9 +218,12 @@ public struct StudioView: View {
                 arrangement
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
-                studioDetailsStrip
-                    .frame(height: detailsStripHeight)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Landscape + piano/pads: hide details strip so Figma 812×375 keeps net + keys usable.
+                if !(isLandscape && (session.showsPianoKeyboard || session.showsDrumPads)) {
+                    studioDetailsStrip
+                        .frame(height: detailsStripHeight)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if session.showsPianoKeyboard {
                     PianoKeyboardView(
                         onNoteOn: { session.noteOn($0, velocity: $1) },
@@ -331,13 +334,21 @@ public struct StudioView: View {
 
             HStack(spacing: 2) {
                 Button { showCollabSheet = true } label: {
-                    HStack(spacing: 6) {
-                        Text("+ Collab")
-                            .font(MXFont.mediumButton())
-                            .foregroundStyle(MXColor.white)
+                    Group {
+                        if isLandscape {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MXColor.white)
+                                .frame(width: 20, height: 20)
+                                .padding(10)
+                        } else {
+                            Text("+ Collab")
+                                .font(MXFont.mediumButton())
+                                .foregroundStyle(MXColor.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.layer2)
@@ -359,6 +370,7 @@ public struct StudioView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Collaborate")
 
                 studioIconButton(asset: "studio_fx", systemFallback: "wand.and.stars") {
                     showFXSheet = true
@@ -378,8 +390,8 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, isLandscape ? 10 : 16)
+        .padding(.vertical, isLandscape ? 6 : 12)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .bottom) {
             Rectangle().fill(MXColor.layer2).frame(height: 1)
@@ -848,7 +860,11 @@ public struct StudioView: View {
 
     private var actionBoard: some View {
         // Figma Action Board Studio: Undo / Redo / To-start · Record · Play / Metro / Mixer
-        HStack {
+        // Landscape: compact Rec + tighter padding (Figma Studio landscape 97:113250).
+        let recOuter: CGFloat = isLandscape ? 40 : 52
+        let recInner: CGFloat = isLandscape ? 22 : 28
+        let iconPad: CGFloat = isLandscape ? 7 : 10
+        return HStack {
             HStack(spacing: 2) {
                 studioIconButton(asset: "studio_undo", systemFallback: "arrow.uturn.backward") {
                     session.undo()
@@ -878,21 +894,21 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 4 : 8)
 
             Button {
                 guard session.canRecordAudio else { return }
                 session.enterRecordMode()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: isLandscape ? 12 : 16, style: .continuous)
                         .fill(MXColor.layer2)
-                        .frame(width: 52, height: 52)
+                        .frame(width: recOuter, height: recOuter)
                     Circle()
                         .fill(session.canRecordAudio ? MXColor.red : MXColor.grey)
-                        .frame(width: 28, height: 28)
+                        .frame(width: recInner, height: recInner)
                 }
-                .padding(4)
+                .padding(isLandscape ? 2 : 4)
                 .background(
                     Capsule(style: .continuous)
                         .fill(MXColor.black)
@@ -902,21 +918,21 @@ public struct StudioView: View {
             .disabled(session.phase != .ready || session.isInterrupted || !session.canRecordAudio)
             .opacity(session.canRecordAudio ? 1 : 0.4)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 4 : 8)
 
             HStack(spacing: 2) {
                 Button(action: session.togglePlayback) {
                     Group {
                         if session.isPlaying {
                             Image(systemName: "pause.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
                                 .foregroundStyle(MXColor.white)
                                 .frame(width: 20, height: 20)
                         } else {
                             studioGlyph("studio_play", systemFallback: "play.fill", size: 20)
                         }
                     }
-                    .padding(10)
+                    .padding(iconPad)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.layer2)
@@ -930,7 +946,7 @@ public struct StudioView: View {
                 } label: {
                     studioGlyph("studio_metro", systemFallback: "metronome.fill", size: 20)
                         .foregroundStyle(session.isMetronomeEnabled ? MXColor.accent : MXColor.white)
-                        .padding(10)
+                        .padding(iconPad)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(MXColor.layer2)
@@ -959,8 +975,8 @@ public struct StudioView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isLandscape ? 10 : 16)
+        .padding(.vertical, isLandscape ? 4 : 8)
         .background(MXColor.surfaceRaised)
     }
 

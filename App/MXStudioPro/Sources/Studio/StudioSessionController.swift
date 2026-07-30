@@ -2291,6 +2291,8 @@ public final class StudioSessionController {
     }
 
     private func maybeShowQuietRoomTip() {
+        // Quick Recording (GarageBand Quick): skip onboarding for minimal chrome.
+        guard preset != .quickRecord else { return }
         // Week 29 checklist key — show once even if the Week 5 copy-only tip was seen.
         guard !UserDefaults.standard.bool(forKey: Self.quietRoomChecklistKey) else { return }
         showQuietRoomTip = true

@@ -1,11 +1,17 @@
 import SwiftUI
 
 /// BandLab-lite drum pads (Figma Drum Midi 95:88141 / Week 34 Drum Studio).
+/// Landscape: shorter pad grid so arrange + pads fit Figma 812×375.
 /// 8 GM-ish pads in a 2×4 grid with Y→velocity and brief hit flash.
 public struct DrumPadView: View {
     /// MIDI note, velocity
     public var onPadHit: (UInt8, UInt8) -> Void
     public var onPadRelease: ((UInt8) -> Void)?
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var isLandscape: Bool { verticalSizeClass == .compact }
+    private var padSurfaceHeight: CGFloat { isLandscape ? 110 : 172 }
 
     public init(
         onPadHit: @escaping (UInt8, UInt8) -> Void,
@@ -48,10 +54,10 @@ public struct DrumPadView: View {
         VStack(spacing: 0) {
             headerRow
             padGrid
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.horizontal, isLandscape ? 8 : 12)
+                .padding(.bottom, isLandscape ? 4 : 8)
         }
-        .frame(height: 172)
+        .frame(height: padSurfaceHeight)
         .background(MXColor.surfaceRaised)
     }
 
@@ -65,13 +71,15 @@ public struct DrumPadView: View {
 
             Spacer(minLength: 8)
 
-            Text("Tap pads · Play to capture")
-                .font(MXFont.caption())
-                .foregroundStyle(MXColor.grey)
-                .lineLimit(1)
+            if !isLandscape {
+                Text("Tap pads · Play to capture")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.vertical, isLandscape ? 4 : 8)
     }
 
     // MARK: - Grid

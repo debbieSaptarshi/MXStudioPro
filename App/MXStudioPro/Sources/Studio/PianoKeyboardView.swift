@@ -1,11 +1,19 @@
 import SwiftUI
 
 /// GarageBand-lite on-screen keyboard (Figma 95:87783 / Week 33 Virtual Piano).
+/// Landscape: compact chrome + shorter keys (Figma Virtual Piano landscape `97:137230`).
 /// One octave + top C, with octave shift, hold, and Y→velocity.
 struct PianoKeyboardView: View {
     /// note, velocity
     var onNoteOn: (UInt8, UInt8) -> Void
     var onNoteOff: (UInt8) -> Void
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var isLandscape: Bool { verticalSizeClass == .compact }
+    private var keysHeight: CGFloat { isLandscape ? 72 : 132 }
+    private var chromeVerticalPadding: CGFloat { isLandscape ? 4 : 8 }
+    private var keysBottomPadding: CGFloat { isLandscape ? 4 : 8 }
 
     /// Preferred API: velocity is included in `onNoteOn`.
     init(
@@ -67,10 +75,10 @@ struct PianoKeyboardView: View {
         VStack(spacing: 0) {
             chromeBar
             keysArea
-                .frame(height: 132)
+                .frame(height: keysHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.horizontal, isLandscape ? 8 : 12)
+                .padding(.bottom, keysBottomPadding)
         }
         .background(MXColor.surfaceRaised)
     }
@@ -92,18 +100,20 @@ struct PianoKeyboardView: View {
 
             holdControls
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.vertical, chromeVerticalPadding)
     }
 
     private var octaveControls: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: isLandscape ? 4 : 6) {
             chromeButton(systemName: "minus", enabled: canOctaveDown) {
                 shiftOctave(-1)
             }
-            Text("Oct")
-                .font(MXFont.caption())
-                .foregroundStyle(MXColor.grey)
+            if !isLandscape {
+                Text("Oct")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
             chromeButton(systemName: "plus", enabled: canOctaveUp) {
                 shiftOctave(1)
             }
@@ -151,11 +161,12 @@ struct PianoKeyboardView: View {
     }
 
     private func chromeButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        let side: CGFloat = isLandscape ? 24 : 28
+        return Button(action: action) {
             Image(systemName: systemName)
                 .font(MXFont.caption())
                 .foregroundStyle(enabled ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
-                .frame(width: 28, height: 28)
+                .frame(width: side, height: side)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(MXColor.layer2)

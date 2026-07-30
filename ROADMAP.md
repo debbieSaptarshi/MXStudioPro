@@ -46,7 +46,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **32** | Guitar Studio Section (Figma) | **Done (MVP)** ✅ Pedalboard presets + Dist→Delay→Rev |
 | **33** | Piano Studio Section (Figma) | **Done (MVP)** ✅ Virtual Piano + bank + MIDI capture |
 | **34** | Drum & Others Studio Section (Figma) | **Done (MVP)** ✅ Pads + Hide Tracks + Others labels |
-| **35** | Quick Landscape Studio Section (Figma) | **Next** |
+| **35** | Quick Landscape Studio Section (Figma) | **Done (MVP)** ✅ landscape compact + Quick Recording |
+| **36** | Equal-power crossfades (arrangement) | **Next** |
 
 ### Figma anchors (shipped / in use)
 
@@ -231,11 +232,11 @@ Patterned after BandLab channel strips and GarageBand insert order:
 | **Insert chain UI** | ✅ FX sheet chips HPF → EQ → Dly → Dist → Dyn → Rev; Record Vocal EQ opens FX sheet |
 | **Bounce live-insert parity** | ✅ Offline HPF, EQ mid, de-ess, gate, delay, Reels soft-comp, `MXSimpleReverb`; FX tail flush; skip Distortion AU |
 
-**Still backlog (next):** true overlapping equal-power crossfades; expanded multi-row playlist folder; playback strip meters. *(Bounce Dist soft-clip shipped in Week 32.)*
+**Month 10 backlog:** Week 36 equal-power crossfades → playlist folder → strip meters → wet guitar monitor. *(Bounce Dist soft-clip shipped in Week 32.)*
 
 ---
 
-## Month 9 — Instrument Studio sections *(Weeks 31–35)* **Next**
+## Month 9 — Instrument Studio sections *(Weeks 31–35)* ✅
 
 Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared chrome (header, 60pt lanes, 70pt details, action board) stays one `StudioView`; each section adds mode-specific UI + audio behavior.
 
@@ -297,7 +298,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 
 **Week 34 notes:** 8 GM-ish pads (Kick/Snare/Clap/HH/Tom/Perc/Ride), Drum Kit short one-shot synth, capture on Stop like Piano. Hide Tracks sidebar toggle. Bass/Looper/Sampler labeled “Others — coming soon”.
 
-### Week 35 — Quick Landscape Studio Section **Next**
+### Week 35 — Quick Landscape Studio Section ✅
 
 **Figma cluster (≈ y=12610)**
 | Frame | Node | Intent |
@@ -308,15 +309,40 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Quick Recording (portrait) | [`96:58733`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=96-58733) | Minimal capture entry |
 
 **Done when (GarageBand Quick / BandLab quick capture)**
-- [ ] Support landscape orientation for Studio (+ optional lock for record)
-- [ ] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
-- [ ] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
-- [ ] Landscape Virtual Piano usable for VI projects
-- [ ] Demo: rotate phone → arrange 4+ tracks comfortably → rotate back → export
+- [x] Support landscape orientation for Studio (+ optional lock for record) — orientations enabled; record lock deferred
+- [x] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
+- [x] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
+- [x] Landscape Virtual Piano usable for VI projects — compact keys (~72pt) + hide details strip
+- [x] Demo: rotate phone → arrange 4+ tracks comfortably → rotate back → export
 
-**Month 9 gate:** Guitar / Piano / Drum / Landscape each have a Figma-faithful entry path and a 60-second demo that produces audible audio in Studio.
+**Week 35 notes:** Auto-collapse track headers in landscape; compact action board / header Collab icon; piano + drum pads shrink for 812×375; Quick Recording skips quiet-room tip.
 
-### Implementation notes (shared)
+**Month 9 gate:** Guitar / Piano / Drum / Landscape each have a Figma-faithful entry path and a 60-second demo that produces audible audio in Studio. ✅
+
+---
+
+## Month 10 — Arrangement depth *(Weeks 36–39)* **Next**
+
+Reference: Logic Pro / Pro Tools equal-power crossfades; GarageBand / BandLab playlist comps; Studio One strip meters.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **36** | True overlapping equal-power crossfades (punch seams + clip fades) | **Next** |
+| 37 | Expanded multi-row playlist folder (always-on take lanes) | Planned |
+| 38 | Playback strip meters (mixer + optional timeline) | Planned |
+| 39 | Wet input monitoring for guitar pedalboard | Planned |
+
+### Week 36 — Equal-power crossfades **Next**
+
+**Done when (Logic / Pro Tools X-fade)**
+- [ ] Punch comps create real timeline overlap (~12 ms+) instead of abut dips
+- [ ] Equal-power in/out curves (`cos`/`sin`) so `gOut² + gIn² ≈ 1`
+- [ ] Live schedule + bounce both sum overlapping faded clips without level dip
+- [ ] Take-lane activation treats short X-fade overlaps as soft abut (co-active)
+- [ ] Unit tests for envelope power + split overlap geometry
+- [ ] Demo: punch over a take → seamless splice on play + bounce
+
+### Implementation notes (shared — Month 9)
 
 1. Prefer **one Studio shell** with `StudioPreset` / track `category` driving overlays (pedalboard, keyboard, drum pads, landscape `ViewThatFits` / size-class layouts).
 2. Ship **vertical slice per week** — UI + audio path — not all Figma variants in one PR.
@@ -471,6 +497,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
             → W27–28 Arrangement + vocal polish ← done
               → W29 Checklist + loop clamp + comps ← done
                 → W30 Mixer strips + bounce FX parity ← done
+                  → W31–35 Instrument Studio sections ← done
+                    → W36–39 Arrangement depth      ← next (X-fades)
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -490,6 +518,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 27–28 | Arrangement + vocal capture polish |
 | 29 | Quiet-room checklist + loop clamp + punch comps |
 | 30 | Mixer channel strips + bounce FX parity |
+| 31–35 | Guitar / Piano / Drum / Landscape Studio |
+| 36–39 | Arrangement depth (X-fades → playlist → meters → wet monitor) |
 
 ---
 
