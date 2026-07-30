@@ -1,4 +1,5 @@
 import SwiftUI
+import MXStudioEngine
 
 /// BandLab / Loopcloud-style sound pack browser (Week 79).
 ///

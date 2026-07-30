@@ -150,7 +150,7 @@ public final class MXTrackChain: @unchecked Sendable {
         var nodes: [AVAudioNode] = [inputMixer, eq, trackMixer]
         if let instrument { nodes.append(instrument.node) }
         nodes.append(contentsOf: inserts.map(\.node))
-        nodes.append(contentsOf: sendGainNodes.values)
+        nodes.append(contentsOf: sendGainNodes.values.map { $0 as AVAudioNode })
         return nodes
     }
 

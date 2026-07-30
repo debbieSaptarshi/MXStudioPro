@@ -4,23 +4,41 @@ import Foundation
 ///
 /// Procedural PCM only — no binary pack assets. Loops and one-shots are
 /// synthesized on import into the project `Audio/` folder.
-enum MXBeatKind: String, Sendable {
+public enum MXBeatKind: String, Sendable {
     case loop
     case oneShot
 }
 
-struct MXBeatCatalogItem: Identifiable, Sendable {
-    let id: String
-    let name: String
-    let subtitle: String
-    let kind: MXBeatKind
-    let bpmHint: Double?
-    let durationSeconds: Double
-    let systemImage: String
+public struct MXBeatCatalogItem: Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let subtitle: String
+    public let kind: MXBeatKind
+    public let bpmHint: Double?
+    public let durationSeconds: Double
+    public let systemImage: String
+
+    public init(
+        id: String,
+        name: String,
+        subtitle: String,
+        kind: MXBeatKind,
+        bpmHint: Double?,
+        durationSeconds: Double,
+        systemImage: String
+    ) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.kind = kind
+        self.bpmHint = bpmHint
+        self.durationSeconds = durationSeconds
+        self.systemImage = systemImage
+    }
 }
 
-enum MXBeatCatalog {
-    static let all: [MXBeatCatalogItem] = [
+public enum MXBeatCatalog {
+    public static let all: [MXBeatCatalogItem] = [
         .init(
             id: "lofi_4bar",
             name: "Lo-Fi Loop",

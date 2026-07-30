@@ -1,4 +1,5 @@
 import Foundation
+import MXAudioDSP
 
 /// First-party bundled pack catalog (Week 79 — BandLab / Loopcloud lite).
 ///
