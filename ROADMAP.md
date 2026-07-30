@@ -314,7 +314,7 @@ Figma page **⭐ Complete Design** groups dedicated Studio experiences. Shared c
 | Quick Recording (portrait) | [`96:58733`](https://www.figma.com/design/dw9rjcvqf3IadTXi0o33BD/MXStudioProV1?node-id=96-58733) | Minimal capture entry |
 
 **Done when (GarageBand Quick / BandLab quick capture)**
-- [x] Support landscape orientation for Studio (+ optional lock for record) — orientations enabled; record lock deferred
+- [x] Support landscape orientation for Studio (+ optional lock for record) — orientations enabled; record lock shipped in Week 41
 - [x] Landscape layout: track column + wide net + compact bottom transport (Figma 812×375)
 - [x] Quick Recording entry from Create: minimal chrome → one-take record → drop into Studio
 - [x] Landscape Virtual Piano usable for VI projects — compact keys (~72pt) + hide details strip
