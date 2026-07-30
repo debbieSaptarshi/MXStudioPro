@@ -73,6 +73,14 @@ public struct StudioView: View {
             case .clipPan: return "Clip Pan"
             }
         }
+        /// Compact labels for landscape arrange (`97:113250`) so Rel/Abs still fits.
+        var compactLabel: String {
+            switch self {
+            case .trackVolume: return "Trk"
+            case .clipVolume: return "Gain"
+            case .clipPan: return "Pan"
+            }
+        }
     }
 
     private enum DrumInputMode: String, CaseIterable, Identifiable {
@@ -87,7 +95,7 @@ public struct StudioView: View {
         }
     }
 
-    /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
+    /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375) — W80 second pass.
     private var isLandscape: Bool { verticalSizeClass == .compact }
 
     private var trackColumnWidth: CGFloat {
@@ -96,7 +104,7 @@ public struct StudioView: View {
     }
     private let beatsVisibleMin: Double = 4
     private let beatsVisibleMax: Double = 32
-    /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt.
+    /// Figma Studio – Guitar (`95:85203`): track lanes / headers are 60pt; landscape 48 (Quick).
     private var trackLaneHeight: CGFloat { isLandscape ? 48 : 60 }
     /// Height of one take lane inside an expanded playlist folder.
     private var takeRowHeight: CGFloat { isLandscape ? 40 : 44 }
@@ -104,13 +112,16 @@ public struct StudioView: View {
     private var drumPartRowHeight: CGFloat { isLandscape ? 32 : 36 }
     /// Volume automation lane under a track (Logic / Ableton lite).
     private var automationLaneHeight: CGFloat { isLandscape ? 28 : 36 }
+    /// Mode picker chrome above the automation polyline (W80: tighter in landscape).
+    private var automationChromeExtra: CGFloat { isLandscape ? 14 : 18 }
     /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
     private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
     /// Figma Studio header (`95:85029`) — match MXHeader / Record chrome.
     private var studioHeaderHeight: CGFloat { isLandscape ? 56 : 64 }
     /// Figma Action Board Studio transport row (`95:85072`).
     private var actionBoardHeight: CGFloat { isLandscape ? 64 : 76 }
-    private let rulerHeight: CGFloat = 24
+    /// Ruler band — slightly tighter in landscape so lanes win vertical budget.
+    private var rulerHeight: CGFloat { isLandscape ? 20 : 24 }
 
     private func playlistTakeIndices(for track: MXSessionTrack) -> [Int] {
         Array(Set(track.clips.map(\.takeIndex))).sorted()
@@ -146,7 +157,7 @@ public struct StudioView: View {
             height = trackLaneHeight
         }
         if automationLaneTrackIDs.contains(track.id) {
-            height += automationLaneHeight + 18
+            height += automationLaneHeight + automationChromeExtra
         }
         return height
     }
@@ -1104,12 +1115,15 @@ public struct StudioView: View {
                     arrangeZoomControls
                 }
                 .overlay(alignment: .topTrailing) {
-                    // Snap-resolution readout (Logic / Pro Tools ruler chrome)
+                    // Snap-resolution readout (Logic / Pro Tools ruler chrome).
+                    // Landscape: primary snap label (action board shows magnet only).
                     if session.isSnapEnabled {
                         Text(session.snapResolution.displayName)
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: isLandscape ? 8 : 9, weight: .bold, design: .rounded))
                             .foregroundStyle(MXColor.accent)
-                            .padding(.horizontal, 5)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .padding(.horizontal, isLandscape ? 4 : 5)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule(style: .continuous)
@@ -1217,9 +1231,10 @@ public struct StudioView: View {
             }
     }
 
-    /// Compact +/- zoom on the arrange ruler (W67).
+    /// Compact +/- zoom on the arrange ruler (W67 / W80 landscape hit targets).
     private var arrangeZoomControls: some View {
-        HStack(spacing: 2) {
+        let side: CGFloat = isLandscape ? 22 : 18
+        return HStack(spacing: 2) {
             Button {
                 beatsVisible = MXBeatGridDensity.zoomOutBeatsVisible(
                     beatsVisible,
@@ -1229,7 +1244,8 @@ public struct StudioView: View {
                 Image(systemName: "minus")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(MXColor.lightGrey)
-                    .frame(width: 18, height: 18)
+                    .frame(width: side, height: side)
+                    .contentShape(Rectangle())
                     .background(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(MXColor.black.opacity(0.72))
@@ -1248,7 +1264,8 @@ public struct StudioView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(MXColor.lightGrey)
-                    .frame(width: 18, height: 18)
+                    .frame(width: side, height: side)
+                    .contentShape(Rectangle())
                     .background(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(MXColor.black.opacity(0.72))
@@ -1350,7 +1367,7 @@ public struct StudioView: View {
                         pixelsPerBeat: pixelsPerBeat
                     )
                 }
-                .frame(height: automationLaneHeight + 18)
+                .frame(height: automationLaneHeight + automationChromeExtra)
             }
         }
     }
@@ -1362,7 +1379,7 @@ public struct StudioView: View {
         selectedClip: MXClip?
     ) -> some View {
         let hasSelectedClip = selectedClip != nil
-        HStack(spacing: 4) {
+        HStack(spacing: isLandscape ? 2 : 4) {
             ForEach(AutomationLaneMode.allCases) { option in
                 let enabled = option == .trackVolume || hasSelectedClip
                 Button {
@@ -1381,14 +1398,16 @@ public struct StudioView: View {
                         }
                     }
                 } label: {
-                    Text(option.label)
+                    Text(isLandscape ? option.compactLabel : option.label)
                         .font(MXFont.caption())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(
                             mode == option
                                 ? MXColor.orange
                                 : (enabled ? MXColor.lightGrey : MXColor.grey.opacity(0.5))
                         )
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, isLandscape ? 4 : 6)
                         .padding(.vertical, 2)
                         .background(
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -1397,13 +1416,15 @@ public struct StudioView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!enabled)
+                .accessibilityLabel(option.label)
             }
             Spacer(minLength: 0)
             if mode == .clipVolume, let clip = selectedClip {
                 clipGainModeToggle(clip: clip)
+                    .layoutPriority(1)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, isLandscape ? 2 : 4)
     }
 
     @ViewBuilder
@@ -1415,11 +1436,13 @@ public struct StudioView: View {
                 } label: {
                     Text(option == .relative ? "Rel" : "Abs")
                         .font(MXFont.caption())
+                        .lineLimit(1)
                         .foregroundStyle(
                             clip.gainAutomationMode == option ? MXColor.accent : MXColor.grey
                         )
-                        .padding(.horizontal, 5)
+                        .padding(.horizontal, isLandscape ? 4 : 5)
                         .padding(.vertical, 2)
+                        .frame(minWidth: isLandscape ? 28 : 0)
                         .background(
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .fill(
@@ -1433,6 +1456,7 @@ public struct StudioView: View {
                 .accessibilityLabel(option == .relative ? "Relative clip gain" : "Absolute clip gain")
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
@@ -1490,9 +1514,11 @@ public struct StudioView: View {
                     }
                 )
             } else {
-                Text("Select a clip for clip gain automation")
+                Text(isLandscape ? "Select a clip" : "Select a clip for clip gain automation")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .padding(.leading, 8)
             }
@@ -1524,9 +1550,11 @@ public struct StudioView: View {
                     }
                 )
             } else {
-                Text("Select a clip for clip pan automation")
+                Text(isLandscape ? "Select a clip" : "Select a clip for clip pan automation")
                     .font(MXFont.caption())
                     .foregroundStyle(MXColor.grey)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .padding(.leading, 8)
             }
@@ -1653,7 +1681,7 @@ public struct StudioView: View {
         CGFloat(session.playheadBeat.truncatingRemainder(dividingBy: beatsVisible)) * pixelsPerBeat
     }
 
-    // MARK: - Details strip (Figma Bottom Actions / Studio Details — 70pt)
+    // MARK: - Details strip (Figma Bottom Actions / Studio Details — 70pt; landscape 52)
 
     private var studioDetailsStrip: some View {
         HStack(spacing: 0) {
@@ -1661,50 +1689,13 @@ public struct StudioView: View {
             detailDivider
             detailCell(value: "\(session.playheadBeatInBar)", label: "Beat")
             detailDivider
-            VStack(spacing: 4) {
+            VStack(spacing: isLandscape ? 0 : 4) {
                 Text("\(session.project.timeSignatureNumerator)/\(session.project.timeSignatureDenominator)")
-                    .font(MXFont.studioReadout())
+                    .font(isLandscape ? MXFont.body3() : MXFont.studioReadout())
                     .foregroundStyle(MXColor.lightGrey)
-                HStack(spacing: 2) {
-                    Text(session.musicalKey)
-                        .font(MXFont.caption())
-                        .foregroundStyle(MXColor.grey)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(MXColor.grey)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            detailDivider
-            VStack(spacing: 4) {
-                HStack(spacing: 8) {
-                    Button { session.nudgeBPM(-1) } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(MXColor.lightGrey)
-                            .frame(width: 20, height: 20)
-                            .background(MXColor.layer2)
-                    }
-                    .buttonStyle(.plain)
-
-                    Text(String(format: "%.0f", session.bpm))
-                        .font(MXFont.studioReadout())
-                        .foregroundStyle(MXColor.lightGrey)
-                        .frame(minWidth: 36)
-
-                    Button { session.nudgeBPM(1) } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(MXColor.lightGrey)
-                            .frame(width: 20, height: 20)
-                            .background(MXColor.layer2)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button { showBPMSheet = true } label: {
+                if !isLandscape {
                     HStack(spacing: 2) {
-                        Text(session.countInBars > 0 ? "Count \(session.countInBars)" : "Keep")
+                        Text(session.musicalKey)
                             .font(MXFont.caption())
                             .foregroundStyle(MXColor.grey)
                         Image(systemName: "chevron.down")
@@ -1712,9 +1703,63 @@ public struct StudioView: View {
                             .foregroundStyle(MXColor.grey)
                     }
                 }
-                .buttonStyle(.plain)
             }
-            .frame(width: 125)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            detailDivider
+            VStack(spacing: isLandscape ? 0 : 4) {
+                HStack(spacing: isLandscape ? 6 : 8) {
+                    Button { session.nudgeBPM(-1) } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.lightGrey)
+                            .frame(width: isLandscape ? 28 : 20, height: isLandscape ? 28 : 20)
+                            .contentShape(Rectangle())
+                            .background(MXColor.layer2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Decrease BPM")
+
+                    Text(String(format: "%.0f", session.bpm))
+                        .font(isLandscape ? MXFont.body3() : MXFont.studioReadout())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .frame(minWidth: isLandscape ? 28 : 36)
+
+                    Button { session.nudgeBPM(1) } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.lightGrey)
+                            .frame(width: isLandscape ? 28 : 20, height: isLandscape ? 28 : 20)
+                            .contentShape(Rectangle())
+                            .background(MXColor.layer2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Increase BPM")
+                }
+
+                if !isLandscape {
+                    Button { showBPMSheet = true } label: {
+                        HStack(spacing: 2) {
+                            Text(session.countInBars > 0 ? "Count \(session.countInBars)" : "Keep")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(MXColor.grey)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // Landscape: tap BPM value opens sheet (count-in label hidden for density).
+                    Button { showBPMSheet = true } label: {
+                        Text(session.countInBars > 0 ? "C\(session.countInBars)" : "BPM")
+                            .font(MXFont.caption())
+                            .foregroundStyle(MXColor.grey)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Tempo and count-in")
+                }
+            }
+            .frame(width: isLandscape ? 110 : 125)
             .frame(maxHeight: .infinity)
         }
         .frame(height: detailsStripHeight)
@@ -1728,15 +1773,19 @@ public struct StudioView: View {
     }
 
     private func detailCell(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: isLandscape ? 0 : 4) {
             Text(value)
-                .font(MXFont.studioReadout())
+                .font(isLandscape ? MXFont.body3() : MXFont.studioReadout())
                 .foregroundStyle(MXColor.lightGrey)
-            Text(label)
-                .font(MXFont.caption())
-                .foregroundStyle(MXColor.grey)
+            if !isLandscape {
+                Text(label)
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) \(value)")
     }
 
     private var detailDivider: some View {
@@ -1867,16 +1916,19 @@ public struct StudioView: View {
                             .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
                             .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
                             .frame(width: 20, height: 20)
-                        if session.isSnapEnabled {
+                        // Landscape: snap readout lives on the arrange ruler — hide here to avoid overflow.
+                        if session.isSnapEnabled && !isLandscape {
                             Text(session.snapResolution.displayName)
-                                .font(.system(size: isLandscape ? 9 : 10, weight: .bold, design: .rounded))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
                                 .foregroundStyle(MXColor.accent)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                         }
                     }
-                    .padding(.horizontal, session.isSnapEnabled ? max(4, iconPad - 2) : iconPad)
+                    .padding(.horizontal, session.isSnapEnabled && !isLandscape ? max(4, iconPad - 2) : iconPad)
                     .padding(.vertical, iconPad)
+                    .frame(minWidth: 44, minHeight: isLandscape ? 44 : 0)
+                    .contentShape(Rectangle())
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(MXColor.layer2)

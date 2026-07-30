@@ -25,7 +25,7 @@ private struct CreateMoreItem: Identifiable {
     let systemImage: String
 }
 
-/// Figma:
+/// Figma Create Mix hub (W80 pixel polish):
 /// - `96:53711` Create New Mix Not login
 /// - `96:72447` Create Mix with AI v2 (logged in)
 public struct CreateMixView: View {
@@ -38,6 +38,11 @@ public struct CreateMixView: View {
 
     @State private var showTemplates = false
     @State private var templateError: String?
+
+    /// Outer page + section gutters (Figma Create hub).
+    private let pageGutter: CGFloat = 16
+    /// Tile-to-tile gap inside the Create grid.
+    private let tileGap: CGFloat = 8
 
     public init(
         isLoggedIn: Bool = false,
@@ -61,16 +66,17 @@ public struct CreateMixView: View {
                 header
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: pageGutter) {
+                        brandHero
                         if isLoggedIn {
                             loggedInGrid
                         } else {
                             guestGrid
                         }
                         moreProject
-                        Color.clear.frame(height: isLoggedIn ? 16 : 108)
+                        Color.clear.frame(height: isLoggedIn ? pageGutter : 108)
                     }
-                    .padding(16)
+                    .padding(pageGutter)
                 }
             }
             .background(MXColor.surface)
@@ -140,7 +146,7 @@ public struct CreateMixView: View {
                     .fill(MXColor.black)
             )
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, pageGutter)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 64)
@@ -150,6 +156,39 @@ public struct CreateMixView: View {
                 .fill(MXColor.layer2)
                 .frame(height: 1)
         }
+    }
+
+    // MARK: - Brand hero (first-viewport signal)
+
+    /// Brand-first strip so the Create hub still reads as MXStudio after nav is ignored.
+    private var brandHero: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image("knob_logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .clipShape(Circle())
+                Text("MXSTUDIO PRO")
+                    .font(.system(size: 22, weight: .bold, design: .default).width(.condensed))
+                    .foregroundStyle(MXColor.white)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            Text(isLoggedIn
+                 ? "Pick a path — Vocals, Guitar, Drums, keys, or AI."
+                 : "Start a mix. Sign in later to save and publish.")
+                .font(MXFont.body3())
+                .foregroundStyle(MXColor.grey)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(isLoggedIn ? "START CREATING" : "TRY WITHOUT AN ACCOUNT")
+                .font(MXFont.sectionTitle())
+                .foregroundStyle(MXColor.lightGrey)
+                .padding(.top, 4)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("MXStudio Pro Create Mix")
     }
 
     // MARK: - Logged-in grid (`96:72447`)
@@ -162,28 +201,29 @@ public struct CreateMixView: View {
             .init(title: "Guitar", subtitle: "Record electric or acoustic with pedals", systemImage: "guitars.fill", tint: MXColor.teal, style: .medium, preset: .guitar, isEnabled: true),
             .init(title: "Drums", subtitle: "Pad machine — lay a beat on the timeline", systemImage: "circle.grid.2x2.fill", tint: MXColor.orange, style: .medium, preset: .drums, isEnabled: true),
             .init(title: "Quick Recording", subtitle: "One-take capture — minimal chrome", systemImage: "record.circle", tint: MXColor.red, style: .medium, preset: .quickRecord, isEnabled: true),
-            .init(title: "Bass", subtitle: "Others — coming soon", systemImage: "music.note", tint: MXColor.purple, style: .medium, preset: .bass, isEnabled: false),
-            .init(title: "Looper", subtitle: "Others — coming soon", systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .medium, preset: .looper, isEnabled: false),
-            .init(title: "Sampler", subtitle: "Others — coming soon", systemImage: "guitars", tint: MXColor.pink, style: .medium, preset: .sampler, isEnabled: false),
-            .init(title: "Import File", subtitle: pocket, systemImage: "square.and.arrow.up", tint: MXColor.red, style: .medium, preset: .importFile, isEnabled: false),
+            .init(title: "Bass", subtitle: "Coming soon", systemImage: "music.note", tint: MXColor.purple, style: .medium, preset: .bass, isEnabled: false),
+            .init(title: "Looper", subtitle: "Coming soon", systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .medium, preset: .looper, isEnabled: false),
+            // W79/W80: Sampler tile stays disabled; Packs + Beats live under Studio +
+            .init(title: "Sampler", subtitle: "Packs & Beats in Studio +", systemImage: "guitars", tint: MXColor.pink, style: .medium, preset: .sampler, isEnabled: false),
+            .init(title: "Import File", subtitle: "Coming soon", systemImage: "square.and.arrow.up", tint: MXColor.red, style: .medium, preset: .importFile, isEnabled: false),
             .init(title: "Virtual Instrument", subtitle: "Play keys with a built-in piano/synth", systemImage: "pianokeys", tint: MXColor.orange, style: .medium, preset: .midi, isEnabled: true),
-            .init(title: "Live Performance", subtitle: pocket, systemImage: "music.quarternote.3", tint: MXColor.white, style: .medium, preset: .live, isEnabled: false),
+            .init(title: "Live Performance", subtitle: "Coming soon", systemImage: "music.quarternote.3", tint: MXColor.white, style: .medium, preset: .live, isEnabled: false),
         ]
     }
 
     private var loggedInGrid: some View {
         let items = loggedInCategories
         let medium = Array(items.dropFirst())
-        return VStack(spacing: 8) {
+        return VStack(spacing: tileGap) {
             if let hero = items.first {
                 heroTile(hero)
             }
             LazyVGrid(
                 columns: [
-                    GridItem(.flexible(), spacing: 4),
-                    GridItem(.flexible(), spacing: 4),
+                    GridItem(.flexible(), spacing: tileGap),
+                    GridItem(.flexible(), spacing: tileGap),
                 ],
-                spacing: 4
+                spacing: tileGap
             ) {
                 ForEach(medium) { category in
                     mediumTile(category)
@@ -202,7 +242,7 @@ public struct CreateMixView: View {
                     .foregroundStyle(category.isEnabled ? category.tint : category.tint.opacity(0.35))
                     .frame(width: 24, height: 24)
 
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(category.title.uppercased())
                         .font(.system(size: 16, weight: .regular, design: .default).width(.condensed))
                         .foregroundStyle(category.isEnabled ? MXColor.white : MXColor.grey)
@@ -211,12 +251,13 @@ public struct CreateMixView: View {
                         .foregroundStyle(MXColor.grey)
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(pageGutter)
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
             .background(metalCard)
             .opacity(category.isEnabled ? 1 : 0.55)
         }
         .buttonStyle(.plain)
+        .disabled(!category.isEnabled)
     }
 
     private func mediumTile(_ category: CreateCategory) -> some View {
@@ -229,14 +270,14 @@ public struct CreateMixView: View {
                     .foregroundStyle(category.isEnabled ? category.tint : category.tint.opacity(0.35))
                     .frame(width: 20, height: 20)
 
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(category.title.uppercased())
                         .font(.system(size: 14, weight: .regular, design: .default).width(.condensed))
                         .foregroundStyle(category.isEnabled ? MXColor.white : MXColor.grey)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Text(category.subtitle)
-                        .font(.system(size: 8, weight: .regular))
+                        .font(MXFont.caption())
                         .foregroundStyle(MXColor.grey)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -244,11 +285,12 @@ public struct CreateMixView: View {
                 Spacer(minLength: 0)
             }
             .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
             .background(metalCard)
             .opacity(category.isEnabled ? 1 : 0.55)
         }
         .buttonStyle(.plain)
+        .disabled(!category.isEnabled)
     }
 
     // MARK: - Guest grid (`96:53711`)
@@ -260,32 +302,37 @@ public struct CreateMixView: View {
             .init(title: "Guitar", subtitle: "Record electric or acoustic with pedals", systemImage: "guitars.fill", tint: MXColor.teal, style: .compact, preset: .guitar, isEnabled: true),
             .init(title: "Drums", subtitle: "Pad machine — lay a beat on the timeline", systemImage: "circle.grid.2x2.fill", tint: MXColor.orange, style: .compact, preset: .drums, isEnabled: true),
             .init(title: "Quick Recording", subtitle: "One-take capture — minimal chrome", systemImage: "record.circle", tint: MXColor.red, style: .compact, preset: .quickRecord, isEnabled: true),
-            .init(title: "Bass", subtitle: "Others — coming soon", systemImage: "music.note", tint: MXColor.purple, style: .compact, preset: .bass, isEnabled: false),
-            .init(title: "Looper", subtitle: "Others — coming soon", systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .compact, preset: .looper, isEnabled: false),
-            .init(title: "Sampler", subtitle: "Others — coming soon", systemImage: "guitars", tint: MXColor.pink, style: .compact, preset: .sampler, isEnabled: false),
-            .init(title: "Import File", subtitle: "Import your mixed file or mp3 file", systemImage: "square.and.arrow.up", tint: MXColor.red, style: .compact, preset: .importFile, isEnabled: false),
             .init(title: "Virtual Instrument", subtitle: "Play keys with a built-in piano/synth", systemImage: "pianokeys", tint: MXColor.orange, style: .compact, preset: .midi, isEnabled: true),
-            .init(title: "Live Performance", subtitle: "Set up for the live performance on virtual stage.", systemImage: "music.quarternote.3", tint: MXColor.white, style: .compact, preset: .live, isEnabled: false),
+            .init(title: "Bass", subtitle: "Coming soon", systemImage: "music.note", tint: MXColor.purple, style: .compact, preset: .bass, isEnabled: false),
+            .init(title: "Looper", subtitle: "Coming soon", systemImage: "arrow.triangle.2.circlepath", tint: MXColor.lightPurple, style: .compact, preset: .looper, isEnabled: false),
+            // W79/W80: Sampler stays disabled; point guests at Studio + Packs/Beats
+            .init(title: "Sampler", subtitle: "Packs & Beats in Studio +", systemImage: "guitars", tint: MXColor.pink, style: .compact, preset: .sampler, isEnabled: false),
+            .init(title: "Import File", subtitle: "Import your mixed file or mp3", systemImage: "square.and.arrow.up", tint: MXColor.red, style: .compact, preset: .importFile, isEnabled: false),
         ]
     }
 
     private var guestGrid: some View {
+        // Guest keeps a 3-column compact grid (Figma `96:53711`); Live stays logged-in only.
         let items = guestCategories
-        return VStack(spacing: 8) {
+        return VStack(spacing: tileGap) {
             heroTile(items[0])
-            HStack(spacing: 8) {
+            // Enabled instruments first (Vocals / Guitar / Drums)
+            HStack(spacing: tileGap) {
                 compactTile(items[1])
                 compactTile(items[2])
                 compactTile(items[3])
             }
-            HStack(spacing: 8) {
+            // Quick + MIDI + Bass (Bass disabled)
+            HStack(spacing: tileGap) {
                 compactTile(items[4])
                 compactTile(items[5])
                 compactTile(items[6])
             }
-            HStack(spacing: 8) {
+            // Coming-soon row — Sampler hint keeps Packs discoverable without enabling the tile
+            HStack(spacing: tileGap) {
                 compactTile(items[7])
                 compactTile(items[8])
+                compactTile(items[9])
             }
         }
     }
@@ -300,9 +347,9 @@ public struct CreateMixView: View {
                     .foregroundStyle(category.isEnabled ? category.tint : category.tint.opacity(0.35))
                     .frame(width: 24, height: 24)
 
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(category.title.uppercased())
-                        .font(.system(size: 16, weight: .regular, design: .default).width(.condensed))
+                        .font(.system(size: 15, weight: .regular, design: .default).width(.condensed))
                         .foregroundStyle(category.isEnabled ? MXColor.white : MXColor.grey)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
@@ -320,6 +367,7 @@ public struct CreateMixView: View {
             .opacity(category.isEnabled ? 1 : 0.55)
         }
         .buttonStyle(.plain)
+        .disabled(!category.isEnabled)
     }
 
     private func open(_ category: CreateCategory) {
@@ -369,15 +417,15 @@ public struct CreateMixView: View {
     }
 
     private var moreProject: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: pageGutter) {
             Text("MORE PROJECT")
                 .font(.system(size: 20, weight: .regular, design: .default).width(.condensed))
                 .foregroundStyle(MXColor.grey)
 
-            VStack(spacing: 8) {
+            VStack(spacing: tileGap) {
                 ForEach(moreItems) { item in
                     Button(action: { openMoreItem(item) }) {
-                        HStack(spacing: 16) {
+                        HStack(spacing: pageGutter) {
                             Image(systemName: item.systemImage)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(MXColor.white)
