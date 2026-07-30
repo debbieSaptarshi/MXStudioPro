@@ -44,4 +44,26 @@ final class MXMIDINoteEditTests: XCTestCase {
         let notes = MXMIDINoteEdit.appending([a], note: b, clipLengthBeats: 2)
         XCTAssertEqual(notes.count, 2)
     }
+
+    // MARK: - Week 58
+
+    func testResizingLengthClampsToClip() {
+        let note = MXMIDINote(note: 60, velocity: 100, startBeat: 3.0, lengthBeats: 0.25)
+        let grown = MXMIDINoteEdit.resizing(note, lengthBeats: 2.0, clipLengthBeats: 4)
+        XCTAssertEqual(grown.startBeat, 3.0, accuracy: 1e-9)
+        XCTAssertEqual(grown.lengthBeats, 1.0, accuracy: 1e-9)
+
+        let shrunk = MXMIDINoteEdit.resizing(note, lengthBeats: 0.01, clipLengthBeats: 4)
+        XCTAssertEqual(shrunk.lengthBeats, 0.0625, accuracy: 1e-9)
+    }
+
+    func testSettingVelocity() {
+        let note = MXMIDINote(note: 60, velocity: 100, startBeat: 0, lengthBeats: 0.5)
+        let soft = MXMIDINoteEdit.settingVelocity(note, velocity: 1, clipLengthBeats: 4)
+        XCTAssertEqual(soft.velocity, 1)
+        let loud = MXMIDINoteEdit.settingVelocity(note, velocity: 200, clipLengthBeats: 4)
+        XCTAssertEqual(loud.velocity, 127)
+        let zero = MXMIDINoteEdit.settingVelocity(note, velocity: 0, clipLengthBeats: 4)
+        XCTAssertEqual(zero.velocity, 1)
+    }
 }

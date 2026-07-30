@@ -401,6 +401,24 @@ public struct StudioView: View {
                             )
                             pianoRollDragUndoArmed = false
                         },
+                        onResize: { id, length in
+                            _ = session.updateMIDINote(
+                                id: id,
+                                lengthBeats: length,
+                                renderBed: false,
+                                recordUndo: pianoRollDragUndoArmed
+                            )
+                            pianoRollDragUndoArmed = false
+                        },
+                        onVelocity: { id, velocity in
+                            _ = session.updateMIDINote(
+                                id: id,
+                                velocity: velocity,
+                                renderBed: false,
+                                recordUndo: pianoRollDragUndoArmed
+                            )
+                            pianoRollDragUndoArmed = false
+                        },
                         onMoveEnded: {
                             _ = session.commitSelectedMIDIClipBed()
                             pianoRollDragUndoArmed = true

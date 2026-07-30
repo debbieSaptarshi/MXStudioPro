@@ -65,6 +65,28 @@ public enum MXMIDINoteEdit: Sendable {
         return clamping(next, clipLengthBeats: clipLengthBeats)
     }
 
+    /// Resize note length from the trailing edge (Cubasis / Logic). Start stays put.
+    public static func resizing(
+        _ note: MXMIDINote,
+        lengthBeats: Double,
+        clipLengthBeats: Double
+    ) -> MXMIDINote {
+        var next = note
+        next.lengthBeats = max(0.0625, lengthBeats)
+        return clamping(next, clipLengthBeats: clipLengthBeats)
+    }
+
+    /// Set note velocity (1…127).
+    public static func settingVelocity(
+        _ note: MXMIDINote,
+        velocity: UInt8,
+        clipLengthBeats: Double
+    ) -> MXMIDINote {
+        var next = note
+        next.velocity = min(127, max(1, velocity))
+        return clamping(next, clipLengthBeats: clipLengthBeats)
+    }
+
     /// Insert a new note at `startBeat` / `pitch` with default length.
     public static func making(
         pitch: UInt8,

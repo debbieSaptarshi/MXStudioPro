@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 15 (W57–60) — W57 shipped; next W58 piano-roll length + velocity.
+**Current focus:** Month 15 (W57–60) — W57–W58 shipped; next W59 master limiter + live LUFS.
 
 ---
 
@@ -656,7 +656,7 @@ Raise shipped features to award-app bar without blocking cloud work.
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
 | **57** | Step pattern library + copy/paste bars + live step cursor | **Done (MVP)** ✅ | BandLab / FL Mobile |
-| **58** | Piano-roll note length drag + velocity lane | **Planned** | Cubasis / Logic |
+| **58** | Piano-roll note length drag + velocity lane | **Done (MVP)** ✅ | Cubasis / Logic |
 | **59** | Master bus limiter + live LUFS meter | **Planned** | GarageBand / Reels |
 | **60** | Figma pixel-pass After Record + Drum Midi shells | **Planned** | Figma `95:85026` / `95:88141` |
 
@@ -670,11 +670,21 @@ Raise shipped features to award-app bar without blocking cloud work.
 
 **Week 57 notes:** Clipboard is session-local (`@State`). Cursor wraps over pattern length independent of arrange loop. Swing-on-steps still deferred.
 
+### Week 58 — Piano-roll note length + velocity lane ✅
+
+**Done when (Cubasis / Logic / FL Mobile)**
+- [x] Trailing-edge drag resizes note `lengthBeats` (`MXMIDINoteEdit.resizing`)
+- [x] Velocity lane under roll: vertical drag sets 1…127; bar height + note opacity reflect velocity
+- [x] Session `updateMIDINote` accepts optional length + velocity; bed re-renders on gesture end
+- [x] Unit tests for resize clamp + velocity clamp
+
+**Week 58 notes:** Multi-select / transpose deferred. Length handle is the right ~25% of each note block.
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
 - **Step seq:** Swing per step grid; pattern slots save/recall beyond built-in library
-- **Piano roll:** Note length drag handles; velocity lane; multi-select transpose
+- **Piano roll:** Multi-select transpose; draw mode; scale lock
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual; sidechain lite from kick to bass
 - **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
@@ -851,7 +861,7 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                         → W45–48 Quantize + fades + stems + tempo detect ← done
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
-                              → W57 step library / copy-paste / cursor ✅ ← next W58–60
+                              → W57–W58 step library + piano-roll depth ✅ ← next W59–60
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -877,6 +887,7 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
 | 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
 | 53–56 | Step velocity / clip automation / piano-roll lite / latency UX *(done)* |
+| 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass |
 
 ---
 

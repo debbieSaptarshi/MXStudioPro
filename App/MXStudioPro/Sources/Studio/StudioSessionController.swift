@@ -2006,23 +2006,42 @@ public final class StudioSessionController {
         return true
     }
 
-    /// Rewrite selected MIDI clip notes and re-render the audible bed (Week 55).
+    /// Rewrite selected MIDI clip notes and re-render the audible bed (Weeks 55 / 58).
     @discardableResult
     public func updateMIDINote(
         id noteID: UUID,
-        startBeat: Double,
-        pitch: UInt8,
+        startBeat: Double? = nil,
+        pitch: UInt8? = nil,
+        lengthBeats: Double? = nil,
+        velocity: UInt8? = nil,
         renderBed: Bool = true,
         recordUndo: Bool = true
     ) -> Bool {
         guard var clip = selectedMIDIClip() else { return false }
         guard let existing = clip.midiNotes.first(where: { $0.id == noteID }) else { return false }
-        let updated = MXMIDINoteEdit.moving(
-            existing,
-            startBeat: startBeat,
-            pitch: pitch,
-            clipLengthBeats: clip.lengthBeats
-        )
+        var updated = existing
+        if startBeat != nil || pitch != nil {
+            updated = MXMIDINoteEdit.moving(
+                updated,
+                startBeat: startBeat,
+                pitch: pitch,
+                clipLengthBeats: clip.lengthBeats
+            )
+        }
+        if let lengthBeats {
+            updated = MXMIDINoteEdit.resizing(
+                updated,
+                lengthBeats: lengthBeats,
+                clipLengthBeats: clip.lengthBeats
+            )
+        }
+        if let velocity {
+            updated = MXMIDINoteEdit.settingVelocity(
+                updated,
+                velocity: velocity,
+                clipLengthBeats: clip.lengthBeats
+            )
+        }
         let next = MXMIDINoteEdit.replacing(
             clip.midiNotes,
             id: noteID,
