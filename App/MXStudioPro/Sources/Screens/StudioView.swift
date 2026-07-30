@@ -23,6 +23,9 @@ public struct StudioView: View {
     @State private var showTunerSheet = false
     @State private var showCollabSheet = false
     @State private var showClipInspector = false
+    /// GarageBand-style pitch correct amount 0…1 (Week 69). Session-local UI.
+    @State private var pitchCorrectAmount: Float = 0.7
+    @State private var pitchCorrectLimitToKey = true
     @State private var showPianoRoll = false
     @State private var pianoRollDragUndoArmed = true
     /// Suppress magnet tap after a long-press cycle (W66).
@@ -302,10 +305,12 @@ public struct StudioView: View {
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showClipInspector) {
-            clipInspectorSheet
-                .presentationDetents([.height(340)])
-                .presentationDragIndicator(.visible)
-                .preferredColorScheme(.dark)
+            ScrollView {
+                clipInspectorSheet
+            }
+            .presentationDetents([.height(420), .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
         .onChange(of: session.selectedClipID) { _, id in
             if id == nil {
@@ -2143,6 +2148,61 @@ public struct StudioView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Applies Strength and Swing from Studio Settings")
+                }
+
+                // Week 69 — GarageBand / CapCut pitch correction lite (audio clips only).
+                if clip.midiNotes.isEmpty, clip.audioFileName != nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Pitch correct")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Spacer()
+                            Text("\(Int((pitchCorrectAmount * 100).rounded()))%")
+                                .font(MXFont.body3())
+                                .foregroundStyle(MXColor.lightGrey)
+                                .monospacedDigit()
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { Double(pitchCorrectAmount) },
+                                set: { pitchCorrectAmount = Float($0) }
+                            ),
+                            in: 0...1,
+                            step: 0.05
+                        )
+                        .tint(MXColor.accent)
+                        .accessibilityLabel("Pitch correction amount")
+
+                        Toggle(isOn: $pitchCorrectLimitToKey) {
+                            Text("Limit to key (\(session.musicalKey))")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                        }
+                        .tint(MXColor.accent)
+                        .accessibilityHint("Snap corrected pitches to the project key")
+
+                        Button {
+                            _ = session.applyPitchCorrection(
+                                clipID: clip.id,
+                                amount: pitchCorrectAmount,
+                                limitToKey: pitchCorrectLimitToKey
+                            )
+                        } label: {
+                            Label("Apply Pitch Correct", systemImage: "waveform.path")
+                                .font(MXFont.mediumButton())
+                                .foregroundStyle(MXColor.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(MXColor.accent.opacity(0.9))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(pitchCorrectAmount < 0.05)
+                        .accessibilityHint("Bakes pitch correction into a new WAV; undo supported")
+                    }
                 }
             } else {
                 Text("Select a clip on the timeline.")

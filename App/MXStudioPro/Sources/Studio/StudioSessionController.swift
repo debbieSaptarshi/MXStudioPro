@@ -2190,6 +2190,174 @@ public final class StudioSessionController {
         return true
     }
 
+    /// Bake GarageBand-style pitch correction into an audio clip's WAV (Week 69).
+    ///
+    /// Reads the trimmed source region, runs `MXPitchCorrect`, writes a new file,
+    /// and resets trim so the corrected audio is the whole file. Fades / gain /
+    /// timeline placement are preserved. MIDI clips are rejected.
+    @discardableResult
+    public func applyPitchCorrection(
+        clipID: UUID? = nil,
+        amount: Float,
+        limitToKey: Bool = true
+    ) -> Bool {
+        let id = clipID ?? selectedClipID
+        guard let id, var clip = clip(id) else { return false }
+        guard clip.midiNotes.isEmpty else { return false }
+        guard let fileName = clip.audioFileName, !fileName.isEmpty else { return false }
+        let clamped = max(0, min(1, amount))
+        guard clamped > 1e-4 else { return false }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let sourceURL = audioDir.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            recordError = "Pitch correct: missing audio file"
+            return false
+        }
+
+        do {
+            let (mono, sampleRate) = try Self.readClipMonoPCM(
+                url: sourceURL,
+                sourceOffsetSeconds: clip.sourceOffsetSeconds,
+                sourceDurationSeconds: clip.sourceDurationSeconds
+            )
+            guard mono.count > 256 else {
+                recordError = "Pitch correct: clip too short"
+                return false
+            }
+
+            let pitchClasses: Set<UInt8>? = limitToKey
+                ? Self.pitchClasses(fromMusicalKey: musicalKey)
+                : nil
+            let corrected = MXPitchCorrect.correct(
+                mono: mono,
+                sampleRate: sampleRate,
+                amount: clamped,
+                pitchClasses: pitchClasses
+            )
+
+            pushUndoSnapshot()
+            stopClipPlayers()
+
+            let outName = "pitch_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+            let outURL = audioDir.appendingPathComponent(outName)
+            try StudioBounceExporter.writeWAV(
+                left: corrected,
+                right: corrected,
+                sampleRate: sampleRate,
+                to: outURL
+            )
+
+            clip.audioFileName = outName
+            clip.sourceOffsetSeconds = 0
+            clip.sourceDurationSeconds = Double(corrected.count) / max(sampleRate, 1)
+            // Keep timeline length; audible window matches the baked file.
+            replaceClip(clip)
+            attachPlayer(for: clip)
+            persistSoon()
+            if isPlaying, let sample = transport?.currentSample {
+                scheduleClipPlayers(fromSample: sample)
+            }
+            return true
+        } catch {
+            recordError = "Pitch correct failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Pitch classes for Limit-to-Key from the session `musicalKey` string (e.g. `Cmaj`, `Amin`).
+    static func pitchClasses(fromMusicalKey key: String) -> Set<UInt8> {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        let isMinor: Bool
+        let rootToken: String
+        if lower.hasSuffix("maj") {
+            isMinor = false
+            rootToken = String(trimmed.dropLast(3))
+        } else if lower.hasSuffix("min") {
+            isMinor = true
+            rootToken = String(trimmed.dropLast(3))
+        } else if lower.hasSuffix("m") {
+            isMinor = true
+            rootToken = String(trimmed.dropLast(1))
+        } else {
+            isMinor = false
+            rootToken = trimmed
+        }
+        let rootNames = ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"]
+        let rootClasses: [UInt8] = [0, 1, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11]
+        let rootUpper = rootToken.prefix(1).uppercased() + rootToken.dropFirst()
+        let rootPC: UInt8
+        if let idx = rootNames.firstIndex(where: { $0.caseInsensitiveCompare(rootToken) == .orderedSame
+            || $0.caseInsensitiveCompare(rootUpper) == .orderedSame }) {
+            rootPC = rootClasses[idx]
+        } else {
+            rootPC = 0
+        }
+        let mode: MXMIDIScaleMode = isMinor ? .naturalMinor : .major
+        return MXMIDIScale(rootPitchClass: rootPC, mode: mode).pitchClasses
+    }
+
+    /// Read a (possibly trimmed) region from a clip audio file as mono float PCM.
+    static func readClipMonoPCM(
+        url: URL,
+        sourceOffsetSeconds: Double,
+        sourceDurationSeconds: Double?
+    ) throws -> (mono: [Float], sampleRate: Double) {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let sampleRate = format.sampleRate
+        guard sampleRate > 0 else {
+            throw NSError(domain: "MXPitchCorrect", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid sample rate"
+            ])
+        }
+        let startFrame = AVAudioFramePosition(max(0, (sourceOffsetSeconds * sampleRate).rounded()))
+        let available = max(0, file.length - startFrame)
+        let durationFrames: AVAudioFrameCount
+        if let dur = sourceDurationSeconds, dur > 0 {
+            durationFrames = AVAudioFrameCount(
+                min(Double(available), (dur * sampleRate).rounded())
+            )
+        } else {
+            durationFrames = AVAudioFrameCount(available)
+        }
+        guard durationFrames > 0 else {
+            throw NSError(domain: "MXPitchCorrect", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Empty audio region"
+            ])
+        }
+        file.framePosition = startFrame
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: durationFrames
+        ) else {
+            throw NSError(domain: "MXPitchCorrect", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "Buffer alloc failed"
+            ])
+        }
+        try file.read(into: buffer, frameCount: durationFrames)
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0, let channels = buffer.floatChannelData else {
+            throw NSError(domain: "MXPitchCorrect", code: 4, userInfo: [
+                NSLocalizedDescriptionKey: "No PCM data"
+            ])
+        }
+        let channelCount = Int(format.channelCount)
+        var mono = [Float](repeating: 0, count: frameCount)
+        if channelCount <= 1 {
+            for i in 0..<frameCount { mono[i] = channels[0][i] }
+        } else {
+            let scale = 1 / Float(channelCount)
+            for i in 0..<frameCount {
+                var sum: Float = 0
+                for c in 0..<channelCount { sum += channels[c][i] }
+                mono[i] = sum * scale
+            }
+        }
+        return (mono, sampleRate)
+    }
+
     /// Rewrite selected MIDI clip notes and re-render the audible bed (Weeks 55 / 58).
     @discardableResult
     public func updateMIDINote(

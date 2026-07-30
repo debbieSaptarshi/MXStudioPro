@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 17 (W65–68) arrange snap + piano draw **complete** — next Month 18 / cloud / SOTA wow (pitch correction, time-stretch, real sidechain).
+**Current focus:** Month 18 W69 **pitch correction lite** shipped — next W70 time-stretch, W71 LUFS report, W72 cloud spine.
 
 ---
 
@@ -82,6 +82,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **66** | Snap readout on arrange ruler + magnet chrome | **Done (MVP)** ✅ |
 | **67** | Zoom-adaptive arrange grid + pinch/± zoom | **Done (MVP)** ✅ |
 | **68** | Piano-roll draw mode lite | **Done (MVP)** ✅ |
+| **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -824,35 +825,58 @@ Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
 
 **Week 68 notes:** Tap-add (non-draw) still uses free start + default 16th length. Velocity-while-drawing and chord paint deferred.
 
+## Month 18 — Wow + cloud spine *(Weeks 69–72)*
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **69** | Pitch correction lite (vocal clip) | **Done (MVP)** ✅ | GarageBand / CapCut |
+| **70** | Time-stretch clip lite | **Planned** | Ableton / BandLab |
+| **71** | Certified LUFS report sheet after bounce | **Planned** | Reels / YouTube Loudness |
+| **72** | Cloud auth sync spine (beyond local MVP) | **Planned** | BandLab |
+
+### Week 69 — Pitch correction lite ✅
+
+**Done when (GarageBand Pitch Correction / CapCut AutoTune lite)**
+- [x] Pure `MXPitchCorrect` — ACF F0, snap chromatic or Limit-to-Key pitch classes, amount 0…1, windowed OLA resample
+- [x] Session `applyPitchCorrection` bakes trimmed region → new WAV (undo; keeps fades/gain/timeline)
+- [x] Clip inspector: Amount slider + Limit to key (project `musicalKey`) + Apply (audio clips only)
+- [x] Unit tests: midi math, detect A4, amount 0 identity, flat tone pulls toward chromatic, silence safe
+
+**Week 69 notes:** Not Flex Pitch note blobs / formant preserve / live AUTimePitch. Bounce inherits baked file automatically.
+
+### Week 70 — Time-stretch clip lite *(next)*
+
+**Done when (Ableton warp / BandLab stretch lite)**
+- [ ] Pure `MXTimeStretch` duration-preserving or length-retarget resample / WSOLA-lite
+- [ ] Clip inspector or trim gesture: stretch clip `lengthBeats` without changing pitch (or rate-change MVP)
+- [ ] Live schedule + bounce honor stretch
+- [ ] Unit tests for identity ratio + length change
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns
 - **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later
 - **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ✅ W68
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
-- **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet; real key-input sidechain + audio aux bus later
+- **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet ← W71; real key-input sidechain + audio aux bus later
 - **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ✅ W67; clip gain automation later
-- **Export:** Video + audio Reels export; loudness report sheet after bounce
-- **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser ← Month 18 candidates
-- **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
+- **Export:** Video + audio Reels export; loudness report sheet after bounce ← W71
+- **Wow:** Pitch correction lite ✅ W69; time-stretch clip ← W70; harmonies; beat browser
+- **Social/AI:** Cloud auth sync ← W72; real model API for AI compose; live Discover catalog
 - **Figma parity:** Create hub + landscape 812×375 second pass
+- **SOTA polish candidates:** Clip gain automation; take-lane crossfade dial; true-peak (dBTP) in export report; sidechain on bounce path; audio→aux reverb bus
 
 **SOTA next (Month 18 / beyond)**
 - Nested takes × drum parts; SFZ kit choke
-- Pitch correction / time stretch / harmonies
-- Beat browser + video+audio Reels export
+- Time stretch / harmonies / beat browser
+- Video+audio Reels export
 - Cloud auth / social / AI beyond local MVP
 - Real key-input sidechain + audio→aux reverb bus
 - Bezier automation; certified LUFS report sheet
 
-## Month 18 — Wow + cloud spine *(Weeks 69–72)* **Planned**
+## Month 18 implementation notes
 
-| Week | Focus | Status | Reference |
-|------|--------|--------|-----------|
-| **69** | Pitch correction lite (vocal clip) | **Planned** | GarageBand / CapCut |
-| **70** | Time-stretch clip lite | **Planned** | Ableton / BandLab |
-| **71** | Certified LUFS report sheet after bounce | **Planned** | Reels / YouTube Loudness |
-| **72** | Cloud auth sync spine (beyond local MVP) | **Planned** | BandLab |
+*(Weeks 69–72 continue below Month 17.)*
 
 ### Implementation notes (shared — Month 9)
 
@@ -1019,7 +1043,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                             → W53–56 Month 14 award-app depth ✅
                               → W57–W60 Month 15 SOTA polish ✅
                                 → W61–W64 Month 16 award-app depth ✅
-                                  → W65–W68 Month 17 snap SOTA + piano draw ✅ ← next Month 18 / cloud
+                                  → W65–W68 Month 17 snap SOTA + piano draw ✅
+                                    → W69–W72 Month 18 wow + cloud ← W69 done; next W70
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
