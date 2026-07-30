@@ -28,7 +28,22 @@ public struct StudioView: View {
     @State private var collapsedPlaylistTrackIDs: Set<UUID> = []
     /// Session-local collapse for Week 40 drum part columns (Kick/Snare/Hats…).
     @State private var collapsedDrumPartTrackIDs: Set<UUID> = []
+    /// Pads vs BandLab-style 16-step sequencer (Week 49).
+    @State private var drumInputMode: DrumInputMode = .pads
+    @State private var drumStepGrid: [[Bool]] = MXDrumStepSequencer.emptyGrid()
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private enum DrumInputMode: String, CaseIterable, Identifiable {
+        case pads
+        case steps
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .pads: return "Pads"
+            case .steps: return "Steps"
+            }
+        }
+    }
 
     /// Compact landscape arrange (Figma Studio landscape `97:113250` / 812×375).
     private var isLandscape: Bool { verticalSizeClass == .compact }
@@ -280,10 +295,29 @@ public struct StudioView: View {
                     )
                     .fixedSize(horizontal: false, vertical: true)
                 } else if session.showsDrumPads {
-                    DrumPadView(
-                        onPadHit: { session.noteOn($0, velocity: $1) },
-                        onPadRelease: { session.noteOff($0) }
-                    )
+                    VStack(spacing: 0) {
+                        drumInputModePicker
+                        if drumInputMode == .pads {
+                            DrumPadView(
+                                onPadHit: { session.noteOn($0, velocity: $1) },
+                                onPadRelease: { session.noteOff($0) }
+                            )
+                        } else {
+                            DrumStepSequencerView(
+                                grid: $drumStepGrid,
+                                canApply: session.phase == .ready,
+                                onPreviewHit: { note, vel in
+                                    session.previewNote(note, velocity: vel)
+                                },
+                                onApply: {
+                                    _ = session.commitDrumStepPattern(drumStepGrid)
+                                },
+                                onClear: {
+                                    drumStepGrid = MXDrumStepSequencer.emptyGrid()
+                                }
+                            )
+                        }
+                    }
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 actionBoard
@@ -335,6 +369,40 @@ public struct StudioView: View {
         .animation(.easeInOut(duration: 0.2), value: session.tempoDetectMessage)
         .animation(.easeInOut(duration: 0.2), value: session.clipLoadWarnings.count)
         .animation(.easeInOut(duration: 0.2), value: session.isExporting)
+    }
+
+    /// Pads / Steps segmented control above the drum surface (BandLab-style).
+    private var drumInputModePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(DrumInputMode.allCases) { mode in
+                let selected = drumInputMode == mode
+                Button {
+                    drumInputMode = mode
+                } label: {
+                    Text(mode.label)
+                        .font(MXFont.caption())
+                        .foregroundStyle(selected ? MXColor.black : MXColor.lightGrey)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, isLandscape ? 4 : 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(selected ? MXColor.orange : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(mode.label) drum input")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.layer2)
+        )
+        .padding(.horizontal, isLandscape ? 8 : 12)
+        .padding(.top, isLandscape ? 4 : 6)
+        .padding(.bottom, 2)
+        .background(MXColor.surfaceRaised)
     }
 
     // MARK: - Header (95:85029)

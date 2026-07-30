@@ -1593,6 +1593,13 @@ public final class StudioSessionController {
         captureMIDINoteOff(note)
     }
 
+    /// Audition a kit hit without performance capture (step-sequencer cell preview).
+    public func previewNote(_ note: UInt8, velocity: UInt8 = 100) {
+        activeMIDIInstrument()?.noteOn(note, velocity: velocity)
+        // Brief one-shot: drums don't need a held note-off gate for preview.
+        activeMIDIInstrument()?.noteOff(note)
+    }
+
     public func allNotesOff() {
         activeMIDIInstrument()?.allNotesOff()
         // Close any open capture notes at the current playhead.
@@ -1731,6 +1738,65 @@ public final class StudioSessionController {
         attachPlayer(for: clip)
         selectedClipID = clip.id
         persistSoon()
+    }
+
+    /// Place a BandLab-style step-sequencer pattern as a MIDI clip on the armed drums track.
+    ///
+    /// Notes are clip-local (bar starts at 0). The clip is anchored at `playheadBeat`
+    /// (snapped when arrange snap is on). Empty grids are no-ops.
+    @discardableResult
+    public func commitDrumStepPattern(_ grid: [[Bool]]) -> UUID? {
+        guard MXDrumStepSequencer.hasHits(grid) else { return nil }
+        let trackID = activeMIDITrackID()
+            ?? project.tracks.first(where: { $0.category == .drums })?.id
+        guard let trackID,
+              let trackIndex = project.tracks.firstIndex(where: { $0.id == trackID }),
+              project.tracks[trackIndex].kind == .midi,
+              project.tracks[trackIndex].category == .drums
+        else {
+            recordError = "Arm a Drums track to place a step pattern."
+            return nil
+        }
+
+        let localNotes = MXDrumStepSequencer.notes(from: grid)
+        guard !localNotes.isEmpty else { return nil }
+
+        let lengthBeats = MXDrumStepSequencer.patternLengthBeats
+        let startBeat = snapBeat(playheadBeat)
+        let bank = synthBankPreset(for: trackID)
+        let mutedParts = project.tracks[trackIndex].mutedDrumPartSet
+        let soloedParts = project.tracks[trackIndex].soloedDrumPartSet
+        let audibleNotes = localNotes.audibleDrumNotes(muted: mutedParts, soloed: soloedParts)
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let fileName = "drums_steps_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
+        let url = audioDir.appendingPathComponent(fileName)
+        do {
+            try renderMIDIAudibleBed(
+                notes: audibleNotes,
+                to: url,
+                preset: bank.preset,
+                lengthBeats: lengthBeats
+            )
+        } catch {
+            recordError = "Step pattern failed: \(error.localizedDescription)"
+            return nil
+        }
+
+        pushUndoSnapshot()
+        let clip = MXClip(
+            trackID: trackID,
+            name: "Steps \(project.tracks[trackIndex].clips.count + 1)",
+            startBeat: startBeat,
+            lengthBeats: lengthBeats,
+            audioFileName: fileName,
+            sourceDurationSeconds: lengthBeats * 60.0 / max(bpm, 1),
+            midiNotes: localNotes
+        )
+        project.tracks[trackIndex].clips.append(clip)
+        attachPlayer(for: clip)
+        selectedClipID = clip.id
+        persistSoon()
+        return clip.id
     }
 
     @discardableResult
