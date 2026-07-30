@@ -26,7 +26,7 @@ public struct DrumStepSequencerView: View {
     @State private var selectedBarIndex: Int = 0
 
     private var isLandscape: Bool { verticalSizeClass == .compact }
-    private var surfaceHeight: CGFloat { isLandscape ? 168 : 248 }
+    private var surfaceHeight: CGFloat { isLandscape ? 140 : 200 }
 
     private let parts = MXDrumStepSequencer.rowParts
     private var stepCount: Int { MXDrumStepSequencer.stepCount(bars: bars) }

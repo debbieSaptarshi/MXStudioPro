@@ -80,11 +80,15 @@ public struct StudioView: View {
     /// Height of one take lane inside an expanded playlist folder.
     private var takeRowHeight: CGFloat { isLandscape ? 40 : 44 }
     /// Height of one Kick/Snare/Hats… column inside an expanded drum folder.
-    private var drumPartRowHeight: CGFloat { isLandscape ? 36 : 40 }
+    private var drumPartRowHeight: CGFloat { isLandscape ? 32 : 36 }
     /// Volume automation lane under a track (Logic / Ableton lite).
     private var automationLaneHeight: CGFloat { isLandscape ? 28 : 36 }
     /// Figma Bottom Actions “Studio Details” row is 70pt; compact in landscape.
     private var detailsStripHeight: CGFloat { isLandscape ? 52 : 70 }
+    /// Figma Studio header (`95:85029`) — match MXHeader / Record chrome.
+    private var studioHeaderHeight: CGFloat { isLandscape ? 56 : 64 }
+    /// Figma Action Board Studio transport row (`95:85072`).
+    private var actionBoardHeight: CGFloat { isLandscape ? 64 : 76 }
     private let rulerHeight: CGFloat = 24
 
     private func playlistTakeIndices(for track: MXSessionTrack) -> [Int] {
@@ -440,20 +444,20 @@ public struct StudioView: View {
 
             if let message = session.trackLimitMessage {
                 trackLimitBanner(message)
-                    .padding(.top, 56)
+                    .padding(.top, studioHeaderHeight)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             if let tempoMessage = session.tempoDetectMessage {
                 tempoDetectBanner(tempoMessage)
-                    .padding(.top, session.trackLimitMessage == nil ? 56 : 96)
+                    .padding(.top, session.trackLimitMessage == nil ? studioHeaderHeight : studioHeaderHeight + 40)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             if let clipWarning = session.clipLoadWarnings.last {
                 clipWarningBanner(clipWarning)
                     .padding(.top, {
-                        var top: CGFloat = 56
+                        var top: CGFloat = studioHeaderHeight
                         if session.trackLimitMessage != nil { top += 40 }
                         if session.tempoDetectMessage != nil { top += 40 }
                         return top
@@ -633,11 +637,12 @@ public struct StudioView: View {
             )
         }
         .padding(.horizontal, isLandscape ? 10 : 16)
-        .padding(.vertical, isLandscape ? 6 : 12)
+        .padding(.vertical, isLandscape ? 6 : 8)
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .bottom) {
             Rectangle().fill(MXColor.layer2).frame(height: 1)
         }
+        .frame(height: studioHeaderHeight)
     }
 
     // MARK: - Arrangement (track list + beat net)
@@ -655,7 +660,7 @@ public struct StudioView: View {
     }
 
     private var trackListColumn: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             if tracksCollapsed {
                 Image(systemName: "clock")
                     .font(.system(size: 10, weight: .semibold))
@@ -737,7 +742,8 @@ public struct StudioView: View {
                             }
                         },
                         playbackLevel: session.trackPlaybackLevels[track.id] ?? 0,
-                        playbackPeakHold: session.trackPlaybackPeakHolds[track.id] ?? 0
+                        playbackPeakHold: session.trackPlaybackPeakHolds[track.id] ?? 0,
+                        trackArrangementHeight: trackArrangementHeight(for: track)
                     )
                     .frame(height: trackArrangementHeight(for: track))
                     .clipped()
@@ -763,7 +769,7 @@ public struct StudioView: View {
                 }
                 .foregroundStyle(session.canAddTrack ? MXColor.lightGrey : MXColor.grey.opacity(0.45))
                 .frame(maxWidth: .infinity)
-                .frame(height: 36)
+                .frame(height: 40)
                 .background(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .strokeBorder(
@@ -1594,6 +1600,28 @@ public struct StudioView: View {
                     }
                 )
 
+                Button {
+                    session.isSnapEnabled.toggle()
+                } label: {
+                    Image(systemName: session.isSnapEnabled ? "magnet.fill" : "magnet.slash")
+                        .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
+                        .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
+                        .frame(width: 20, height: 20)
+                        .padding(iconPad)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(MXColor.layer2)
+                        )
+                        .overlay {
+                            if session.isSnapEnabled {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(session.isSnapEnabled ? "Snap to grid on" : "Snap to grid off")
+
                 studioIconButton(asset: "studio_mixer", systemFallback: "slider.horizontal.3") {
                     showMixerSheet = true
                 }
@@ -1607,6 +1635,7 @@ public struct StudioView: View {
         .padding(.horizontal, isLandscape ? 10 : 16)
         .padding(.vertical, isLandscape ? 4 : 8)
         .background(MXColor.surfaceRaised)
+        .frame(height: actionBoardHeight)
     }
 
     // MARK: - Sheets
@@ -3209,6 +3238,8 @@ private struct StudioTrackHeader: View {
     /// Live playback peak (Week 38 taps / Week 43 arrange meter).
     var playbackLevel: Float = 0
     var playbackPeakHold: Float = 0
+    /// Full arrange row height — used for expanded drum-part meter.
+    var trackArrangementHeight: CGFloat = 48
 
     private var categoryTint: Color {
         switch track.category {
@@ -3268,7 +3299,7 @@ private struct StudioTrackHeader: View {
                 PlaybackStripMeter(
                     level: playbackLevel,
                     peakHold: playbackPeakHold,
-                    height: isDrumPartsExpanded ? 72 : 48,
+                    height: isDrumPartsExpanded ? trackArrangementHeight : 48,
                     width: 5
                 )
 

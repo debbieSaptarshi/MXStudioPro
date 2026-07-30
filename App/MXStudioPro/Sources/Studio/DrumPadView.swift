@@ -12,7 +12,7 @@ public struct DrumPadView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private var isLandscape: Bool { verticalSizeClass == .compact }
-    private var padSurfaceHeight: CGFloat { isLandscape ? 110 : 172 }
+    private var padSurfaceHeight: CGFloat { isLandscape ? 110 : 148 }
 
     public init(
         onPadHit: @escaping (UInt8, UInt8) -> Void,
