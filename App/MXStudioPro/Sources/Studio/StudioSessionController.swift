@@ -996,6 +996,7 @@ public final class StudioSessionController {
         let wasPlaying = transport?.isPlaying == true
         if wasPlaying { pausePlayback() }
         rebuildPlayers(for: previous)
+        refreshAllDrumAudibleBeds()
         syncTransportLoop()
         canUndo = editStack.canUndo
         canRedo = editStack.canRedo
@@ -1008,6 +1009,7 @@ public final class StudioSessionController {
         let wasPlaying = transport?.isPlaying == true
         if wasPlaying { pausePlayback() }
         rebuildPlayers(for: next)
+        refreshAllDrumAudibleBeds()
         syncTransportLoop()
         canUndo = editStack.canUndo
         canRedo = editStack.canRedo
@@ -1249,6 +1251,24 @@ public final class StudioSessionController {
         project.tracks[index].isMuted.toggle()
         applyTrackMix(trackID: trackID)
         persistSoon()
+    }
+
+    /// BandLab-style kit-part mute: silence Kick/Snare/Hats… without deleting notes.
+    public func toggleDrumPartMute(trackID: UUID, part: MXDrumPart) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].category == .drums else { return }
+        let key = part.rawValue
+        if project.tracks[index].mutedDrumParts.contains(key) {
+            project.tracks[index].mutedDrumParts.remove(key)
+        } else {
+            project.tracks[index].mutedDrumParts.insert(key)
+        }
+        refreshDrumAudibleBeds(trackID: trackID)
+        persistSoon()
+    }
+
+    public func isDrumPartMuted(trackID: UUID, part: MXDrumPart) -> Bool {
+        project.tracks.first(where: { $0.id == trackID })?.isDrumPartMuted(part) ?? false
     }
 
     public func toggleSolo(trackID: UUID) {
@@ -1584,17 +1604,18 @@ public final class StudioSessionController {
         let lengthBeats = max(0.25, endBeat - startBeat)
         let bank = synthBankPreset(for: trackID)
         let isDrums = project.tracks[trackIndex].category == .drums
+        let mutedParts = isDrums ? project.tracks[trackIndex].mutedDrumPartSet : []
+        let audibleNotes = isDrums ? localNotes.excludingMuted(mutedParts) : localNotes
         let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
         let filePrefix = isDrums ? "drums" : "keys"
         let fileName = "\(filePrefix)_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).wav"
         let url = audioDir.appendingPathComponent(fileName)
         do {
-            try MXMIDIClipRenderer.writeWAV(
-                notes: localNotes,
+            try renderMIDIAudibleBed(
+                notes: audibleNotes,
                 to: url,
                 preset: bank.preset,
-                bpm: bpm,
-                sampleRate: transport?.sampleRate ?? 48_000
+                lengthBeats: lengthBeats
             )
         } catch {
             let label = isDrums ? "Drums" : "Keys"
@@ -1808,6 +1829,69 @@ public final class StudioSessionController {
     public func audioURL(for clip: MXClip) -> URL? {
         guard let name = clip.audioFileName else { return nil }
         return MXProjectStore.shared.audioDirectory(for: project.id).appendingPathComponent(name)
+    }
+
+    /// Re-render drum clip WAV beds from full `midiNotes` with current part mutes applied.
+    private func refreshDrumAudibleBeds(trackID: UUID) {
+        guard let track = project.tracks.first(where: { $0.id == trackID }),
+              track.category == .drums
+        else { return }
+        // Stop readers before overwriting WAVs (players may hold the file open).
+        stopClipPlayers()
+        let muted = track.mutedDrumPartSet
+        let bank = synthBankPreset(for: trackID)
+        let rate = transport?.sampleRate ?? 48_000
+        for clip in track.clips where !clip.midiNotes.isEmpty {
+            guard let url = audioURL(for: clip) else { continue }
+            let audible = clip.midiNotes.excludingMuted(muted)
+            do {
+                try renderMIDIAudibleBed(
+                    notes: audible,
+                    to: url,
+                    preset: bank.preset,
+                    lengthBeats: clip.lengthBeats,
+                    sampleRate: rate
+                )
+            } catch {
+                recordError = "Drum part mute failed: \(error.localizedDescription)"
+            }
+        }
+        if let sample = transport?.currentSample, isPlaying {
+            scheduleClipPlayers(fromSample: sample)
+        }
+    }
+
+    /// Re-sync every drums track bed after undo/redo restores mute state vs disk WAV.
+    private func refreshAllDrumAudibleBeds() {
+        for track in project.tracks where track.category == .drums {
+            refreshDrumAudibleBeds(trackID: track.id)
+        }
+    }
+
+    private func renderMIDIAudibleBed(
+        notes: [MXMIDINote],
+        to url: URL,
+        preset: MXSynthPreset,
+        lengthBeats: Double,
+        sampleRate: Double? = nil
+    ) throws {
+        let rate = sampleRate ?? transport?.sampleRate ?? 48_000
+        if notes.isEmpty {
+            let duration = max(0.05, lengthBeats * 60.0 / max(bpm, 1) + 0.15)
+            try MXMIDIClipRenderer.writeSilenceWAV(
+                durationSeconds: duration,
+                to: url,
+                sampleRate: rate
+            )
+        } else {
+            try MXMIDIClipRenderer.writeWAV(
+                notes: notes,
+                to: url,
+                preset: preset,
+                bpm: bpm,
+                sampleRate: rate
+            )
+        }
     }
 
     // MARK: - Private transport

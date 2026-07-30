@@ -53,6 +53,7 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **39** | Wet input monitoring for guitar pedalboard | **Done (MVP)** ✅ Dist→Delay→Rev on armed guitar monitor |
 | **40** | Per-part drum lanes (Kick/Snare/Hats…) | **Done (MVP)** ✅ BandLab-style part columns |
 | **41** | Record orientation lock + landscape chrome | **Done (MVP)** ✅ opt-in portrait lock; densified Rec |
+| **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ mute re-renders WAV beds |
 
 ### Figma anchors (shipped / in use)
 
@@ -399,6 +400,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 |------|--------|--------|
 | **40** | Per-part drum lanes (kick / snare / hat columns beyond pad→clip) | **Done (MVP)** ✅ |
 | **41** | Optional record orientation lock; Record landscape chrome | **Done (MVP)** ✅ |
+| **42** | Per-part drum mute (Kick/Snare/Hats… M) | **Done (MVP)** ✅ |
 | — | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** (parallel / later) |
 
 ### Week 40 — Per-part drum lanes ✅
@@ -413,7 +415,7 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 - [x] Capture names clips `Drums N` / `drums_*.wav`
 - [x] Unit tests for pad→part mapping + note filter
 
-**Week 40 notes:** Parts are arrange UI only — not separate WAVs, not per-part mute. Playlist takes remain orthogonal (`takeIndex`). Deferred: step sequencer, SFZ kit choke, nested takes×parts.
+**Week 40 notes:** Parts are arrange UI only — not separate WAVs. Per-part mute shipped in Week 42. Playlist takes remain orthogonal (`takeIndex`). Deferred: step sequencer, SFZ kit choke, nested takes×parts.
 
 ### Week 41 — Record orientation lock + landscape chrome ✅
 
@@ -426,11 +428,26 @@ Reference: BandLab kit part columns; GarageBand Drummer lanes; Logic Drum Kit De
 
 **Week 41 notes:** Unlock on `StudioView.onDisappear` to avoid mask leaks. Preference change while recording re-applies immediately. Cloud/backend remains Month 11+ parallel work.
 
+### Week 42 — Per-part drum mute ✅
+
+**Done when (BandLab / GarageBand kit-piece mute)**
+- [x] Each Kick / Snare / Hats / Toms / Perc / Ride row has an **M** toggle in the expanded part folder
+- [x] Mute silences that part in playback + bounce without deleting `midiNotes`
+- [x] Persisted on `MXSessionTrack.mutedDrumParts` (Codable; older projects decode empty)
+- [x] WAV bed re-renders from `excludingMuted` notes on toggle; empty audible → silence WAV
+- [x] New MIDI drum captures store full notes but render bed with current mutes
+- [x] Muted lanes dim in arrange; track-level M still mutes the whole track
+- [x] Live pads stay audible while composing (mute is playback/mix state)
+- [x] Unit tests for mute filter + silence WAV
+
+**Week 42 notes:** Parts remain one shared performance clip (no per-part WAVs). Playlist takes still win over part columns when ≥2 takes. Deferred: nested takes×parts, per-part solo, step sequencer, SFZ choke.
+
 ### Month 11 remaining
 
 | Focus | Status |
 |-------|--------|
 | Cloud / backend beyond local MVP (auth, social, AI) | **Planned** |
+| Optional: nested takes×drum parts; timeline strip meters | Backlog |
 
 ### Implementation notes (shared — Month 9)
 

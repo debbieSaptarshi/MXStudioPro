@@ -63,4 +63,42 @@ final class MXDrumPartTests: XCTestCase {
         let ordered = MXDrumPart.allCases.sorted()
         XCTAssertEqual(ordered.map(\.shortLabel), ["Kick", "Snare", "Hats", "Toms", "Perc", "Ride"])
     }
+
+    func testExcludingMutedDropsMutedPartsKeepsOthers() {
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0, lengthBeats: 0.25),
+            MXMIDINote(note: 38, velocity: 90, startBeat: 1, lengthBeats: 0.25),
+            MXMIDINote(note: 42, velocity: 80, startBeat: 0.5, lengthBeats: 0.125),
+            MXMIDINote(note: 60, velocity: 70, startBeat: 2, lengthBeats: 1),
+        ]
+        let muted: Set<MXDrumPart> = [.kick, .hats]
+        let audible = MXDrumPart.excludingMuted(notes, muted: muted)
+        XCTAssertEqual(audible.map(\.note), [38, 60])
+
+        let viaArray = notes.excludingMuted([.snare])
+        XCTAssertEqual(viaArray.map(\.note), [36, 42, 60])
+    }
+
+    func testExcludingMutedEmptySetIsIdentity() {
+        let notes = [
+            MXMIDINote(note: 36, velocity: 100, startBeat: 0, lengthBeats: 0.25),
+            MXMIDINote(note: 38, velocity: 90, startBeat: 1, lengthBeats: 0.25),
+        ]
+        XCTAssertEqual(MXDrumPart.excludingMuted(notes, muted: []).map(\.note), [36, 38])
+    }
+
+    func testMutedPartsFromRawValuesIgnoresUnknown() {
+        let set = MXDrumPart.mutedParts(fromRawValues: ["kick", "nope", "ride"])
+        XCTAssertEqual(set, [.kick, .ride])
+    }
+
+    func testWriteSilenceWAVProducesRIFF() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mx_silence_\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try MXMIDIClipRenderer.writeSilenceWAV(durationSeconds: 0.2, to: url, sampleRate: 48_000)
+        let data = try Data(contentsOf: url)
+        XCTAssertGreaterThan(data.count, 100)
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "RIFF")
+    }
 }

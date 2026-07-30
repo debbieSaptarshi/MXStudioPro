@@ -493,6 +493,9 @@ public struct StudioView: View {
                         drumPartLabels: isDrumPartsExpanded(track)
                             ? MXDrumPart.allCases.sorted().map(\.shortLabel)
                             : [],
+                        mutedDrumParts: isDrumPartsExpanded(track)
+                            ? Set(MXDrumPart.allCases.sorted().filter { track.isDrumPartMuted($0) })
+                            : [],
                         isDrumPartsExpanded: isDrumPartsExpanded(track),
                         showsDrumPartChevron: isDrumPartFolder(track) && !isPlaylistFolder(track),
                         onSelect: {
@@ -519,6 +522,9 @@ public struct StudioView: View {
                                     collapsedDrumPartTrackIDs.insert(track.id)
                                 }
                             }
+                        },
+                        onToggleDrumPartMute: { part in
+                            session.toggleDrumPartMute(trackID: track.id, part: part)
                         }
                     )
                     .frame(height: trackArrangementHeight(for: track))
@@ -863,9 +869,10 @@ public struct StudioView: View {
     ) -> some View {
         let activeClips = track.clips.filter(\.isActive)
         let interactiveHeight = drumPartRowHeight - 6
+        let partMuted = track.isDrumPartMuted(part)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(MXColor.surfaceRaised.opacity(0.35))
+                .fill(MXColor.surfaceRaised.opacity(partMuted ? 0.18 : 0.35))
                 .contentShape(Rectangle())
                 .modifier(LaneBackgroundPointerModifier(
                     pixelsPerBeat: pixelsPerBeat,
@@ -909,8 +916,9 @@ public struct StudioView: View {
                 }
             }
         }
+        .opacity(partMuted ? 0.45 : 1)
         .clipped()
-        .accessibilityLabel("\(part.shortLabel) lane")
+        .accessibilityLabel("\(part.shortLabel) lane\(partMuted ? ", muted" : "")")
     }
 
     private func playlistTakeRow(
@@ -2567,6 +2575,8 @@ private struct StudioTrackHeader: View {
     var isPlaylistExpanded: Bool
     /// When non-empty, header stacks Kick/Snare/Hats… labels for expanded drum folder.
     var drumPartLabels: [String] = []
+    /// Currently muted drum parts (Week 42 per-part M).
+    var mutedDrumParts: Set<MXDrumPart> = []
     var isDrumPartsExpanded: Bool = false
     var showsDrumPartChevron: Bool = false
     var onSelect: () -> Void
@@ -2575,6 +2585,7 @@ private struct StudioTrackHeader: View {
     var onSetActiveTake: (UUID) -> Void
     var onTogglePlaylist: () -> Void
     var onToggleDrumParts: () -> Void = {}
+    var onToggleDrumPartMute: (MXDrumPart) -> Void = { _ in }
 
     private var categoryTint: Color {
         switch track.category {
@@ -2724,27 +2735,44 @@ private struct StudioTrackHeader: View {
         }
     }
 
-    /// Expanded drum folder: one label row per Kick / Snare / Hats… lane.
+    /// Expanded drum folder: one label + part-mute row per Kick / Snare / Hats… lane.
     private var drumPartLabelsColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(drumPartLabels.enumerated()), id: \.offset) { _, label in
+        let parts = MXDrumPart.allCases.sorted()
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(parts.enumerated()), id: \.element.id) { index, part in
+                let muted = mutedDrumParts.contains(part)
                 HStack(spacing: 4) {
-                    if label == drumPartLabels.first {
+                    if index == 0 {
                         Image(systemName: categoryIcon)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(isArmed ? MXColor.red : categoryTint)
                     } else {
                         Color.clear.frame(width: 10, height: 10)
                     }
-                    Text(label)
+                    Text(part.shortLabel)
                         .font(MXFont.caption())
                         .fontWeight(.semibold)
-                        .foregroundStyle(MXColor.lightGrey)
+                        .foregroundStyle(muted ? MXColor.grey : MXColor.lightGrey)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Spacer(minLength: 0)
+                    Button {
+                        onToggleDrumPartMute(part)
+                    } label: {
+                        Text("M")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(muted ? MXColor.black : MXColor.lightGrey)
+                            .frame(width: 16, height: 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(muted ? MXColor.orange : MXColor.black.opacity(0.35))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(muted ? "Unmute \(part.shortLabel)" : "Mute \(part.shortLabel)")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .opacity(muted ? 0.75 : 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
