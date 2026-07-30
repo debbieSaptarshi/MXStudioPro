@@ -67,24 +67,62 @@ public final class StudioSessionController {
     }
 
     /// Arrange snap grid resolution in quarter-note beats (Logic / Pro Tools style).
-    /// Session preference (not persisted).
-    public enum SnapResolution: Double, CaseIterable, Identifiable, Codable, Sendable {
-        case eighth = 0.5
-        case sixteenth = 0.25
-        case thirtySecond = 0.125
+    /// Session preference (not persisted). String-backed so triplets encode cleanly.
+    public enum SnapResolution: String, CaseIterable, Identifiable, Codable, Sendable {
+        case eighth
+        case eighthTriplet
+        case dottedEighth
+        case sixteenth
+        case sixteenthTriplet
+        case dottedSixteenth
+        case thirtySecond
 
-        public var id: Double { rawValue }
+        public var id: String { rawValue }
 
         /// Grid resolution in quarter-note beats (feeds `MXMIDIQuantize.snapBeat`).
-        public var beats: Double { rawValue }
+        public var beats: Double {
+            switch self {
+            case .eighth: return MXMIDIQuantize.eighth
+            case .eighthTriplet: return MXMIDIQuantize.eighthTriplet
+            case .dottedEighth: return MXMIDIQuantize.dottedEighth
+            case .sixteenth: return MXMIDIQuantize.sixteenth
+            case .sixteenthTriplet: return MXMIDIQuantize.sixteenthTriplet
+            case .dottedSixteenth: return MXMIDIQuantize.dottedSixteenth
+            case .thirtySecond: return MXMIDIQuantize.thirtySecond
+            }
+        }
 
-        /// Menu / picker label (musical note value).
+        /// Menu / picker label (musical note value — Logic / Pro Tools style).
         public var displayName: String {
             switch self {
             case .eighth: return "1/8"
+            case .eighthTriplet: return "1/8T"
+            case .dottedEighth: return "1/8."
             case .sixteenth: return "1/16"
+            case .sixteenthTriplet: return "1/16T"
+            case .dottedSixteenth: return "1/16."
             case .thirtySecond: return "1/32"
             }
+        }
+
+        /// Accessibility / Settings subtitle fragment.
+        public var accessibilityName: String {
+            switch self {
+            case .eighth: return "eighth notes"
+            case .eighthTriplet: return "eighth-note triplets"
+            case .dottedEighth: return "dotted eighth notes"
+            case .sixteenth: return "sixteenth notes"
+            case .sixteenthTriplet: return "sixteenth-note triplets"
+            case .dottedSixteenth: return "dotted sixteenth notes"
+            case .thirtySecond: return "thirty-second notes"
+            }
+        }
+
+        /// Cycle to the next resolution (magnet long-press / ruler menu).
+        public var next: SnapResolution {
+            let all = Self.allCases
+            guard let idx = all.firstIndex(of: self) else { return .sixteenth }
+            return all[(idx + 1) % all.count]
         }
     }
 

@@ -27,6 +27,42 @@ final class MXMIDIQuantizeTests: XCTestCase {
         XCTAssertEqual(MXMIDIQuantize.snapBeat(1.0, resolution: 0.125), 1.0, accuracy: 1e-9)
     }
 
+    func testSnapBeatEighthTripletResolution() {
+        let r = MXMIDIQuantize.eighthTriplet
+        XCTAssertEqual(r, 1.0 / 3.0, accuracy: 1e-12)
+        // Near 0 → 0; near 1/3 → 1/3; near 2/3 → 2/3; near 1 → 1
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.1, resolution: r), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.2, resolution: r), r, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.5, resolution: r), 2.0 * r, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.9, resolution: r), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.0 / 3.0, resolution: r), 1.0 / 3.0, accuracy: 1e-9)
+    }
+
+    func testSnapBeatSixteenthTripletResolution() {
+        let r = MXMIDIQuantize.sixteenthTriplet
+        XCTAssertEqual(r, 1.0 / 6.0, accuracy: 1e-12)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.05, resolution: r), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.1, resolution: r), r, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.5, resolution: r), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.0 / 6.0, resolution: r), 1.0 / 6.0, accuracy: 1e-9)
+    }
+
+    func testSnapBeatDottedResolutions() {
+        XCTAssertEqual(MXMIDIQuantize.dottedEighth, 0.75, accuracy: 1e-12)
+        XCTAssertEqual(MXMIDIQuantize.dottedSixteenth, 0.375, accuracy: 1e-12)
+        // Dotted 1/8: 0.4 → 0.0? midpoint of 0 and 0.75 is 0.375; 0.4 rounds up to 0.75
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.37, resolution: 0.75), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.4, resolution: 0.75), 0.75, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.75, resolution: 0.75), 0.75, accuracy: 1e-9)
+        // Midpoint 0.75↔1.5 is 1.125; 1.2 rounds up to 1.5
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.2, resolution: 0.75), 1.5, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(1.4, resolution: 0.75), 1.5, accuracy: 1e-9)
+        // Dotted 1/16
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.2, resolution: 0.375), 0.375, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.1, resolution: 0.375), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(MXMIDIQuantize.snapBeat(0.75, resolution: 0.375), 0.75, accuracy: 1e-9)
+    }
+
     func testSnapBeatNonPositiveResolutionPassthrough() {
         XCTAssertEqual(MXMIDIQuantize.snapBeat(1.07, resolution: 0), 1.07, accuracy: 1e-9)
         XCTAssertEqual(MXMIDIQuantize.snapBeat(-0.5, resolution: -1), 0, accuracy: 1e-9)

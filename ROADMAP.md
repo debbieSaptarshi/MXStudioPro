@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 16 Weeks 61–64 **complete** — next cloud / SOTA backlog.
+**Current focus:** Month 17 W65–66 snap SOTA **shipped** — next W67+ (zoom-adaptive grid, draw-mode piano roll, cloud).
 
 ---
 
@@ -78,6 +78,8 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **62** | Piano-roll multi-select transpose + scale lock lite | **Done (MVP)** ✅ |
 | **63** | Sidechain lite (kick → bass) + shared reverb send visual | **Done (MVP)** ✅ |
 | **64** | Snap resolution picker (1/8, 1/16, 1/32) + beat grid density | **Done (MVP)** ✅ |
+| **65** | Triplet + dotted snap grids (1/8T, 1/16T, 1/8., 1/16.) | **Done (MVP)** ✅ |
+| **66** | Snap readout on arrange ruler + magnet chrome | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -707,7 +709,7 @@ Raise shipped features to award-app bar without blocking cloud work.
 
 **Week 60 notes:** No Figma MCP in cloud — parity from ROADMAP W31 tokens + Record chrome. Create hub + landscape re-audit remain optional polish.
 
-## Month 16 — Award-app depth *(Weeks 61–64)*
+## Month 16 — Award-app depth *(Weeks 61–64)* ✅
 
 Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile.
 
@@ -766,27 +768,71 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Logic, Cubasis
 
 **Week 64 notes:** `snapResolution` is a session preference (not persisted), matching `isSnapEnabled`. MIDI/step-seq quantize keeps its own 16th grid — only arrange edits and the beat overlay follow the picker.
 
+## Month 17 — Arrange snap SOTA *(Weeks 65–68)*
+
+Raise arrange snap + grid chrome to Logic / Pro Tools award-app bar.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **65** | Triplet + dotted snap grids (1/8T, 1/16T, 1/8., 1/16.) | **Done (MVP)** ✅ | Logic / Pro Tools |
+| **66** | Snap readout on arrange ruler + magnet chrome | **Done (MVP)** ✅ | Logic / Pro Tools |
+| **67** | Zoom-adaptive grid density (auto-thin subdivs) | **Planned** | Logic / Ableton |
+| **68** | Piano-roll draw mode lite | **Planned** | Cubasis / FL Mobile |
+
+### Week 65 — Triplet + dotted snap grids ✅
+
+**Done when (Logic / Pro Tools snap menu)**
+- [x] `SnapResolution` String-backed enum adds `eighthTriplet` (1/3), `sixteenthTriplet` (1/6), `dottedEighth` (0.75), `dottedSixteenth` (0.375)
+- [x] `MXMIDIQuantize` constants for triplet + dotted resolutions; `snapBeat` works unchanged
+- [x] Settings Grid control is a Menu (7 options) instead of a 3-way segmented picker
+- [x] `beatNet` subdiv overlay follows any resolution including irrational triplets
+- [x] Unit tests for 1/8T, 1/16T, dotted 1/8, dotted 1/16 snap edges
+
+**Week 65 notes:** MIDI capture quantize stays on its own 16th grid. Snap preference still session-local.
+
+### Week 66 — Snap readout on ruler + magnet ✅
+
+**Done when (Logic / Pro Tools ruler chrome)**
+- [x] Action-board magnet shows active `displayName` (`1/16`, `1/8T`, …) when snap is on
+- [x] Long-press magnet cycles `SnapResolution.next` (enables snap if off)
+- [x] Arrange ruler trailing badge shows the same resolution label
+- [x] Accessibility labels include the active grid name
+
+**Week 66 notes:** Tap still toggles snap on/off; long-press cycles resolution (GarageBand/Logic muscle memory).
+
+### Week 67 — Zoom-adaptive grid density *(planned)*
+
+**Done when (Logic / Ableton)**
+- [ ] Auto-thin subdivision lines when `beatsVisible` grows or pixels-per-beat drops below a legibility threshold
+- [ ] Prefer showing bar + beat lines first; drop 1/32 / 1/16T subdivs when too dense
+- [ ] Optional pinch-to-zoom on arrange (or stepped zoom buttons) feeding `beatsVisible`
+
+### Week 68 — Piano-roll draw mode lite *(planned)*
+
+**Done when (Cubasis / FL Mobile)**
+- [ ] Pencil / draw toggle: drag across the roll creates notes at snap resolution
+- [ ] Drag over existing notes deletes (or erases) in draw mode
+- [ ] Respects scale lock when enabled (W62)
+
 **SOTA backlog (enter when spare capacity — improve what already ships)**
 - **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
 - **Drums:** SFZ kit choke groups; nested takes × part columns
 - **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later
-- **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode later
+- **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ← Month 17 W68
 - **Automation:** Bezier / curved automation; relative vs absolute clip gain modes
 - **Mix:** Sidechain lite from kick to bass ✅ W63 (envelope duck); shared reverb send visual ✅ W63; certified LUFS / loudness report sheet; real key-input sidechain + audio aux bus later
-- **Arrange:** Snap resolution picker (1/8, 1/16, 1/32) ✅ W64; beat grid density ✅ W64; clip gain automation later
-- **Arrange (next SOTA):** Triplet + dotted snap grids (1/8T, 1/16T) so swung/shuffle edits land on musical divisions like Logic/Pro Tools
-- **Arrange (next SOTA):** Snap-resolution readout on the arrange ruler + magnet chrome (show "1/16") so the active grid is visible without opening Settings
-- **Arrange (next SOTA):** Zoom-adaptive grid density — auto-thin subdivision lines as `beatsVisible` grows so dense grids stay legible when zoomed out
+- **Arrange:** Snap resolution picker ✅ W64; beat grid density ✅ W64; triplet/dotted ✅ W65; ruler/magnet readout ✅ W66; zoom-adaptive densify ← W67; clip gain automation later
 - **Export:** Video + audio Reels export; loudness report sheet after bounce
 - **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
 - **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
 - **Figma parity:** Create hub + landscape 812×375 second pass
 
-**SOTA next (beyond Month 15)**
+**SOTA next (beyond Month 17)**
 - Nested takes × drum parts; SFZ kit choke
 - Pitch correction / time stretch / harmonies
 - Beat browser + video+audio Reels export
 - Cloud auth / social / AI beyond local MVP
+- Real key-input sidechain + audio→aux reverb bus
 
 ### Implementation notes (shared — Month 9)
 
@@ -952,10 +998,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                           → W49–52 Step seq + drag fades + swing + automation ← done
                             → W53–56 Month 14 award-app depth ✅
                               → W57–W60 Month 15 SOTA polish ✅
-                                → W61 step swing + slots ✅
-                                  → W62 multi-select transpose + scale lock ✅
-                                    → W63 sidechain lite + shared reverb send visual ✅
-                                      → W64 snap resolution picker + beat grid density ✅ ← next cloud / SOTA backlog
+                                → W61–W64 Month 16 award-app depth ✅
+                                  → W65–W66 triplet/dotted snap + ruler/magnet readout ✅ ← next W67+ / cloud
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -982,11 +1026,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
 | 53–56 | Step velocity / clip automation / piano-roll lite / latency UX *(done)* |
 | 57–60 | Step library + piano-roll depth + master LUFS + Figma pixel-pass *(done)* |
-| 61–64 | Step swing / multi-select transpose / sidechain / snap resolution |
-| 61 | Step swing + pattern slots A–D *(done)* |
-| 62 | Piano-roll multi-select + scale lock *(done)* |
-| 63 | Sidechain lite (kick → bass) + shared reverb send visual *(done)* |
-| 64 | Snap resolution picker + beat grid density *(done)* |
+| 61–64 | Step swing / multi-select / sidechain / snap resolution *(done)* |
+| 65–68 | Triplet/dotted snap + ruler readout + zoom grid + piano draw |
 
 ---
 

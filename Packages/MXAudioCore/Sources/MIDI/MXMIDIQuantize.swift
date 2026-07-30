@@ -8,8 +8,20 @@ public enum MXMIDIQuantize: Sendable {
     /// Eighth-note grid in quarter-note beats.
     public static let eighth: Double = 0.5
 
+    /// Eighth-note triplet grid (three notes per quarter) in quarter-note beats.
+    public static let eighthTriplet: Double = 1.0 / 3.0
+
+    /// Dotted eighth-note grid (⅜ note = ¾ beat) in quarter-note beats.
+    public static let dottedEighth: Double = 0.75
+
     /// Sixteenth-note grid in quarter-note beats (same as Studio `snapBeat`).
     public static let sixteenth: Double = 0.25
+
+    /// Sixteenth-note triplet grid (three notes per eighth) in quarter-note beats.
+    public static let sixteenthTriplet: Double = 1.0 / 6.0
+
+    /// Dotted sixteenth-note grid (³⁄₁₆ note = ⅜ beat) in quarter-note beats.
+    public static let dottedSixteenth: Double = 0.375
 
     /// Thirty-second-note grid in quarter-note beats.
     public static let thirtySecond: Double = 0.125

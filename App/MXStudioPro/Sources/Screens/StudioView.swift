@@ -25,6 +25,8 @@ public struct StudioView: View {
     @State private var showClipInspector = false
     @State private var showPianoRoll = false
     @State private var pianoRollDragUndoArmed = true
+    /// Suppress magnet tap after a long-press cycle (W66).
+    @State private var snapMagnetLongPressConsumed = false
     /// Week 62 piano-roll scale lock (Cubasis / Logic lite).
     @State private var pianoRollScaleLock = false
     @State private var pianoRollScale = MXMIDIScale.cMajor
@@ -1026,18 +1028,36 @@ public struct StudioView: View {
                     }
                 }
                 .frame(height: rulerHeight)
+                .overlay(alignment: .topTrailing) {
+                    // Snap-resolution readout (Logic / Pro Tools ruler chrome)
+                    if session.isSnapEnabled {
+                        Text(session.snapResolution.displayName)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(MXColor.accent)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(MXColor.black.opacity(0.72))
+                            )
+                            .padding(.trailing, 4)
+                            .padding(.top, 2)
+                            .accessibilityLabel("Snap grid \(session.snapResolution.displayName)")
+                    }
+                }
 
                 // Subdivision grid lines at snap resolution (lighter). Drawn beneath the
                 // beat/bar lines so the stronger downbeats stay legible. Capped so dense
-                // resolutions (1/32) never draw hundreds of lines.
+                // resolutions (1/32, 1/16T) never draw hundreds of lines.
                 if session.isSnapEnabled, session.snapResolution.beats < 1.0 {
                     let subdivBeats = session.snapResolution.beats
-                    let rawCount = Int((beatsVisible / subdivBeats).rounded())
-                    let subdivCount = min(rawCount, 128)
+                    let rawCount = Int((beatsVisible / subdivBeats).rounded(.up))
+                    let subdivCount = min(max(rawCount, 0), 128)
                     ForEach(0..<subdivCount, id: \.self) { index in
                         let subdivBeat = Double(index) * subdivBeats
-                        // Skip positions that coincide with whole-beat lines (drawn below).
-                        if abs(subdivBeat - subdivBeat.rounded()) > 1e-6 {
+                        let nearestBeat = subdivBeat.rounded()
+                        // Skip past the visible range and whole-beat lines (drawn below).
+                        if subdivBeat < beatsVisible - 1e-9, abs(subdivBeat - nearestBeat) > 1e-4 {
                             Rectangle()
                                 .fill(MXColor.layer2.opacity(0.18))
                                 .frame(width: 1, height: max(0, geo.size.height - rulerHeight))
@@ -1650,26 +1670,61 @@ public struct StudioView: View {
                 )
 
                 Button {
+                    if snapMagnetLongPressConsumed {
+                        snapMagnetLongPressConsumed = false
+                        return
+                    }
                     session.isSnapEnabled.toggle()
                 } label: {
-                    Image(systemName: session.isSnapEnabled ? "magnet.fill" : "magnet.slash")
-                        .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
-                        .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
-                        .frame(width: 20, height: 20)
-                        .padding(iconPad)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(MXColor.layer2)
-                        )
-                        .overlay {
-                            if session.isSnapEnabled {
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
-                            }
+                    HStack(spacing: 3) {
+                        Image(systemName: session.isSnapEnabled ? "magnet.fill" : "magnet.slash")
+                            .font(.system(size: isLandscape ? 14 : 16, weight: .semibold))
+                            .foregroundStyle(session.isSnapEnabled ? MXColor.accent : MXColor.white)
+                            .frame(width: 20, height: 20)
+                        if session.isSnapEnabled {
+                            Text(session.snapResolution.displayName)
+                                .font(.system(size: isLandscape ? 9 : 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(MXColor.accent)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                         }
+                    }
+                    .padding(.horizontal, session.isSnapEnabled ? max(4, iconPad - 2) : iconPad)
+                    .padding(.vertical, iconPad)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(MXColor.layer2)
+                    )
+                    .overlay {
+                        if session.isSnapEnabled {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(MXColor.accent.opacity(0.7), lineWidth: 1)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(session.isSnapEnabled ? "Snap to grid on" : "Snap to grid off")
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                        // Logic / Pro Tools: long-press magnet cycles snap resolution.
+                        // Flag suppresses the Button action that otherwise fires on finger-up.
+                        snapMagnetLongPressConsumed = true
+                        if !session.isSnapEnabled {
+                            session.isSnapEnabled = true
+                        } else {
+                            session.snapResolution = session.snapResolution.next
+                        }
+                    }
+                )
+                .accessibilityLabel(
+                    session.isSnapEnabled
+                        ? "Snap to grid on, \(session.snapResolution.displayName)"
+                        : "Snap to grid off"
+                )
+                .accessibilityHint(
+                    session.isSnapEnabled
+                        ? "Long press to cycle snap resolution"
+                        : "Long press to enable snap"
+                )
 
                 studioIconButton(asset: "studio_mixer", systemFallback: "slider.horizontal.3") {
                     showMixerSheet = true
@@ -2103,31 +2158,13 @@ public struct StudioView: View {
             VStack(spacing: 0) {
                 settingsToggleRow(
                     title: "Snap to grid",
-                    subtitle: "Move & trim to \(session.snapResolution.displayName) notes",
+                    subtitle: "Move & trim to \(session.snapResolution.accessibilityName)",
                     isOn: session.isSnapEnabled
                 ) {
                     session.isSnapEnabled.toggle()
                 }
                 if session.isSnapEnabled {
-                    Divider().overlay(MXColor.layer2)
-                    HStack(spacing: 12) {
-                        Text("Grid")
-                            .font(MXFont.caption())
-                            .foregroundStyle(MXColor.grey)
-                        Spacer()
-                        Picker("Grid", selection: Binding(
-                            get: { session.snapResolution },
-                            set: { session.snapResolution = $0 }
-                        )) {
-                            ForEach(StudioSessionController.SnapResolution.allCases) { res in
-                                Text(res.displayName).tag(res)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 200)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    settingsSnapGridMenuRow
                 }
                 Divider().overlay(MXColor.layer2)
                 settingsToggleRow(
@@ -2421,6 +2458,50 @@ public struct StudioView: View {
         }
         .padding(24)
         .background(MXColor.surface)
+    }
+
+    /// Snap grid picker — Menu (Logic-style) because 7 resolutions won't fit a segmented control.
+    private var settingsSnapGridMenuRow: some View {
+        VStack(spacing: 0) {
+            Divider().overlay(MXColor.layer2)
+            HStack(spacing: 12) {
+                Text("Grid")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+                Spacer()
+                Menu {
+                    ForEach(StudioSessionController.SnapResolution.allCases) { res in
+                        Button {
+                            session.snapResolution = res
+                        } label: {
+                            if res == session.snapResolution {
+                                Label(res.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(res.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(session.snapResolution.displayName)
+                            .font(MXFont.mediumButton())
+                            .foregroundStyle(MXColor.white)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(MXColor.grey)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(MXColor.layer2)
+                    )
+                }
+                .accessibilityLabel("Snap grid \(session.snapResolution.displayName)")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+        }
     }
 
     private func settingsToggleRow(
