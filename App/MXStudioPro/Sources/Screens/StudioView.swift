@@ -297,9 +297,20 @@ public struct StudioView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            if let tempoMessage = session.tempoDetectMessage {
+                tempoDetectBanner(tempoMessage)
+                    .padding(.top, session.trackLimitMessage == nil ? 56 : 96)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             if let clipWarning = session.clipLoadWarnings.last {
                 clipWarningBanner(clipWarning)
-                    .padding(.top, session.trackLimitMessage == nil ? 56 : 96)
+                    .padding(.top, {
+                        var top: CGFloat = 56
+                        if session.trackLimitMessage != nil { top += 40 }
+                        if session.tempoDetectMessage != nil { top += 40 }
+                        return top
+                    }())
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
@@ -321,6 +332,7 @@ public struct StudioView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: session.trackLimitMessage)
+        .animation(.easeInOut(duration: 0.2), value: session.tempoDetectMessage)
         .animation(.easeInOut(duration: 0.2), value: session.clipLoadWarnings.count)
         .animation(.easeInOut(duration: 0.2), value: session.isExporting)
     }
@@ -653,6 +665,42 @@ public struct StudioView: View {
             Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 session.dismissTrackLimitMessage()
+            }
+        }
+    }
+
+    private func tempoDetectBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "metronome.fill")
+                .foregroundStyle(MXColor.accent)
+            Text(message)
+                .font(MXFont.body3())
+                .foregroundStyle(MXColor.white)
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button("OK") {
+                session.dismissTempoDetectMessage()
+            }
+            .font(MXFont.caption())
+            .fontWeight(.semibold)
+            .foregroundStyle(MXColor.accent)
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.black.opacity(0.92))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(MXColor.layer2, lineWidth: 0.5)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            Task {
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                session.dismissTempoDetectMessage()
             }
         }
     }

@@ -738,8 +738,15 @@ public final class StudioSessionController {
 
     public private(set) var trackLimitMessage: String?
 
+    /// Transient banner after import tempo detect (Week 48+).
+    public private(set) var tempoDetectMessage: String?
+
     public func dismissTrackLimitMessage() {
         trackLimitMessage = nil
+    }
+
+    public func dismissTempoDetectMessage() {
+        tempoDetectMessage = nil
     }
 
     /// Append an empty Vocals/Audio track and arm it (BandLab-style).
@@ -906,6 +913,7 @@ public final class StudioSessionController {
         if let detected = Self.estimateImportBPM(from: destURL) {
             lastDetectedBPM = detected
             setBPM(detected)
+            tempoDetectMessage = "Tempo set to \(Int(detected.rounded())) BPM from import"
         }
 
         let lengthBeats: Double

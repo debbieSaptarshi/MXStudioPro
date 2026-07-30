@@ -533,16 +533,25 @@ Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ab
 - [x] Clip `lengthBeats` computed after any tempo update
 - [x] Unit tests: synthetic click trains (90/120/140), silence, short/empty input
 
-**Week 48 notes:** Confirmation sheet deferred; auto-apply + BPM transport display is the MVP. Full beat grid / Mixed In Key key+BPM deferred.
+**Week 48 notes:** Auto-apply + banner (“Tempo set to N BPM from import”) + transport BPM. Full beat grid / Mixed In Key key+BPM deferred.
 
-**SOTA next (Month 12+ backlog ideas for existing features)**
-- Strength / swing quantize (not hard snap only)
-- Drag fade wedges to edit (not inspector-only)
-- Nested takes × drum parts; drum step sequencer
-- Clip gain automation lane lite
+---
+
+## Month 13 — Performance + wow polish *(Weeks 49–52)* **Planned**
+
+Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cubasis / FL Mobile piano roll depth.
+
+| Week | Focus | Status |
+|------|--------|--------|
+| **49** | Drum step sequencer lite (16-step × kit parts → MIDI clip) | **Planned** |
+| **50** | Drag fade wedges to edit clip fades | **Planned** |
+| **51** | Quantize strength / swing + re-quantize selected clip | **Planned** |
+| **52** | Volume automation lane lite (clip or track) | **Planned** |
+
+**SOTA next (beyond Month 13)**
+- Nested takes × drum parts; SFZ kit choke
 - Pitch correction / time stretch / harmonies
 - Beat browser + video+audio Reels export
-- Tempo-detect confirmation UI / confidence badge; beat grid from import
 - Cloud auth / social / AI beyond local MVP
 
 ### Implementation notes (shared — Month 9)
@@ -704,8 +713,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                   → W31–35 Instrument Studio sections ← done
                     → W36–39 Arrangement depth ← done
                       → W40–44 Drum depth + capture chrome ← done
-                        → W45–47 Quantize + fade wedges + stems ← done
-                          → W48 Import tempo detect ← done (MVP)
+                        → W45–48 Quantize + fades + stems + tempo detect ← done
+                          → W49–52 Step seq + drag fades + swing + automation ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -728,8 +737,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 31–35 | Guitar / Piano / Drum / Landscape Studio |
 | 36–39 | Arrangement depth (X-fades → playlist → meters → wet monitor) |
 | 40–44 | Drum part lanes + mute/solo + record chrome + timeline meters |
-| 45–47 | MIDI quantize + fade wedges + stem export |
-| 48 | Import tempo detect lite *(done MVP)* |
+| 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
+| 49–52 | Step sequencer + drag fades + swing quantize + automation |
 
 ---
 
