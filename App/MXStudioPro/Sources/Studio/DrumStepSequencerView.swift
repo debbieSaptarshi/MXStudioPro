@@ -307,13 +307,15 @@ public struct DrumStepSequencerView: View {
                 toggle(row: row, step: step, part: part)
             }
             .accessibilityLabel("\(part.shortLabel) step \(step + 1)")
-            .accessibilityValue(
-                [
-                    on ? "Velocity \(vel)" : "Off",
-                    isCursor ? "Playhead" : nil
-                ].compactMap { $0 }.joined(separator: ", ")
-            )
+            .accessibilityValue(stepAccessibilityValue(on: on, velocity: vel, isCursor: isCursor))
             .accessibilityAddTraits(.isButton)
+    }
+
+    private func stepAccessibilityValue(on: Bool, velocity: UInt8, isCursor: Bool) -> String {
+        var parts: [String] = []
+        parts.append(on ? "Velocity \(velocity)" : "Off")
+        if isCursor { parts.append("Playhead") }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Helpers
