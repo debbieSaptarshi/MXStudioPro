@@ -31,6 +31,18 @@ public struct MXMIDINote: Codable, Equatable, Sendable, Identifiable {
 /// `MXSynthEngine` applies queued events at the start of each render block (frameOffset
 /// is unused), so we quantize note edges to the render block size.
 public enum MXMIDIClipRenderer {
+    /// Write stereo silence for duration (used when all drum parts are muted).
+    public static func writeSilenceWAV(
+        durationSeconds: Double,
+        to url: URL,
+        sampleRate: Double = 48_000
+    ) throws {
+        let frames = max(1, Int((max(0.05, durationSeconds) * sampleRate).rounded(.up)))
+        let left = [Float](repeating: 0, count: frames)
+        let right = [Float](repeating: 0, count: frames)
+        try writeStereoWAV(left: left, right: right, sampleRate: sampleRate, to: url)
+    }
+
     public static func writeWAV(
         notes: [MXMIDINote],
         to url: URL,

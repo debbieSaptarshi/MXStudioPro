@@ -84,6 +84,24 @@ public enum MXDrumPart: String, CaseIterable, Codable, Sendable, Identifiable, C
         notes.filter { part(forNote: $0.note) != nil }
     }
 
+    /// Drop notes whose mapped kit part is muted. Unmapped pitches are kept
+    /// (they are not part of the Kick→Ride mute columns).
+    public static func excludingMuted(
+        _ notes: [MXMIDINote],
+        muted: Set<MXDrumPart>
+    ) -> [MXMIDINote] {
+        guard !muted.isEmpty else { return notes }
+        return notes.filter { note in
+            guard let part = part(forNote: note.note) else { return true }
+            return !muted.contains(part)
+        }
+    }
+
+    /// Decode persisted rawValues into a typed mute set (unknown strings ignored).
+    public static func mutedParts(fromRawValues values: Set<String>) -> Set<MXDrumPart> {
+        Set(values.compactMap { MXDrumPart(rawValue: $0) })
+    }
+
     /// True when `notes` includes at least one mapped drum hit.
     public static func hasDrumParts(_ notes: [MXMIDINote]) -> Bool {
         notes.contains { part(forNote: $0.note) != nil }
@@ -128,5 +146,9 @@ public enum MXDrumPart: String, CaseIterable, Codable, Sendable, Identifiable, C
 extension Array where Element == MXMIDINote {
     public func filtered(to part: MXDrumPart) -> [MXMIDINote] {
         MXDrumPart.filter(self, part: part)
+    }
+
+    public func excludingMuted(_ muted: Set<MXDrumPart>) -> [MXMIDINote] {
+        MXDrumPart.excludingMuted(self, muted: muted)
     }
 }
