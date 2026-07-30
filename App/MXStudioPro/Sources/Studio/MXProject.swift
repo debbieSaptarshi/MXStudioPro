@@ -283,6 +283,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     /// Soloed drum kit parts (`MXDrumPart.rawValue`). Empty = no part solo.
     /// When non-empty, only soloed (and not muted) parts are audible (Week 44).
     public var soloedDrumParts: Set<String>
+    /// Track volume automation breakpoints (Week 52). Empty = constant `volume`.
+    public var volumeAutomation: [MXAutomationPoint]
 
     public init(
         id: UUID = UUID(),
@@ -308,7 +310,8 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         deEsserAmount: Float = 50,
         synthBankPresetID: String? = nil,
         mutedDrumParts: Set<String> = [],
-        soloedDrumParts: Set<String> = []
+        soloedDrumParts: Set<String> = [],
+        volumeAutomation: [MXAutomationPoint] = []
     ) {
         self.id = id
         self.name = name
@@ -336,6 +339,7 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
             ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
         self.mutedDrumParts = mutedDrumParts
         self.soloedDrumParts = soloedDrumParts
+        self.volumeAutomation = volumeAutomation.sorted { $0.beat < $1.beat }
     }
 
     public init(from decoder: Decoder) throws {
@@ -366,13 +370,15 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
             ?? (kind == .midi ? MXSynthBankPreset.trackSeed.rawValue : nil)
         mutedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .mutedDrumParts) ?? []
         soloedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .soloedDrumParts) ?? []
+        volumeAutomation = (try c.decodeIfPresent([MXAutomationPoint].self, forKey: .volumeAutomation) ?? [])
+            .sorted { $0.beat < $1.beat }
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
-        case synthBankPresetID, mutedDrumParts, soloedDrumParts
+        case synthBankPresetID, mutedDrumParts, soloedDrumParts, volumeAutomation
     }
 
     /// Typed mute set for drum part lanes (empty for non-drums / none muted).

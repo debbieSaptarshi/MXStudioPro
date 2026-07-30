@@ -6,6 +6,8 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
+**Current focus:** Month 13 (W49–52) shipped — next is Month 14 (W53–56) award-app depth.
+
 ---
 
 ## Current status
@@ -60,6 +62,10 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **46** | Clip fade wedges on arrange timeline | **Done (MVP)** ✅ |
 | **47** | Stem export (per-track bounce) | **Done (MVP)** ✅ |
 | **48** | Import tempo detect lite | **Done (MVP)** ✅ |
+| **49** | Drum step sequencer lite (16-step × kit) | **Done (MVP)** ✅ |
+| **50** | Drag fade wedges to edit clip fades | **Done (MVP)** ✅ |
+| **51** | Quantize strength / swing + re-quantize | **Done (MVP)** ✅ |
+| **52** | Track volume automation lane lite | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -537,18 +543,77 @@ Reference: GarageBand / BandLab MIDI quantize; Logic / Pro Tools fade wedges; Ab
 
 ---
 
-## Month 13 — Performance + wow polish *(Weeks 49–52)* **Planned**
+## Month 13 — Performance + wow polish *(Weeks 49–52)* ✅
 
 Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cubasis / FL Mobile piano roll depth.
 
 | Week | Focus | Status |
 |------|--------|--------|
-| **49** | Drum step sequencer lite (16-step × kit parts → MIDI clip) | **Planned** |
-| **50** | Drag fade wedges to edit clip fades | **Planned** |
-| **51** | Quantize strength / swing + re-quantize selected clip | **Planned** |
-| **52** | Volume automation lane lite (clip or track) | **Planned** |
+| **49** | Drum step sequencer lite (16-step × kit parts → MIDI clip) | **Done (MVP)** ✅ |
+| **50** | Drag fade wedges to edit clip fades | **Done (MVP)** ✅ |
+| **51** | Quantize strength / swing + re-quantize selected clip | **Done (MVP)** ✅ |
+| **52** | Volume automation lane lite (track) | **Done (MVP)** ✅ |
 
-**SOTA next (beyond Month 13)**
+### Week 49 — Drum step sequencer lite ✅
+
+**Done when (BandLab / GarageBand Smart Drums lite)**
+- [x] Pure `MXDrumStepSequencer` maps 6 kit rows × 16 steps ↔ MIDI notes
+- [x] Studio Pads / Steps toggle on drums surface; cell tap previews kit hit
+- [x] **Add to timeline** places one-bar MIDI clip + WAV bed at playhead
+- [x] Unit tests: empty, four-on-the-floor, round-trip, toggle bounds
+
+**Week 49 notes:** Fixed velocity / 1 bar only. Pattern library, step cursor, load-from-clip deferred.
+
+### Week 50 — Drag fade wedges ✅
+
+**Done when (Logic / Pro Tools fade drag)**
+- [x] Selected clips show fade-in / fade-out knobs on wedge edges
+- [x] Drag converts Δx → seconds via `MXClipFadeGeometry.seconds`; live wedge preview
+- [x] Commits through `setClipFades` with undo snapshot; inspector sliders still work
+- [x] Inverse geometry unit tests
+
+### Week 51 — Quantize strength / swing ✅
+
+**Done when (GarageBand Strength + Logic Swing)**
+- [x] `MXMIDIQuantize.quantizeStarts` accepts strength 0…1 + swing 0…1 (odd 16ths)
+- [x] Capture commit uses session Strength / Swing; Settings sliders when Quantize on
+- [x] Clip inspector **Re-quantize MIDI** rewrites notes + audible bed
+- [x] Unit tests for strength 0/0.5, swing delay, empty
+
+### Week 52 — Volume automation lane lite ✅
+
+**Done when (Logic / Ableton volume automation lite)**
+- [x] `MXAutomationPoint` + `MXVolumeAutomation` linear interp; persisted on track
+- [x] Track header **A** toggles automation lane; tap add / drag move / tap-again delete
+- [x] Live playhead follows automation; bounce samples per-frame gain
+- [x] Unit tests for interp, upsert, move/remove
+
+**Week 52 notes:** Track-level only (not clip-relative). No pencil draw / pan automation yet.
+
+---
+
+## Month 14 — Award-app DAW depth *(Weeks 53–56)* **Planned**
+
+Raise existing features to SOTA bars from BandLab, GarageBand, Logic, Cubasis, FL Mobile, CapCut/Reels.
+
+| Week | Focus | Status | Reference |
+|------|--------|--------|-----------|
+| **53** | Step seq velocity + multi-bar patterns + load grid from selected clip | **Planned** | BandLab / FL Mobile |
+| **54** | Clip-relative volume + pan automation; meet-in-middle fade clamp | **Planned** | Logic / Ableton |
+| **55** | Piano-roll lite (edit note start/pitch on selected MIDI clip) | **Planned** | Cubasis / GarageBand |
+| **56** | Latency calibration UX + input monitoring polish | **Planned** | GarageBand / BandLab |
+
+**SOTA backlog (enter when spare capacity — improve what already ships)**
+- **Capture:** Punch UI chrome parity with Figma landscape Rec; take comp crossfade dial; pre-roll ms in Settings already — surface better
+- **Drums:** SFZ kit choke groups; nested takes × part columns; step-seq swing independent of MIDI swing
+- **Mix:** Master bus limiter always-on option; LUFS live meter (not only bounce); shared reverb send visual
+- **Arrange:** Beat grid overlay density; snap resolution picker (1/8, 1/16, 1/32); clip gain automation
+- **Export:** Video + audio Reels export; loudness report sheet after bounce
+- **Wow:** Pitch correction lite; time-stretch clip; harmonies; beat browser
+- **Social/AI:** Cloud auth sync; real model API for AI compose; live Discover catalog
+- **Figma parity:** Pixel-pass Create hub + After Record (`95:85026`) + Drum Midi (`95:88141`) once shell features settle
+
+**SOTA next (beyond Month 14)**
 - Nested takes × drum parts; SFZ kit choke
 - Pitch correction / time stretch / harmonies
 - Beat browser + video+audio Reels export
@@ -559,7 +624,7 @@ Reference: BandLab step sequencer; GarageBand Smart Drums; Logic automation; Cub
 1. Prefer **one Studio shell** with `StudioPreset` / track `category` driving overlays (pedalboard, keyboard, drum pads, landscape `ViewThatFits` / size-class layouts).
 2. Ship **vertical slice per week** — UI + audio path — not all Figma variants in one PR.
 3. Reference apps: BandLab (pads + multi-track), GarageBand (keyboard, guitar amps, Quick), Logic (hide tracks density).
-4. Defer: full amp sims, pro piano roll, step sequencer, AUv3 hosting depth.
+4. Defer: full amp sims, pro piano roll depth, AUv3 hosting depth.
 
 ### Closed beta checklist
 
@@ -714,7 +779,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                     → W36–39 Arrangement depth ← done
                       → W40–44 Drum depth + capture chrome ← done
                         → W45–48 Quantize + fades + stems + tempo detect ← done
-                          → W49–52 Step seq + drag fades + swing + automation ← next
+                          → W49–52 Step seq + drag fades + swing + automation ← done
+                            → W53–56 Velocity patterns + clip auto + piano roll + latency ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -738,7 +804,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 36–39 | Arrangement depth (X-fades → playlist → meters → wet monitor) |
 | 40–44 | Drum part lanes + mute/solo + record chrome + timeline meters |
 | 45–48 | MIDI quantize + fade wedges + stem export + import tempo |
-| 49–52 | Step sequencer + drag fades + swing quantize + automation |
+| 49–52 | Step sequencer + drag fades + swing quantize + automation *(done)* |
+| 53–56 | Step velocity / clip automation / piano-roll lite / latency UX |
 
 ---
 

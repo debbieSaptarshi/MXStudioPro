@@ -273,10 +273,9 @@ public enum StudioBounceExporter {
         guard framesToRead > 0, let data = buffer.floatChannelData else { return }
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
-        let gain = track.volume * clip.gain
+        let baseGain = track.volume * clip.gain
         let pan = track.pan
-        let leftGain = gain * min(1, max(0, 1 - pan))
-        let rightGain = gain * min(1, max(0, 1 + pan))
+        let hasAutomation = !track.volumeAutomation.isEmpty
         let ratio = sampleRate / max(fileSR, 1)
         let outFrames = Int((Double(framesToRead) * ratio).rounded())
         let audibleDuration = Double(outFrames) / max(sampleRate, 1)
@@ -388,6 +387,13 @@ public enum StudioBounceExporter {
             }
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
+            let beat = Double(di) / max(sampleRate, 1) * bpm / 60.0
+            let autoGain = hasAutomation
+                ? MXVolumeAutomation.value(atBeat: beat, points: track.volumeAutomation)
+                : MXVolumeAutomation.unity
+            let gain = baseGain * autoGain
+            let leftGain = gain * min(1, max(0, 1 - pan))
+            let rightGain = gain * min(1, max(0, 1 + pan))
             left[di] += mono * leftGain
             right[di] += mono * rightGain
         }

@@ -1232,7 +1232,8 @@ public final class StudioSessionController {
             scheduleClipPlayers(fromSample: sample)
         } else if let player = clipPlayers[clipID],
                   let track = project.tracks.first(where: { $0.id == clip.trackID }) {
-            player.volume = track.volume * clip.gain
+            let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            player.volume = track.volume * clip.gain * auto
         }
     }
 
@@ -2236,7 +2237,8 @@ public final class StudioSessionController {
                       let url = audioURL(for: clip),
                       let file = try? AVAudioFile(forReading: url) else { continue }
 
-                player.volume = track.volume * clip.gain
+                let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+                player.volume = track.volume * clip.gain * auto
                 player.pan = track.pan
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
@@ -2632,18 +2634,20 @@ public final class StudioSessionController {
     private func applyTrackMix(trackID: UUID) {
         guard let track = project.tracks.first(where: { $0.id == trackID }) else { return }
         let anySolo = project.tracks.contains(where: \.isSolo)
+        let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
         for clip in track.clips {
             guard let player = clipPlayers[clip.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            player.volume = audible ? track.volume * clip.gain : 0
+            player.volume = audible ? track.volume * clip.gain * autoGain : 0
             player.pan = track.pan
         }
         // Solo/mute changes should refresh all tracks' audible state
         if anySolo || track.isMuted {
             for other in project.tracks where other.id != trackID {
                 let otherAudible = !other.isMuted && (!anySolo || other.isSolo)
+                let otherAuto = MXVolumeAutomation.value(atBeat: playheadBeat, points: other.volumeAutomation)
                 for clip in other.clips {
-                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain : 0
+                    clipPlayers[clip.id]?.volume = otherAudible ? other.volume * clip.gain * otherAuto : 0
                 }
             }
         }
@@ -2656,10 +2660,76 @@ public final class StudioSessionController {
         for track in project.tracks where track.kind == .midi {
             guard let chain = instrumentChains[track.id] else { continue }
             let audible = !track.isMuted && (!anySolo || track.isSolo)
-            chain.volume = audible ? track.volume : 0
+            let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            chain.volume = audible ? track.volume * autoGain : 0
             chain.pan = track.pan
             chain.isMuted = !audible
         }
+    }
+
+    /// Apply volume automation at the playhead for every track (Logic-style live follow).
+    private func applyVolumeAutomationAtPlayhead() {
+        let anySolo = project.tracks.contains(where: \.isSolo)
+        for track in project.tracks {
+            let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
+            let audible = !track.isMuted && (!anySolo || track.isSolo)
+            for clip in track.clips {
+                guard let player = clipPlayers[clip.id] else { continue }
+                player.volume = audible ? track.volume * clip.gain * autoGain : 0
+            }
+            if track.kind == .midi, let chain = instrumentChains[track.id] {
+                chain.volume = audible ? track.volume * autoGain : 0
+            }
+        }
+    }
+
+    /// Upsert a volume automation breakpoint on a track (Week 52).
+    public func upsertVolumeAutomation(trackID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.upserting(
+            project.tracks[index].volumeAutomation,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func moveVolumeAutomationPoint(trackID: UUID, pointID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.moving(
+            project.tracks[index].volumeAutomation,
+            id: pointID,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func removeVolumeAutomationPoint(trackID: UUID, pointID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = MXVolumeAutomation.removing(
+            project.tracks[index].volumeAutomation,
+            id: pointID
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    /// Seed a unity hold curve when opening an empty automation lane.
+    public func ensureDefaultVolumeAutomation(trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].volumeAutomation.isEmpty else { return }
+        pushUndoSnapshot()
+        project.tracks[index].volumeAutomation = [
+            MXAutomationPoint(beat: 0, value: 1),
+            MXAutomationPoint(beat: 4, value: 1),
+        ]
+        persistSoon()
     }
 
     private func startMeterPolling() {
@@ -3022,6 +3092,9 @@ public final class StudioSessionController {
         playheadBar = readout.position.bar
         playheadBeatInBar = readout.position.beat
         playheadTimeLabel = Self.formatTime(readout.seconds)
+        if project.tracks.contains(where: { !$0.volumeAutomation.isEmpty }) {
+            applyVolumeAutomationAtPlayhead()
+        }
     }
 
     private static func formatTime(_ seconds: Double) -> String {
