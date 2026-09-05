@@ -15,7 +15,7 @@ enum MXAIStudioImporter {
         }
     }
 
-    /// Creates a new AI preset project, writes stub WAV, adds track + clip, persists.
+    /// Creates a new AI preset project, copies staged MP3 into `Audio/`, adds track + clip, persists.
     @MainActor
     static func importIntoNewProject(result: AIComposeResult) throws -> UUID {
         let store = MXProjectStore.shared
@@ -28,13 +28,9 @@ enum MXAIStudioImporter {
         )
 
         let audioDir = store.audioDirectory(for: project.id)
-        try FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
-
-        let stubDuration = stubDurationSeconds(for: result)
-        let fileName = "ai_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).wav"
-        let wavURL = audioDir.appendingPathComponent(fileName)
+        let copied: (fileName: String, durationSeconds: Double)
         do {
-            try MXAIAudioStub.writeStubWAV(to: wavURL, durationSeconds: stubDuration)
+            copied = try MXAIAudioFileWriter.copyStagedFile(result.stagedFileName, to: audioDir)
         } catch {
             throw ImportError.writeFailed(error.localizedDescription)
         }
@@ -47,7 +43,7 @@ enum MXAIStudioImporter {
         )
         let lengthBeats = timelineLengthBeats(
             resultDurationSeconds: result.durationSeconds,
-            stubDurationSeconds: stubDuration,
+            audioDurationSeconds: copied.durationSeconds,
             bpm: project.bpm
         )
         let clip = MXClip(
@@ -55,9 +51,9 @@ enum MXAIStudioImporter {
             name: trackName,
             startBeat: 0,
             lengthBeats: lengthBeats,
-            audioFileName: fileName,
+            audioFileName: copied.fileName,
             sourceOffsetSeconds: 0,
-            sourceDurationSeconds: stubDuration
+            sourceDurationSeconds: copied.durationSeconds
         )
 
         var mutableTrack = track
@@ -78,26 +74,21 @@ enum MXAIStudioImporter {
 
         let trackName = sanitizedTrackName(from: result.title)
         let audioDir = MXProjectStore.shared.audioDirectory(for: session.project.id)
-        try FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
-
-        let stubDuration = stubDurationSeconds(for: result)
-        let fileName = "ai_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).wav"
-        let wavURL = audioDir.appendingPathComponent(fileName)
+        let copied: (fileName: String, durationSeconds: Double)
         do {
-            try MXAIAudioStub.writeStubWAV(to: wavURL, durationSeconds: stubDuration)
+            copied = try MXAIAudioFileWriter.copyStagedFile(result.stagedFileName, to: audioDir)
         } catch {
             throw ImportError.writeFailed(error.localizedDescription)
         }
 
         guard let track = session.addAudioTrack(named: trackName) else {
-            try? FileManager.default.removeItem(at: wavURL)
             throw ImportError.trackLimitReached
         }
         session.setTrackCategory(.imported, trackID: track.id)
 
         let lengthBeats = timelineLengthBeats(
             resultDurationSeconds: result.durationSeconds,
-            stubDurationSeconds: stubDuration,
+            audioDurationSeconds: copied.durationSeconds,
             bpm: session.bpm
         )
 
@@ -106,16 +97,12 @@ enum MXAIStudioImporter {
             name: trackName,
             startBeat: 0,
             lengthBeats: lengthBeats,
-            audioFileName: fileName,
+            audioFileName: copied.fileName,
             sourceOffsetSeconds: 0,
-            sourceDurationSeconds: stubDuration
+            sourceDurationSeconds: copied.durationSeconds
         )
         try session.addImportedClip(clip, toTrackID: track.id)
         return track
-    }
-
-    private static func stubDurationSeconds(for result: AIComposeResult) -> Double {
-        min(max(1, Double(result.durationSeconds)), 4)
     }
 
     private static func sanitizedTrackName(from title: String) -> String {
@@ -126,11 +113,11 @@ enum MXAIStudioImporter {
 
     private static func timelineLengthBeats(
         resultDurationSeconds: Int,
-        stubDurationSeconds: Double,
+        audioDurationSeconds: Double,
         bpm: Double
     ) -> Double {
         let beatsFromResult = Double(resultDurationSeconds) * bpm / 60.0
-        let beatsFromStub = stubDurationSeconds * bpm / 60.0
-        return max(0.25, beatsFromResult, beatsFromStub)
+        let beatsFromAudio = audioDurationSeconds * bpm / 60.0
+        return max(0.25, beatsFromResult, beatsFromAudio)
     }
 }

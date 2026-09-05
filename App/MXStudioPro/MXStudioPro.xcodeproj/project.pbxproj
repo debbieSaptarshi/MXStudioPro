@@ -46,6 +46,8 @@
 		C1A00101AAAA000100000034 /* AIComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000036 /* AIComposeView.swift */; };
 		C1A00101AAAA000100000038 /* MXAIAudioStub.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000039 /* MXAIAudioStub.swift */; };
 		C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */; };
+		C1A00101AAAA000100000080 /* MXAIComposeCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000081 /* MXAIComposeCredentials.swift */; };
+		C1A00101AAAA000100000082 /* MXElevenLabsMusicClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000083 /* MXElevenLabsMusicClient.swift */; };
 		C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA00010000003D /* MXDemoTemplates.swift */; };
 		C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */; };
 		C1A00101AAAA000100000061 /* MetalLiveWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */; };
@@ -105,6 +107,8 @@
 		C1A00101AAAA000100000036 /* AIComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIComposeView.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000039 /* MXAIAudioStub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIAudioStub.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIStudioImporter.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000081 /* MXAIComposeCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXAIComposeCredentials.swift; sourceTree = "<group>"; };
+		C1A00101AAAA000100000083 /* MXElevenLabsMusicClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXElevenLabsMusicClient.swift; sourceTree = "<group>"; };
 		C1A00101AAAA00010000003D /* MXDemoTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MXDemoTemplates.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000059 /* QuietRoomChecklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietRoomChecklist.swift; sourceTree = "<group>"; };
 		C1A00101AAAA000100000060 /* MetalLiveWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalLiveWaveformView.swift; sourceTree = "<group>"; };
@@ -206,8 +210,10 @@
 			isa = PBXGroup;
 			children = (
 				C1A00101AAAA000100000039 /* MXAIAudioStub.swift */,
+				C1A00101AAAA000100000081 /* MXAIComposeCredentials.swift */,
 				C1A00101AAAA000100000035 /* MXAIComposeService.swift */,
 				C1A00101AAAA00010000003B /* MXAIStudioImporter.swift */,
+				C1A00101AAAA000100000083 /* MXElevenLabsMusicClient.swift */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -386,7 +392,9 @@
 				C1A00101AAAA000100000033 /* MXAIComposeService.swift in Sources */,
 				C1A00101AAAA000100000034 /* AIComposeView.swift in Sources */,
 				C1A00101AAAA000100000038 /* MXAIAudioStub.swift in Sources */,
+				C1A00101AAAA000100000080 /* MXAIComposeCredentials.swift in Sources */,
 				C1A00101AAAA00010000003A /* MXAIStudioImporter.swift in Sources */,
+				C1A00101AAAA000100000082 /* MXElevenLabsMusicClient.swift in Sources */,
 				C1A00101AAAA00010000003C /* MXDemoTemplates.swift in Sources */,
 				C1A00101AAAA000100000058 /* QuietRoomChecklist.swift in Sources */,
 				C1A00101AAAA000100000061 /* MetalLiveWaveformView.swift in Sources */,
