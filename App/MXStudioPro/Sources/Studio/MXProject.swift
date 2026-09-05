@@ -89,6 +89,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
     public var auxReverbReturn: Float
     /// Punch comp crossfade length in seconds (Week 83). Applied on new punches only.
     public var compCrossfadeSeconds: Double
+    /// Master bus pitch shift in semitones (−12…+12). Week MVP transpose.
+    public var masterPitchSemitones: Float
 
     public init(
         id: UUID = UUID(),
@@ -106,7 +108,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         loopStartBeat: Double = 0,
         loopEndBeat: Double = 8,
         auxReverbReturn: Float = MXAuxSend.defaultReturnPercent,
-        compCrossfadeSeconds: Double = MXCompRegionSplit.crossfadeSeconds
+        compCrossfadeSeconds: Double = MXCompRegionSplit.crossfadeSeconds,
+        masterPitchSemitones: Float = 0
     ) {
         self.id = id
         self.name = name
@@ -124,6 +127,7 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         self.loopEndBeat = max(self.loopStartBeat + 0.25, loopEndBeat)
         self.auxReverbReturn = MXAuxSend.clampPercent(auxReverbReturn)
         self.compCrossfadeSeconds = Self.clampCompCrossfade(compCrossfadeSeconds)
+        self.masterPitchSemitones = Self.clampMasterPitch(masterPitchSemitones)
     }
 
     public init(from decoder: Decoder) throws {
@@ -150,6 +154,9 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
             try c.decodeIfPresent(Double.self, forKey: .compCrossfadeSeconds)
                 ?? MXCompRegionSplit.crossfadeSeconds
         )
+        masterPitchSemitones = Self.clampMasterPitch(
+            try c.decodeIfPresent(Float.self, forKey: .masterPitchSemitones) ?? 0
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -157,12 +164,16 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         case timeSignatureNumerator, timeSignatureDenominator, sampleRate
         case tracks, presetRaw, collaborators
         case loopEnabled, loopStartBeat, loopEndBeat
-        case auxReverbReturn, compCrossfadeSeconds
+        case auxReverbReturn, compCrossfadeSeconds, masterPitchSemitones
     }
 
     /// Clamp comp crossfade dial to 0…200 ms (Week 83).
     public static func clampCompCrossfade(_ seconds: Double) -> Double {
         min(max(seconds, 0), 0.2)
+    }
+
+    public static func clampMasterPitch(_ value: Float) -> Float {
+        min(max(value, -12), 12)
     }
 
     public var preset: StudioPreset {

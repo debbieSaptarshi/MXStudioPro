@@ -49,6 +49,19 @@ public final class StudioSessionController {
     public private(set) var playheadTimeLabel: String = "00:00.0"
     public private(set) var bpm: Double = 120
     public private(set) var musicalKey: String = "Cmaj"
+    /// Master bus pitch shift in semitones (−12…+12).
+    public var masterPitchSemitones: Float = 0 {
+        didSet {
+            let clamped = MXProject.clampMasterPitch(masterPitchSemitones)
+            if clamped != masterPitchSemitones {
+                masterPitchSemitones = clamped
+                return
+            }
+            project.masterPitchSemitones = clamped
+            syncMasterChain()
+            persistSoon()
+        }
+    }
     /// Last BPM estimated from an imported audio file (Week 48). `nil` until a
     /// confident detect succeeds; not persisted.
     public private(set) var lastDetectedBPM: Double?
@@ -203,7 +216,7 @@ public final class StudioSessionController {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: Self.masterLimiterEnabledDefaultsKey)
-            syncMasterLimiter()
+            syncMasterChain()
         }
     }
 
@@ -281,6 +294,7 @@ public final class StudioSessionController {
     nonisolated(unsafe) private var masterMeterFrames: Int = 0
     nonisolated(unsafe) private let masterMeterLock = NSLock()
     private var masterLimiterEffect: MXMasterLimiterEffect?
+    private var masterPitchEffect: MXMasterPitchEffect?
     private var masterLUFSTapInstalled = false
     private var wasPlayingBeforeInterruption = false
     private var autosaveTask: Task<Void, Never>?
@@ -321,6 +335,7 @@ public final class StudioSessionController {
         self.project = project
         self.preset = project.preset
         self.bpm = project.bpm
+        self.masterPitchSemitones = project.masterPitchSemitones
         if UserDefaults.standard.object(forKey: Self.drumStepSwingDefaultsKey) != nil {
             self.drumStepSwing = min(
                 1,
@@ -415,7 +430,7 @@ public final class StudioSessionController {
             self.phase = .ready
             applyPreferredMonitoring()
             syncMonitorNoiseGate()
-            syncMasterLimiter()
+            syncMasterChain()
             refreshRouteTip()
             maybeShowQuietRoomTip()
 
@@ -1941,6 +1956,41 @@ public final class StudioSessionController {
         for note in Array(pendingMIDINoteOns.keys) {
             captureMIDINoteOff(note)
         }
+    }
+
+    /// Add or switch a backing instrument while recording vocals.
+    @discardableResult
+    public func addOrSwitchInstrument(_ bank: MXSynthBankPreset) -> MXSessionTrack? {
+        if bank == .drumKit {
+            if let existing = project.tracks.first(where: { $0.category == .drums }) {
+                loadSynthBankPreset(bank, trackID: existing.id)
+                armTrack(id: existing.id)
+                return existing
+            }
+            return addDrumTrack()
+        }
+        if let existing = project.tracks.first(where: { $0.category == .keys && $0.kind == .midi }) {
+            loadSynthBankPreset(bank, trackID: existing.id)
+            armTrack(id: existing.id)
+            return existing
+        }
+        guard let track = addMIDITrack(named: bank.title) else { return nil }
+        loadSynthBankPreset(bank, trackID: track.id)
+        return track
+    }
+
+    /// Active instrument preset on the first MIDI backing track, if any.
+    public func activeInstrumentPreset() -> MXSynthBankPreset? {
+        guard let track = project.tracks.first(where: { $0.kind == .midi }) else { return nil }
+        return synthBankPreset(for: track.id)
+    }
+
+    public func nudgeMasterPitch(_ delta: Float) {
+        setMasterPitch(masterPitchSemitones + delta)
+    }
+
+    public func setMasterPitch(_ semitones: Float) {
+        masterPitchSemitones = MXProject.clampMasterPitch(semitones)
     }
 
     /// Load a named synth bank preset onto a MIDI / keys track (Piano FX sheet).
@@ -4186,28 +4236,39 @@ public final class StudioSessionController {
         }
     }
 
-    // MARK: - Master limiter + live LUFS (Week 59)
+    // MARK: - Master limiter + pitch + live LUFS (Week 59)
 
-    private func syncMasterLimiter() {
+    private func syncMasterChain() {
         guard let graph else { return }
+        var inserts: [MXEffect] = []
+
+        let pitch = masterPitchEffect ?? MXMasterPitchEffect()
+        masterPitchEffect = pitch
+        pitch.pitchSemitones = masterPitchSemitones
+        pitch.isBypassed = abs(masterPitchSemitones) < 0.01
+        if !pitch.isBypassed {
+            inserts.append(pitch)
+        }
+
         if isMasterLimiterEnabled {
             let effect = masterLimiterEffect ?? MXMasterLimiterEffect()
             masterLimiterEffect = effect
             effect.isBypassed = false
-            graph.setMasterInserts([effect])
+            inserts.append(effect)
         } else if let effect = masterLimiterEffect {
             effect.isBypassed = true
-            graph.setMasterInserts([])
-            // Keep instance for quick re-enable; graph already detached it.
-            _ = effect
-        } else {
-            graph.setMasterInserts([])
         }
+
+        graph.setMasterInserts(inserts)
         // Re-install LUFS tap after master chain rebuild (taps don't survive reconnect).
         masterLUFSTapInstalled = false
         if isPlaying {
             ensureMasterLUFSTap()
         }
+    }
+
+    private func syncMasterLimiter() {
+        syncMasterChain()
     }
 
     private func ensureMasterLUFSTap() {

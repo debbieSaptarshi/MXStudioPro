@@ -1,4 +1,5 @@
 import SwiftUI
+import MXStudioEngine
 
 /// Record Vocal / Audio screen — Figma `95:83675` / track focus `95:91592` / landscape `95:81418`.
 struct RecordVocalView: View {
@@ -47,6 +48,11 @@ struct RecordVocalView: View {
                 if !isLandscape, let track = armedTrack {
                     mixerStrip(track: track)
                         .frame(height: mixerStripHeight)
+                        .clipped()
+                }
+                if !isLandscape {
+                    instrumentsStrip
+                        .frame(height: 72)
                         .clipped()
                 }
                 detailsStrip
@@ -528,6 +534,55 @@ struct RecordVocalView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Instruments
+
+    private var instrumentChoices: [MXSynthBankPreset] {
+        MXSynthBankPreset.pianoBank + [.drumKit]
+    }
+
+    private var instrumentsStrip: some View {
+        let active = session.activeInstrumentPreset()
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Add Instrument")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+                .padding(.horizontal, 12)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(instrumentChoices) { bank in
+                        let isOn = active == bank
+                        Button {
+                            _ = session.addOrSwitchInstrument(bank)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(bank.title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(isOn ? MXColor.black : MXColor.white)
+                                Text(bank.subtitle)
+                                    .font(.system(size: 8, weight: .medium))
+                                    .foregroundStyle(isOn ? MXColor.black.opacity(0.7) : MXColor.grey)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(isOn ? MXColor.orange : MXColor.layer2)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(bank.title) instrument")
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(MXColor.surfaceRaised)
+        .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
+    }
+
     // MARK: - Details + transport (shared look)
 
     private var detailsStrip: some View {
@@ -546,6 +601,36 @@ struct RecordVocalView: View {
                     .foregroundStyle(MXColor.grey)
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, vPad)
+            divider
+            VStack(spacing: isLandscape ? 2 : 4) {
+                HStack {
+                    Button { session.nudgeMasterPitch(-1) } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.lightGrey)
+                            .frame(width: 20, height: 20)
+                            .background(MXColor.layer2)
+                    }
+                    .buttonStyle(.plain)
+                    Text(masterPitchLabel)
+                        .font(MXFont.studioReadout())
+                        .foregroundStyle(MXColor.lightGrey)
+                        .frame(minWidth: 36)
+                    Button { session.nudgeMasterPitch(1) } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.lightGrey)
+                            .frame(width: 20, height: 20)
+                            .background(MXColor.layer2)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text("Pitch")
+                    .font(MXFont.caption())
+                    .foregroundStyle(MXColor.grey)
+            }
+            .frame(width: isLandscape ? 110 : 125)
             .padding(.vertical, vPad)
             divider
             VStack(spacing: isLandscape ? 2 : 4) {
@@ -581,6 +666,12 @@ struct RecordVocalView: View {
         .background(MXColor.surfaceRaised)
         .overlay(alignment: .top) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(MXColor.layer2).frame(height: 1) }
+    }
+
+    private var masterPitchLabel: String {
+        let semitones = Int(session.masterPitchSemitones.rounded())
+        if semitones == 0 { return "0" }
+        return semitones > 0 ? "+\(semitones)" : "\(semitones)"
     }
 
     private func detail(_ value: String, _ label: String, verticalPadding: CGFloat = 16) -> some View {
@@ -672,7 +763,19 @@ struct RecordVocalView: View {
                 .buttonStyle(.plain)
 
                 if !isLandscape {
-                    transportIcon("slider.horizontal.3") {}
+                    Button { session.setMasterPitch(0) } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(
+                                abs(session.masterPitchSemitones) > 0.01 ? MXColor.orange : MXColor.white
+                            )
+                            .frame(width: 20, height: 20)
+                            .padding(pad)
+                            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(MXColor.layer2))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Reset master pitch")
+                    .disabled(abs(session.masterPitchSemitones) < 0.01)
                 }
             }
             .padding(2)

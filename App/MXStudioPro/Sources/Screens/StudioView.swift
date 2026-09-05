@@ -3045,6 +3045,12 @@ public struct StudioView: View {
         .buttonStyle(.plain)
     }
 
+    private var masterPitchValueLabel: String {
+        let semitones = Int(session.masterPitchSemitones.rounded())
+        if semitones == 0 { return "0 st" }
+        return semitones > 0 ? "+\(semitones) st" : "\(semitones) st"
+    }
+
     private var mixerSheet: some View {
         VStack(spacing: 0) {
             HStack {
@@ -3078,6 +3084,20 @@ public struct StudioView: View {
                 labelWidth: 36
             )
             .tint(MXColor.teal)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+
+            mixerSliderRow(
+                label: "Pitch",
+                valueLabel: masterPitchValueLabel,
+                value: Binding(
+                    get: { Double(session.masterPitchSemitones) },
+                    set: { session.setMasterPitch(Float($0)) }
+                ),
+                range: -12...12,
+                labelWidth: 36
+            )
+            .tint(MXColor.orange)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
 

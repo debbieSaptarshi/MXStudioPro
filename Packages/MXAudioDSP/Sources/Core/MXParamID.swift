@@ -59,6 +59,9 @@ public enum MXParamID: UInt64, CaseIterable, Sendable, Codable {
     case fxLevel = 707
     case fxBypass = 708
 
+    // Master bus
+    case masterPitch = 800
+
     /// Value range enforced before the value reaches the render thread.
     public var range: ClosedRange<Float> {
         switch self {
@@ -86,6 +89,8 @@ public enum MXParamID: UInt64, CaseIterable, Sendable, Codable {
             return 0.0...1.0
         case .fxTime:
             return 0.0...2000.0
+        case .masterPitch:
+            return -12.0...12.0
         default:
             return 0.0...100.0
         }
