@@ -164,7 +164,15 @@ public enum MXSFZGenerator {
             let name = file.deletingPathExtension().lastPathComponent
             let note = inferredNote(from: name) ?? UInt8(min(127, fallbackNote))
             if inferredNote(from: name) == nil { fallbackNote += 1 }
-            lines.append("<region> sample=\(file.lastPathComponent) key=\(note) pitch_keycenter=\(note)")
+            var region = "<region> sample=\(file.lastPathComponent) key=\(note) pitch_keycenter=\(note)"
+            let lower = name.lowercased()
+            if lower.contains("hat") || lower.contains("hh") || lower.contains("ride") {
+                // Week 87 — closed/open hat choke: new hit silences prior hat group.
+                region += " group=1 off_by=1"
+            } else if lower.contains("kick") {
+                region += " group=2"
+            }
+            lines.append(region)
         }
 
         let destination = outputURL ?? folder.appendingPathComponent("generated.sfz")

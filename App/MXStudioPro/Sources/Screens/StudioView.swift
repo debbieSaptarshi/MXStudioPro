@@ -28,6 +28,7 @@ public struct StudioView: View {
     /// GarageBand-style pitch correct amount 0…1 (Week 69). Session-local UI.
     @State private var pitchCorrectAmount: Float = 0.7
     @State private var pitchCorrectLimitToKey = true
+    @State private var pitchCorrectPreserveFormants = true
     /// Week 70 — target length in beats for time-stretch bake (Ableton/BandLab lite).
     @State private var timeStretchLengthBeats: Double = 4
     /// Week 73 — CapCut / BandLab vocal harmony stack (session-local UI).
@@ -63,12 +64,14 @@ public struct StudioView: View {
 
     private enum AutomationLaneMode: String, CaseIterable, Identifiable {
         case trackVolume
+        case trackPan
         case clipVolume
         case clipPan
         var id: String { rawValue }
         var label: String {
             switch self {
             case .trackVolume: return "Track"
+            case .trackPan: return "Track Pan"
             case .clipVolume: return "Clip Gain"
             case .clipPan: return "Clip Pan"
             }
@@ -77,8 +80,9 @@ public struct StudioView: View {
         var compactLabel: String {
             switch self {
             case .trackVolume: return "Trk"
+            case .trackPan: return "Pan"
             case .clipVolume: return "Gain"
-            case .clipPan: return "Pan"
+            case .clipPan: return "C Pan"
             }
         }
     }
@@ -1381,13 +1385,15 @@ public struct StudioView: View {
         let hasSelectedClip = selectedClip != nil
         HStack(spacing: isLandscape ? 2 : 4) {
             ForEach(AutomationLaneMode.allCases) { option in
-                let enabled = option == .trackVolume || hasSelectedClip
+                let enabled = option == .trackVolume || option == .trackPan || hasSelectedClip
                 Button {
                     guard enabled else { return }
                     automationLaneModes[trackID] = option
                     switch option {
                     case .trackVolume:
                         session.ensureDefaultVolumeAutomation(trackID: trackID)
+                    case .trackPan:
+                        session.ensureDefaultPanAutomation(trackID: trackID)
                     case .clipVolume:
                         if let id = session.selectedClipID {
                             session.ensureDefaultClipVolumeAutomation(clipID: id)
@@ -1485,6 +1491,33 @@ public struct StudioView: View {
                 },
                 onDelete: { id in
                     session.removeVolumeAutomationPoint(trackID: track.id, pointID: id)
+                },
+                onToggleCurve: { id in
+                    session.toggleVolumeAutomationCurve(trackID: track.id, pointID: id)
+                }
+            )
+        case .trackPan:
+            VolumeAutomationLaneView(
+                points: track.panAutomation,
+                pixelsPerBeat: pixelsPerBeat,
+                beatsVisible: beatsVisible,
+                height: automationLaneHeight,
+                valueMin: MXPanAutomation.minValue,
+                valueMax: MXPanAutomation.maxValue,
+                beatOffset: 0,
+                beatMax: nil,
+                centerValue: 0,
+                onAdd: { beat, value in
+                    session.upsertPanAutomation(trackID: track.id, beat: beat, value: value)
+                },
+                onMove: { id, beat, value in
+                    session.movePanAutomationPoint(trackID: track.id, pointID: id, beat: beat, value: value)
+                },
+                onDelete: { id in
+                    session.removePanAutomationPoint(trackID: track.id, pointID: id)
+                },
+                onToggleCurve: { id in
+                    session.togglePanAutomationCurve(trackID: track.id, pointID: id)
                 }
             )
         case .clipVolume:
@@ -2158,6 +2191,27 @@ public struct StudioView: View {
                         Text("Takes")
                             .font(MXFont.caption())
                             .foregroundStyle(MXColor.grey)
+                        HStack {
+                            Text("Comp X-fade")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                            Slider(
+                                value: Binding(
+                                    get: { session.project.compCrossfadeSeconds * 1000 },
+                                    set: { session.setCompCrossfadeSeconds($0 / 1000) }
+                                ),
+                                in: 5...80,
+                                step: 1
+                            )
+                            .tint(MXColor.accent)
+                            Text(String(format: "%.0f ms", session.project.compCrossfadeSeconds * 1000))
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.lightGrey)
+                                .monospacedDigit()
+                                .frame(width: 44, alignment: .trailing)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Comp crossfade length")
                         ForEach(takeRows) { take in
                             let laneActive = track.clips.contains { $0.takeIndex == take.takeIndex && $0.isActive }
                             Button {
@@ -2347,11 +2401,20 @@ public struct StudioView: View {
                         .tint(MXColor.accent)
                         .accessibilityHint("Snap corrected pitches to the project key")
 
+                        Toggle(isOn: $pitchCorrectPreserveFormants) {
+                            Text("Preserve formants")
+                                .font(MXFont.caption())
+                                .foregroundStyle(MXColor.grey)
+                        }
+                        .tint(MXColor.accent)
+                        .accessibilityHint("Keep natural vocal character when correcting pitch")
+
                         Button {
                             _ = session.applyPitchCorrection(
                                 clipID: clip.id,
                                 amount: pitchCorrectAmount,
-                                limitToKey: pitchCorrectLimitToKey
+                                limitToKey: pitchCorrectLimitToKey,
+                                preserveFormants: pitchCorrectPreserveFormants
                             )
                         } label: {
                             Label("Apply Pitch Correct", systemImage: "waveform.path")
@@ -3473,6 +3536,35 @@ public struct StudioView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Button {
+                if track.isFrozen {
+                    session.unfreezeTrack(trackID: track.id)
+                } else {
+                    session.freezeTrack(trackID: track.id)
+                }
+            } label: {
+                Text(track.isFrozen ? "Unfreeze" : "Freeze")
+                    .font(MXFont.caption())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(track.isFrozen ? MXColor.orange : MXColor.lightGrey)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(track.isFrozen ? MXColor.orange.opacity(0.2) : MXColor.black)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(
+                                track.isFrozen ? MXColor.orange.opacity(0.6) : Color.white.opacity(0.06),
+                                lineWidth: 0.5
+                            )
+                    }
+            }
+            .buttonStyle(.plain)
+            .disabled(track.clips.isEmpty && !track.isFrozen)
+            .accessibilityLabel(track.isFrozen ? "Unfreeze track" : "Freeze track")
         }
         .padding(10)
         .frame(width: 96)
@@ -4280,6 +4372,7 @@ private struct VolumeAutomationLaneView: View {
     var onAdd: (_ beat: Double, _ value: Float) -> Void
     var onMove: (_ id: UUID, _ beat: Double, _ value: Float) -> Void
     var onDelete: (_ id: UUID) -> Void
+    var onToggleCurve: ((_ id: UUID) -> Void)? = nil
 
     @State private var selectedPointID: UUID?
 
@@ -4318,7 +4411,7 @@ private struct VolumeAutomationLaneView: View {
 
                 ForEach(sorted) { point in
                     Circle()
-                        .fill(selectedPointID == point.id ? MXColor.orange : MXColor.accent)
+                        .fill(point.curve == .bezier ? MXColor.orange.opacity(0.85) : (selectedPointID == point.id ? MXColor.orange : MXColor.accent))
                         .overlay(Circle().strokeBorder(MXColor.white.opacity(0.85), lineWidth: 1))
                         .frame(width: 12, height: 12)
                         .position(
@@ -4343,9 +4436,12 @@ private struct VolumeAutomationLaneView: View {
                                 selectedPointID = point.id
                             }
                         }
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            onToggleCurve?(point.id)
+                        }
                         .accessibilityLabel("Automation point")
                         .accessibilityValue(String(format: "%.2f at beat %.2f", point.value, point.beat))
-                        .accessibilityHint("Drag to move. Tap twice to delete.")
+                        .accessibilityHint("Drag to move. Tap twice to delete. Long-press to toggle Bezier curve.")
                 }
             }
             .contentShape(Rectangle())

@@ -19,6 +19,9 @@ struct StudioExportSheet: View {
     @State private var useReelsLoudness = true
     /// CapCut / Instagram vertical MP4 (Week 78).
     @State private var includeReelsVideo = false
+    /// 24-bit PCM WAV for stem export (Week 88).
+    @State private var use24BitStems = false
+    @State private var lastStems: StudioBounceExporter.StemsResult?
 
     private enum Phase: Equatable {
         case options
@@ -58,7 +61,8 @@ struct StudioExportSheet: View {
                         primaryAction: presentShare,
                         secondaryTitle: "Done",
                         secondaryAction: onDismiss,
-                        loudnessReport: lastBounce.map(\.loudnessReport)
+                        loudnessReport: lastBounce.map(\.loudnessReport),
+                        stemResults: lastStems
                     )
                 case .publishSuccess:
                     successContent(
@@ -160,6 +164,23 @@ struct StudioExportSheet: View {
                     .fill(MXColor.layer2)
             )
 
+            Toggle(isOn: $use24BitStems) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("24-bit stem WAV")
+                        .font(MXFont.mediumButton())
+                        .foregroundStyle(MXColor.white)
+                    Text("Higher bit depth for stem export; M4A stays AAC.")
+                        .font(MXFont.caption())
+                        .foregroundStyle(MXColor.grey)
+                }
+            }
+            .tint(MXColor.accent)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MXColor.layer2)
+            )
+
             VStack(spacing: 10) {
                 exportOption(
                     title: "Share File",
@@ -183,7 +204,9 @@ struct StudioExportSheet: View {
 
                 exportOption(
                     title: "Export stems",
-                    subtitle: "One WAV + M4A per track (ignores mute/solo)",
+                    subtitle: use24BitStems
+                        ? "One 24-bit WAV + M4A per track with loudness cards"
+                        : "One WAV + M4A per track (ignores mute/solo)",
                     systemImage: "square.stack.3d.up",
                     tint: MXColor.teal
                 ) {
@@ -333,7 +356,8 @@ struct StudioExportSheet: View {
         primaryAction: @escaping () -> Void,
         secondaryTitle: String?,
         secondaryAction: (() -> Void)?,
-        loudnessReport: MXLoudness.Report? = nil
+        loudnessReport: MXLoudness.Report? = nil,
+        stemResults: StudioBounceExporter.StemsResult? = nil
     ) -> some View {
         VStack(spacing: 24) {
             Spacer()
@@ -350,6 +374,9 @@ struct StudioExportSheet: View {
                     .multilineTextAlignment(.center)
                 if let report = loudnessReport {
                     loudnessReportCard(report)
+                }
+                if let stems = stemResults {
+                    stemLoudnessCards(stems)
                 }
             }
             Spacer()
@@ -451,6 +478,45 @@ struct StudioExportSheet: View {
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Loudness report")
+    }
+
+    /// Week 88 — per-stem integrated LUFS cards (BandLab / Ableton stem export).
+    private func stemLoudnessCards(_ result: StudioBounceExporter.StemsResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Stem loudness")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+            ForEach(result.stems, id: \.trackID) { stem in
+                HStack {
+                    Text(stem.trackName)
+                        .font(MXFont.body3())
+                        .foregroundStyle(MXColor.white)
+                        .lineLimit(1)
+                    Spacer()
+                    if let lufs = stem.integratedLUFS, lufs.isFinite {
+                        Text(String(format: "%.1f LUFS", lufs))
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.lightGrey)
+                            .monospacedDigit()
+                    } else {
+                        Text("—")
+                            .font(MXFont.body3())
+                            .foregroundStyle(MXColor.grey)
+                    }
+                }
+            }
+            Text("K-weighted per stem · not broadcast-certified")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey.opacity(0.75))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MXColor.layer2)
+        )
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
     }
 
     private func errorContent(message: String, retry: RetryAction) -> some View {
@@ -566,11 +632,21 @@ struct StudioExportSheet: View {
         phase = .working("Exporting stems…")
         do {
             let mode: StudioBounceExporter.LoudnessMode = useReelsLoudness ? .reelsLUFS : .peakNormalize
-            let result = try await session.bounceStems(normalize: true, loudnessMode: mode)
+            let bitDepth: StudioBounceExporter.WAVBitDepth = use24BitStems ? .bit24 : .bit16
+            let result = try await session.bounceStems(
+                normalize: true,
+                loudnessMode: mode,
+                wavBitDepth: bitDepth
+            )
+            lastStems = result
+            lastBounce = nil
             shareURLs = result.allURLs
             let count = result.stems.count
             let loud = mode == .reelsLUFS ? "−14 LUFS" : "peak"
-            phase = .shareSuccess(format: "\(count) stem\(count == 1 ? "" : "s") · WAV + M4A · \(loud)")
+            let depth = use24BitStems ? "24-bit WAV" : "WAV"
+            phase = .shareSuccess(
+                format: "\(count) stem\(count == 1 ? "" : "s") · \(depth) + M4A · \(loud)"
+            )
         } catch {
             phase = .error(message: error.localizedDescription, retry: .stems)
         }

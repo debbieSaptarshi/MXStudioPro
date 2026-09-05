@@ -114,11 +114,13 @@ public enum MXPitchCorrect {
     /// - Parameters:
     ///   - pitchClasses: When non-nil / non-empty, Limit-to-Key snap (0…11).
     ///     `nil` snaps chromatically (GarageBand without Limit to Key).
+    ///   - preserveFormants: When true, apply lite formant compensation (Week 85).
     public static func correct(
         mono: [Float],
         sampleRate: Double,
         amount: Float,
         pitchClasses: Set<UInt8>? = nil,
+        preserveFormants: Bool = true,
         windowSeconds: Double = defaultWindowSeconds,
         hopSeconds: Double = defaultHopSeconds,
         referenceA4: Double = referenceA4
@@ -136,7 +138,8 @@ public enum MXPitchCorrect {
                 sampleRate: sampleRate,
                 amount: clampedAmount,
                 pitchClasses: pitchClasses,
-                referenceA4: referenceA4
+                referenceA4: referenceA4,
+                preserveFormants: preserveFormants
             )
         }
 
@@ -171,11 +174,21 @@ public enum MXPitchCorrect {
 
             let shifted = resample(grain, ratio: ratio)
             let outLen = min(shifted.count, windowFrames)
+            var grainOut = shifted
+            if preserveFormants, abs(ratio - 1) > 1e-4 {
+                let originalGrain = Array(grain[0..<length])
+                grainOut = MXFormantPreserve.compensate(
+                    shifted: Array(shifted.prefix(outLen)),
+                    original: originalGrain,
+                    pitchRatio: ratio,
+                    amount: clampedAmount
+                )
+            }
             for i in 0..<outLen {
                 let dest = start + i
                 guard dest < output.count else { break }
                 let w = i < hann.count ? hann[i] : 0
-                output[dest] += shifted[i] * w
+                output[dest] += grainOut[i] * w
                 weight[dest] += w * w
             }
 
@@ -200,7 +213,8 @@ public enum MXPitchCorrect {
         sampleRate: Double,
         amount: Float,
         pitchClasses: Set<UInt8>?,
-        referenceA4: Double
+        referenceA4: Double,
+        preserveFormants: Bool = true
     ) -> [Float] {
         guard let hz = detectFrequency(mono: mono, sampleRate: sampleRate) else {
             return mono
@@ -210,7 +224,15 @@ public enum MXPitchCorrect {
         let targetHz = midiToFrequency(targetMidi, referenceA4: referenceA4)
         let ratio = correctionRatio(detectedHz: hz, targetHz: targetHz, amount: amount)
         guard abs(ratio - 1) > 1e-6 else { return mono }
-        let shifted = resample(mono, ratio: ratio)
+        var shifted = resample(mono, ratio: ratio)
+        if preserveFormants {
+            shifted = MXFormantPreserve.compensate(
+                shifted: shifted,
+                original: mono,
+                pitchRatio: ratio,
+                amount: amount
+            )
+        }
         // Duration-preserving: truncate or zero-pad to original length.
         if shifted.count == mono.count { return shifted }
         var out = [Float](repeating: 0, count: mono.count)

@@ -87,6 +87,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
     public var loopEndBeat: Double
     /// Shared reverb aux return level (0…100). Week 81 — BandLab / Logic return.
     public var auxReverbReturn: Float
+    /// Punch comp crossfade length in seconds (Week 83). Default ~12 ms.
+    public var compCrossfadeSeconds: Double
 
     public init(
         id: UUID = UUID(),
@@ -103,7 +105,8 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         loopEnabled: Bool = false,
         loopStartBeat: Double = 0,
         loopEndBeat: Double = 8,
-        auxReverbReturn: Float = MXAuxSend.defaultReturnPercent
+        auxReverbReturn: Float = MXAuxSend.defaultReturnPercent,
+        compCrossfadeSeconds: Double = MXCompRegionSplit.crossfadeSeconds
     ) {
         self.id = id
         self.name = name
@@ -120,6 +123,7 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         self.loopStartBeat = max(0, loopStartBeat)
         self.loopEndBeat = max(self.loopStartBeat + 0.25, loopEndBeat)
         self.auxReverbReturn = MXAuxSend.clampPercent(auxReverbReturn)
+        self.compCrossfadeSeconds = min(max(compCrossfadeSeconds, 0.005), 0.15)
     }
 
     public init(from decoder: Decoder) throws {
@@ -142,6 +146,14 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         auxReverbReturn = MXAuxSend.clampPercent(
             try c.decodeIfPresent(Float.self, forKey: .auxReverbReturn) ?? MXAuxSend.defaultReturnPercent
         )
+        compCrossfadeSeconds = min(
+            max(
+                try c.decodeIfPresent(Double.self, forKey: .compCrossfadeSeconds)
+                    ?? MXCompRegionSplit.crossfadeSeconds,
+                0.005
+            ),
+            0.15
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -149,7 +161,7 @@ public struct MXProject: Codable, Identifiable, Equatable, Sendable {
         case timeSignatureNumerator, timeSignatureDenominator, sampleRate
         case tracks, presetRaw, collaborators
         case loopEnabled, loopStartBeat, loopEndBeat
-        case auxReverbReturn
+        case auxReverbReturn, compCrossfadeSeconds
     }
 
     public var preset: StudioPreset {
@@ -294,11 +306,17 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
     public var soloedDrumParts: Set<String>
     /// Track volume automation breakpoints (Week 52). Empty = constant `volume`.
     public var volumeAutomation: [MXAutomationPoint]
+    /// Track pan automation breakpoints (Week 82). Empty = constant `pan`.
+    public var panAutomation: [MXAutomationPoint]
     /// Sidechain "lite" ducking to the kick (Week 63). When on, this track's
     /// playback volume dips on each kick hit (envelope duck, not a real key input).
     public var sidechainEnabled: Bool
     /// Sidechain duck depth 0…100 (0 = none, 100 = full duck at the hit).
     public var sidechainAmount: Float
+    /// GarageBand-style freeze: track bounced to a single audio clip (Week 83).
+    public var isFrozen: Bool
+    /// Original clips restored on unfreeze (not written when nil / empty).
+    public var frozenClipsBackup: [MXClip]?
 
     public init(
         id: UUID = UUID(),
@@ -326,8 +344,11 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         mutedDrumParts: Set<String> = [],
         soloedDrumParts: Set<String> = [],
         volumeAutomation: [MXAutomationPoint] = [],
+        panAutomation: [MXAutomationPoint] = [],
         sidechainEnabled: Bool = false,
-        sidechainAmount: Float = 50
+        sidechainAmount: Float = 50,
+        isFrozen: Bool = false,
+        frozenClipsBackup: [MXClip]? = nil
     ) {
         self.id = id
         self.name = name
@@ -356,8 +377,11 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         self.mutedDrumParts = mutedDrumParts
         self.soloedDrumParts = soloedDrumParts
         self.volumeAutomation = volumeAutomation.sorted { $0.beat < $1.beat }
+        self.panAutomation = panAutomation.sorted { $0.beat < $1.beat }
         self.sidechainEnabled = sidechainEnabled
         self.sidechainAmount = min(max(sidechainAmount, 0), 100)
+        self.isFrozen = isFrozen
+        self.frozenClipsBackup = frozenClipsBackup
     }
 
     public init(from decoder: Decoder) throws {
@@ -390,16 +414,20 @@ public struct MXSessionTrack: Codable, Identifiable, Equatable, Sendable {
         soloedDrumParts = try c.decodeIfPresent(Set<String>.self, forKey: .soloedDrumParts) ?? []
         volumeAutomation = (try c.decodeIfPresent([MXAutomationPoint].self, forKey: .volumeAutomation) ?? [])
             .sorted { $0.beat < $1.beat }
+        panAutomation = (try c.decodeIfPresent([MXAutomationPoint].self, forKey: .panAutomation) ?? [])
+            .sorted { $0.beat < $1.beat }
         sidechainEnabled = try c.decodeIfPresent(Bool.self, forKey: .sidechainEnabled) ?? false
         sidechainAmount = min(max(try c.decodeIfPresent(Float.self, forKey: .sidechainAmount) ?? 50, 0), 100)
+        isFrozen = try c.decodeIfPresent(Bool.self, forKey: .isFrozen) ?? false
+        frozenClipsBackup = try c.decodeIfPresent([MXClip].self, forKey: .frozenClipsBackup)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, category, isArmed, isMuted, isSolo, volume, pan, clips
         case reverbMix, reverbSend, reelsVocalEnabled, eqMidGain, delayMix, delayTime, distortionMix
         case noiseGateEnabled, noiseGateThreshold, deEsserEnabled, deEsserAmount
-        case synthBankPresetID, mutedDrumParts, soloedDrumParts, volumeAutomation
-        case sidechainEnabled, sidechainAmount
+        case synthBankPresetID, mutedDrumParts, soloedDrumParts, volumeAutomation, panAutomation
+        case sidechainEnabled, sidechainAmount, isFrozen, frozenClipsBackup
     }
 
     /// Typed mute set for drum part lanes (empty for non-drums / none muted).

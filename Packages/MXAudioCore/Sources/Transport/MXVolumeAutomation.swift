@@ -1,5 +1,13 @@
 import Foundation
 
+/// Interpolation between automation breakpoints (Week 86 Bezier lite).
+public enum MXAutomationCurve: String, Codable, Equatable, Sendable, CaseIterable {
+    /// Straight line between points (default).
+    case linear
+    /// Smooth ease-in-out curve (Logic / Ableton Bezier lite).
+    case bezier
+}
+
 /// One automation breakpoint (Logic / Ableton lane lite).
 ///
 /// For **volume** lanes, `value` is linear gain 0…2 (1 = unity).
@@ -10,11 +18,31 @@ public struct MXAutomationPoint: Codable, Equatable, Sendable, Identifiable {
     public var beat: Double
     /// Lane-dependent value (see type docs).
     public var value: Float
+    /// Curve leaving this point toward the next (Week 86).
+    public var curve: MXAutomationCurve
 
-    public init(id: UUID = UUID(), beat: Double, value: Float) {
+    public init(
+        id: UUID = UUID(),
+        beat: Double,
+        value: Float,
+        curve: MXAutomationCurve = .linear
+    ) {
         self.id = id
         self.beat = max(0, beat)
         self.value = value
+        self.curve = curve
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        beat = try c.decode(Double.self, forKey: .beat)
+        value = try c.decode(Float.self, forKey: .value)
+        curve = try c.decodeIfPresent(MXAutomationCurve.self, forKey: .curve) ?? .linear
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, beat, value, curve
     }
 }
 
@@ -24,7 +52,7 @@ public enum MXVolumeAutomation: Sendable {
     public static let minValue: Float = 0
     public static let maxValue: Float = 2
 
-    /// Linear interpolation across sorted points. Empty → unity. Outside range → endpoint hold.
+    /// Interpolate across sorted points. Empty → unity. Outside range → endpoint hold.
     public static func value(atBeat beat: Double, points: [MXAutomationPoint]) -> Float {
         guard !points.isEmpty else { return unity }
         let sorted = points.sorted { $0.beat < $1.beat }
@@ -37,7 +65,8 @@ public enum MXVolumeAutomation: Sendable {
                 let span = b.beat - a.beat
                 if span < 1e-9 { return b.value }
                 let t = Float((beat - a.beat) / span)
-                return a.value + (b.value - a.value) * t
+                let eased = a.curve == .bezier ? MXAutomationCurveMath.easeInOut(t) : t
+                return a.value + (b.value - a.value) * eased
             }
         }
         return unity
@@ -114,7 +143,8 @@ public enum MXPanAutomation: Sendable {
                 let span = b.beat - a.beat
                 if span < 1e-9 { return clamp(b.value) }
                 let t = Float((beat - a.beat) / span)
-                return clamp(a.value + (b.value - a.value) * t)
+                let eased = a.curve == .bezier ? MXAutomationCurveMath.easeInOut(t) : t
+                return clamp(a.value + (b.value - a.value) * eased)
             }
         }
         return center
@@ -173,8 +203,30 @@ public enum MXPanAutomation: Sendable {
         clamp(trackPan + clipOffset)
     }
 
+    /// Track pan at `beat`: automation overrides the static fader when non-empty (Week 82).
+    public static func trackPan(atBeat beat: Double, staticPan: Float, automation: [MXAutomationPoint]) -> Float {
+        automation.isEmpty ? staticPan : value(atBeat: beat, points: automation)
+    }
+
     private static func clamp(_ value: Float) -> Float {
         min(maxValue, max(minValue, value))
+    }
+}
+
+/// Shared easing for Bezier automation segments (Week 86).
+public enum MXAutomationCurveMath: Sendable {
+    /// Smoothstep ease-in-out on 0…1.
+    public static func easeInOut(_ t: Float) -> Float {
+        let x = max(0, min(1, t))
+        return x * x * (3 - 2 * x)
+    }
+
+    /// Toggle curve on a point (linear ↔ bezier).
+    public static func togglingCurve(_ points: [MXAutomationPoint], id: UUID) -> [MXAutomationPoint] {
+        guard let idx = points.firstIndex(where: { $0.id == id }) else { return points }
+        var next = points
+        next[idx].curve = next[idx].curve == .linear ? .bezier : .linear
+        return next
     }
 }
 

@@ -59,6 +59,9 @@ public enum StudioBounceExporter {
         public var m4aURL: URL
         public var durationSeconds: Double
         public var loudnessMode: LoudnessMode
+        /// K-weighted integrated LUFS (Week 88 stem loudness cards).
+        public var integratedLUFS: Float?
+        public var truePeakDBFS: Float?
     }
 
     public struct StemsResult: Sendable {
@@ -68,6 +71,11 @@ public enum StudioBounceExporter {
         public var allURLs: [URL] {
             stems.flatMap { [$0.wavURL, $0.m4aURL] }
         }
+    }
+
+    public enum WAVBitDepth: Sendable {
+        case bit16
+        case bit24
     }
 
     public enum BounceError: Error, LocalizedError {
@@ -233,7 +241,8 @@ public enum StudioBounceExporter {
         normalize: Bool = true,
         loudnessMode: LoudnessMode = .peakNormalize,
         highPassEnabled: Bool = true,
-        masterLimiterEnabled: Bool = true
+        masterLimiterEnabled: Bool = true,
+        wavBitDepth: WAVBitDepth = .bit16
     ) throws -> StemsResult {
         let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
         let bpm = max(project.bpm, 1)
@@ -332,8 +341,10 @@ public enum StudioBounceExporter {
             let base = "Stem_\(sanitize(track.name))_\(stamp)"
             let wavURL = outputDirectory.appendingPathComponent("\(base).wav")
             let m4aURL = outputDirectory.appendingPathComponent("\(base).m4a")
-            try writeWAV(left: left, right: right, sampleRate: sampleRate, to: wavURL)
+            try writeWAV(left: left, right: right, sampleRate: sampleRate, bitDepth: wavBitDepth, to: wavURL)
             try writeM4A(left: left, right: right, sampleRate: sampleRate, to: m4aURL)
+
+            let loudness = MXLoudness.report(left: left, right: right, sampleRate: sampleRate, targetLUFS: nil)
 
             stems.append(
                 StemResult(
@@ -342,7 +353,9 @@ public enum StudioBounceExporter {
                     wavURL: wavURL,
                     m4aURL: m4aURL,
                     durationSeconds: totalSeconds,
-                    loudnessMode: appliedMode
+                    loudnessMode: appliedMode,
+                    integratedLUFS: loudness.integratedLUFS,
+                    truePeakDBFS: loudness.truePeakDBFS
                 )
             )
         }
@@ -355,6 +368,95 @@ public enum StudioBounceExporter {
         }
 
         return StemsResult(stems: stems, loudnessMode: appliedMode)
+    }
+
+    /// Bounce a single track to stereo PCM buffers (Week 83 freeze / MIDI parity).
+    ///
+    /// Ignores mute/solo — renders the track as heard with FX + automation.
+    public static func bounceTrack(
+        track: MXSessionTrack,
+        project: MXProject,
+        audioDirectory: URL,
+        normalize: Bool = false,
+        loudnessMode: LoudnessMode = .peakNormalize,
+        highPassEnabled: Bool = true,
+        masterLimiterEnabled: Bool = false
+    ) throws -> (left: [Float], right: [Float], durationSeconds: Double) {
+        let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
+        let bpm = max(project.bpm, 1)
+
+        var endBeat: Double = 0
+        var jobs: [(clip: MXClip, url: URL)] = []
+        for clip in track.clips {
+            guard clip.isActive else { continue }
+            guard let name = clip.audioFileName else { continue }
+            let url = audioDirectory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            jobs.append((clip, url))
+            endBeat = max(endBeat, clip.startBeat + clip.lengthBeats)
+        }
+        guard !jobs.isEmpty, endBeat > 0 else { throw BounceError.noAudio }
+
+        let fxTailSeconds = mixClipFXTailSeconds(track: track)
+        let totalSeconds = endBeat * 60.0 / bpm + fxTailSeconds
+        let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
+        var left = [Float](repeating: 0, count: frameCount)
+        var right = [Float](repeating: 0, count: frameCount)
+        var auxLeft = [Float](repeating: 0, count: frameCount)
+        var auxRight = [Float](repeating: 0, count: frameCount)
+        let kickTriggers = sidechainKickTriggers(project: project)
+
+        for job in jobs {
+            try mixClip(
+                url: job.url,
+                clip: job.clip,
+                track: track,
+                bpm: bpm,
+                sampleRate: sampleRate,
+                highPassEnabled: highPassEnabled,
+                kickTriggers: kickTriggers,
+                intoLeft: &left,
+                intoRight: &right,
+                intoAuxLeft: &auxLeft,
+                intoAuxRight: &auxRight
+            )
+        }
+
+        if MXAuxSend.isActive(sendPercent: track.reverbSend) || buffersHaveEnergy(auxLeft, auxRight) {
+            mixAuxReturn(
+                auxLeft: auxLeft,
+                auxRight: auxRight,
+                returnPercent: project.auxReverbReturn,
+                sampleRate: sampleRate,
+                intoLeft: &left,
+                intoRight: &right
+            )
+        }
+
+        if normalize {
+            switch loudnessMode {
+            case .peakNormalize:
+                peakNormalize(left: &left, right: &right, targetPeak: 0.89)
+            case .reelsLUFS:
+                if masterLimiterEnabled {
+                    MXLoudness.normalizeToLUFS(left: &left, right: &right, targetLUFS: -14, maxPeak: 0.99)
+                } else {
+                    let current = MXLoudness.integratedLUFS(left: left, right: right.isEmpty ? nil : right)
+                    if current.isFinite {
+                        MXLoudness.applyGain(
+                            MXLoudness.gainToTargetLUFS(currentLUFS: current, target: -14),
+                            left: &left,
+                            right: &right
+                        )
+                    }
+                }
+            }
+            if masterLimiterEnabled {
+                applyMasterLimiter(left: &left, right: &right, ceiling: 0.99)
+            }
+        }
+
+        return (left, right, totalSeconds)
     }
 
     // MARK: - Mix
@@ -390,8 +492,8 @@ public enum StudioBounceExporter {
         guard framesToRead > 0, let data = buffer.floatChannelData else { return }
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
-        let trackPan = track.pan
-        let hasTrackAutomation = !track.volumeAutomation.isEmpty
+        let hasTrackPanAutomation = !track.panAutomation.isEmpty
+        let hasTrackVolumeAutomation = !track.volumeAutomation.isEmpty
         let hasClipPanAutomation = !clip.panAutomation.isEmpty
         let sidechainOn = track.sidechainEnabled && !kickTriggers.isEmpty
         let sidechainAmount = Double(track.sidechainAmount) / 100
@@ -507,13 +609,18 @@ public enum StudioBounceExporter {
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
             let beat = Double(di) / max(sampleRate, 1) * bpm / 60.0
-            let trackAuto = hasTrackAutomation
+            let trackAuto = hasTrackVolumeAutomation
                 ? MXVolumeAutomation.value(atBeat: beat, points: track.volumeAutomation)
                 : MXVolumeAutomation.unity
             let clipGain = clip.effectiveGain(atProjectBeat: beat)
             let panOffset = hasClipPanAutomation
                 ? clip.panAutomationOffset(atProjectBeat: beat)
                 : MXPanAutomation.center
+            let trackPan = MXPanAutomation.trackPan(
+                atBeat: beat,
+                staticPan: track.pan,
+                automation: track.panAutomation
+            )
             let pan = MXPanAutomation.combined(trackPan: trackPan, clipOffset: panOffset)
             let duck: Float
             if sidechainOn {
@@ -672,27 +779,65 @@ public enum StudioBounceExporter {
 
     // MARK: - Writers
 
-    static func writeWAV(left: [Float], right: [Float], sampleRate: Double, to url: URL) throws {
+    static func writeWAV(
+        left: [Float],
+        right: [Float],
+        sampleRate: Double,
+        bitDepth: WAVBitDepth = .bit16,
+        to url: URL
+    ) throws {
         guard left.count == right.count, !left.isEmpty else { throw BounceError.noAudio }
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: 2,
-            interleaved: false
-        ) else {
-            throw BounceError.writeFailed("Invalid WAV format")
+
+        switch bitDepth {
+        case .bit16:
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: sampleRate,
+                channels: 2,
+                interleaved: false
+            ) else {
+                throw BounceError.writeFailed("Invalid WAV format")
+            }
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(left.count))
+            else { throw BounceError.writeFailed("Buffer alloc") }
+            buffer.frameLength = AVAudioFrameCount(left.count)
+            left.withUnsafeBufferPointer { src in
+                buffer.floatChannelData![0].update(from: src.baseAddress!, count: left.count)
+            }
+            right.withUnsafeBufferPointer { src in
+                buffer.floatChannelData![1].update(from: src.baseAddress!, count: right.count)
+            }
+            try file.write(from: buffer)
+
+        case .bit24:
+            let settings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 2,
+                AVLinearPCMBitDepthKey: 24,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ]
+            let file = try AVAudioFile(forWriting: url, settings: settings)
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: sampleRate,
+                channels: 2,
+                interleaved: false
+            ),
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(left.count))
+            else { throw BounceError.writeFailed("24-bit buffer alloc") }
+            buffer.frameLength = AVAudioFrameCount(left.count)
+            left.withUnsafeBufferPointer { src in
+                buffer.floatChannelData![0].update(from: src.baseAddress!, count: left.count)
+            }
+            right.withUnsafeBufferPointer { src in
+                buffer.floatChannelData![1].update(from: src.baseAddress!, count: right.count)
+            }
+            try file.write(from: buffer)
         }
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(left.count))
-        else { throw BounceError.writeFailed("Buffer alloc") }
-        buffer.frameLength = AVAudioFrameCount(left.count)
-        left.withUnsafeBufferPointer { src in
-            buffer.floatChannelData![0].update(from: src.baseAddress!, count: left.count)
-        }
-        right.withUnsafeBufferPointer { src in
-            buffer.floatChannelData![1].update(from: src.baseAddress!, count: right.count)
-        }
-        try file.write(from: buffer)
     }
 
     static func writeM4A(left: [Float], right: [Float], sampleRate: Double, to url: URL) throws {

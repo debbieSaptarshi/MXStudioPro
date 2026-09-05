@@ -13,17 +13,21 @@ public enum StudioReelsVideoExporter {
         public var fps: Double
         public var title: String
         public var includeTitle: Bool
+        /// Animated waveform bars + playhead (Week 84). Set false for still-frame regression.
+        public var includeWaveform: Bool
 
         public init(
             size: MXReelsVideoGeometry.Size = .reels720,
             fps: Double = MXReelsVideoGeometry.defaultFPS,
             title: String,
-            includeTitle: Bool = true
+            includeTitle: Bool = true,
+            includeWaveform: Bool = true
         ) {
             self.size = size
             self.fps = max(1, fps)
             self.title = title
             self.includeTitle = includeTitle
+            self.includeWaveform = includeWaveform
         }
     }
 
@@ -153,10 +157,12 @@ public enum StudioReelsVideoExporter {
         audioReader.startReading()
         writer.startSession(atSourceTime: .zero)
 
-        let pixelBuffer = try makeTitleFrame(
-            size: size,
-            title: options.includeTitle ? options.title : ""
-        )
+        let waveformPeaks: MXReelsWaveform.Peaks?
+        if options.includeWaveform {
+            waveformPeaks = try? loadWaveformPeaks(from: audioURL)
+        } else {
+            waveformPeaks = nil
+        }
 
         let timescale: CMTimeScale = 600
         for frameIndex in 0..<frames {
@@ -166,6 +172,13 @@ public enum StudioReelsVideoExporter {
             let pts = CMTime(
                 seconds: MXReelsVideoGeometry.presentationTime(frame: frameIndex, fps: fps),
                 preferredTimescale: timescale
+            )
+            let pixelBuffer = try makeFrame(
+                size: size,
+                title: options.includeTitle ? options.title : "",
+                waveform: waveformPeaks,
+                frameIndex: frameIndex,
+                frameCount: frames
             )
             if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
                 throw VideoError.writerFailed(writer.error?.localizedDescription ?? "Failed appending video frame")
@@ -210,10 +223,46 @@ public enum StudioReelsVideoExporter {
 
     // MARK: - Frame
 
-    private static func makeTitleFrame(
+    private static func loadWaveformPeaks(from audioURL: URL) throws -> MXReelsWaveform.Peaks {
+        let file = try AVAudioFile(forReading: audioURL)
+        let frameCount = AVAudioFrameCount(file.length)
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount)
+        else {
+            return MXReelsWaveform.peaks(mono: [])
+        }
+        try file.read(into: buffer)
+        let channels = Int(buffer.format.channelCount)
+        let n = Int(buffer.frameLength)
+        guard let data = buffer.floatChannelData, n > 0 else {
+            return MXReelsWaveform.peaks(mono: [])
+        }
+        var mono = [Float](repeating: 0, count: n)
+        if channels >= 2 {
+            for i in 0..<n {
+                mono[i] = 0.5 * (data[0][i] + data[1][i])
+            }
+        } else {
+            for i in 0..<n { mono[i] = data[0][i] }
+        }
+        return MXReelsWaveform.peaks(mono: mono)
+    }
+
+    private static func makeFrame(
         size: MXReelsVideoGeometry.Size,
-        title: String
+        title: String,
+        waveform: MXReelsWaveform.Peaks?,
+        frameIndex: Int,
+        frameCount: Int
     ) throws -> CVPixelBuffer {
+        let playheadFraction = MXReelsWaveform.playheadFraction(
+            frameIndex: frameIndex,
+            frameCount: frameCount
+        )
+        let playheadBar = waveform.map {
+            MXReelsWaveform.playheadBarIndex(fraction: playheadFraction, barCount: $0.barCount)
+        }
+
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
@@ -235,6 +284,15 @@ public enum StudioReelsVideoExporter {
                     start: .zero,
                     end: CGPoint(x: 0, y: size.height),
                     options: []
+                )
+            }
+
+            if let waveform {
+                drawWaveform(
+                    in: cg,
+                    size: size,
+                    peaks: waveform,
+                    playheadBar: playheadBar ?? 0
                 )
             }
 
@@ -277,8 +335,49 @@ public enum StudioReelsVideoExporter {
         }
 
         guard let cgImage = image.cgImage else {
-            throw VideoError.writerFailed("Could not render title frame")
+            throw VideoError.writerFailed("Could not render frame")
         }
+        return try pixelBuffer(from: cgImage, size: size)
+    }
+
+    private static func drawWaveform(
+        in cg: CGContext,
+        size: MXReelsVideoGeometry.Size,
+        peaks: MXReelsWaveform.Peaks,
+        playheadBar: Int
+    ) {
+        let barCount = peaks.barCount
+        guard barCount > 0 else { return }
+
+        let marginX: CGFloat = 48
+        let bottomY = CGFloat(size.height) * 0.78
+        let maxBarHeight = CGFloat(size.height) * 0.22
+        let totalWidth = CGFloat(size.width) - marginX * 2
+        let gap: CGFloat = 2
+        let barWidth = max(2, (totalWidth - gap * CGFloat(barCount - 1)) / CGFloat(barCount))
+
+        for (index, amp) in peaks.bars.enumerated() {
+            let x = marginX + CGFloat(index) * (barWidth + gap)
+            let h = max(4, CGFloat(amp) * maxBarHeight)
+            let rect = CGRect(x: x, y: bottomY - h, width: barWidth, height: h)
+            let isPast = index <= playheadBar
+            cg.setFillColor(
+                isPast
+                    ? UIColor(red: 0.95, green: 0.45, blue: 0.12, alpha: 0.95).cgColor
+                    : UIColor.white.withAlphaComponent(0.35).cgColor
+            )
+            cg.fill(rect)
+        }
+
+        let playX = marginX + CGFloat(playheadBar) * (barWidth + gap) + barWidth * 0.5
+        cg.setStrokeColor(UIColor.white.withAlphaComponent(0.9).cgColor)
+        cg.setLineWidth(2)
+        cg.move(to: CGPoint(x: playX, y: bottomY - maxBarHeight - 8))
+        cg.addLine(to: CGPoint(x: playX, y: bottomY + 6))
+        cg.strokePath()
+    }
+
+    private static func pixelBuffer(from cgImage: CGImage, size: MXReelsVideoGeometry.Size) throws -> CVPixelBuffer {
         var buffer: CVPixelBuffer?
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,

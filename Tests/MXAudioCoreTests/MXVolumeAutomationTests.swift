@@ -73,6 +73,23 @@ final class MXVolumeAutomationTests: XCTestCase {
         XCTAssertEqual(points[0].value, -1, accuracy: 1e-6)
     }
 
+    func testTrackPanOverridesStaticWhenAutomationPresent() {
+        let automation = [
+            MXAutomationPoint(beat: 0, value: -0.5),
+            MXAutomationPoint(beat: 4, value: 0.5),
+        ]
+        XCTAssertEqual(
+            MXPanAutomation.trackPan(atBeat: 0, staticPan: 0, automation: automation),
+            -0.5,
+            accuracy: 1e-6
+        )
+        XCTAssertEqual(
+            MXPanAutomation.trackPan(atBeat: 2, staticPan: 0, automation: []),
+            0,
+            accuracy: 1e-6
+        )
+    }
+
     func testClipGainRelativeMultiplies() {
         let relative = MXClipGainAutomation.effectiveGain(
             clipGain: 0.5,
