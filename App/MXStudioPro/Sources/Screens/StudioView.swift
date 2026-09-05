@@ -63,12 +63,14 @@ public struct StudioView: View {
 
     private enum AutomationLaneMode: String, CaseIterable, Identifiable {
         case trackVolume
+        case trackPan
         case clipVolume
         case clipPan
         var id: String { rawValue }
         var label: String {
             switch self {
             case .trackVolume: return "Track"
+            case .trackPan: return "Track Pan"
             case .clipVolume: return "Clip Gain"
             case .clipPan: return "Clip Pan"
             }
@@ -77,8 +79,9 @@ public struct StudioView: View {
         var compactLabel: String {
             switch self {
             case .trackVolume: return "Trk"
+            case .trackPan: return "Pan"
             case .clipVolume: return "Gain"
-            case .clipPan: return "Pan"
+            case .clipPan: return "C Pan"
             }
         }
     }
@@ -845,6 +848,12 @@ public struct StudioView: View {
                         onToggleDrumPartSolo: { part in
                             session.toggleDrumPartSolo(trackID: track.id, part: part)
                         },
+                        onFreeze: {
+                            try? session.freezeTrack(trackID: track.id)
+                        },
+                        onUnfreeze: {
+                            session.unfreezeTrack(trackID: track.id)
+                        },
                         showsAutomation: isAutomationLaneVisible(track),
                         onToggleAutomation: {
                             withAnimation {
@@ -1381,13 +1390,15 @@ public struct StudioView: View {
         let hasSelectedClip = selectedClip != nil
         HStack(spacing: isLandscape ? 2 : 4) {
             ForEach(AutomationLaneMode.allCases) { option in
-                let enabled = option == .trackVolume || hasSelectedClip
+                let enabled = option == .trackVolume || option == .trackPan || hasSelectedClip
                 Button {
                     guard enabled else { return }
                     automationLaneModes[trackID] = option
                     switch option {
                     case .trackVolume:
                         session.ensureDefaultVolumeAutomation(trackID: trackID)
+                    case .trackPan:
+                        session.ensureDefaultPanAutomation(trackID: trackID)
                     case .clipVolume:
                         if let id = session.selectedClipID {
                             session.ensureDefaultClipVolumeAutomation(clipID: id)
@@ -1485,6 +1496,27 @@ public struct StudioView: View {
                 },
                 onDelete: { id in
                     session.removeVolumeAutomationPoint(trackID: track.id, pointID: id)
+                }
+            )
+        case .trackPan:
+            VolumeAutomationLaneView(
+                points: track.panAutomation,
+                pixelsPerBeat: pixelsPerBeat,
+                beatsVisible: beatsVisible,
+                height: automationLaneHeight,
+                valueMin: MXPanAutomation.minValue,
+                valueMax: MXPanAutomation.maxValue,
+                beatOffset: 0,
+                beatMax: nil,
+                centerValue: 0,
+                onAdd: { beat, value in
+                    session.upsertPanAutomation(trackID: track.id, beat: beat, value: value)
+                },
+                onMove: { id, beat, value in
+                    session.movePanAutomationPoint(trackID: track.id, pointID: id, beat: beat, value: value)
+                },
+                onDelete: { id in
+                    session.removePanAutomationPoint(trackID: track.id, pointID: id)
                 }
             )
         case .clipVolume:
@@ -2182,6 +2214,27 @@ public struct StudioView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Comp X-fade")
+                                    .font(MXFont.caption())
+                                    .foregroundStyle(MXColor.grey)
+                                Spacer()
+                                Text(String(format: "%.0f ms", session.project.compCrossfadeSeconds * 1000))
+                                    .font(MXFont.body3())
+                                    .foregroundStyle(MXColor.lightGrey)
+                                    .monospacedDigit()
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { session.project.compCrossfadeSeconds * 1000 },
+                                    set: { session.setCompCrossfadeSeconds($0 / 1000) }
+                                ),
+                                in: 0...200,
+                                step: 1
+                            )
+                            .tint(MXColor.teal)
                         }
                     }
                 }
@@ -3958,6 +4011,8 @@ private struct StudioTrackHeader: View {
     var onToggleDrumParts: () -> Void = {}
     var onToggleDrumPartMute: (MXDrumPart) -> Void = { _ in }
     var onToggleDrumPartSolo: (MXDrumPart) -> Void = { _ in }
+    var onFreeze: () -> Void = {}
+    var onUnfreeze: () -> Void = {}
     /// Volume automation lane visibility (Week 52).
     var showsAutomation: Bool = false
     var onToggleAutomation: () -> Void = {}
@@ -4063,6 +4118,12 @@ private struct StudioTrackHeader: View {
                     .foregroundStyle(MXColor.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                if track.isFrozen {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(MXColor.teal)
+                        .accessibilityLabel("Frozen")
+                }
                 Spacer(minLength: 2)
                 if isArmed {
                     Text("R")
@@ -4092,6 +4153,18 @@ private struct StudioTrackHeader: View {
                                     Text(take.name)
                                 }
                             }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MXColor.grey)
+                    }
+                } else if track.kind == .audio {
+                    Menu {
+                        if track.isFrozen {
+                            Button("Unfreeze Track", action: onUnfreeze)
+                        } else {
+                            Button("Freeze Track", action: onFreeze)
                         }
                     } label: {
                         Image(systemName: "ellipsis")

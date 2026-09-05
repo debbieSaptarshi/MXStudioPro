@@ -4,26 +4,34 @@ import Foundation
 import MXStudioEngine
 import UIKit
 
-/// CapCut / Instagram Reels lite: bounce audio → vertical 9:16 MP4 with brand gradient + title.
-///
-/// Offline only — no network upload. Video is a still gradient (one drawn buffer reused).
+/// CapCut / Instagram Reels lite: bounce audio → vertical 9:16 MP4 with brand gradient,
+/// title, and animated waveform + playhead (Week 84).
 public enum StudioReelsVideoExporter {
     public struct Options: Sendable {
         public var size: MXReelsVideoGeometry.Size
         public var fps: Double
         public var title: String
         public var includeTitle: Bool
+        public var includeWaveform: Bool
+        public var waveformBarCount: Int
+        public var visibleBarCount: Int
 
         public init(
             size: MXReelsVideoGeometry.Size = .reels720,
             fps: Double = MXReelsVideoGeometry.defaultFPS,
             title: String,
-            includeTitle: Bool = true
+            includeTitle: Bool = true,
+            includeWaveform: Bool = true,
+            waveformBarCount: Int = MXReelsWaveform.defaultBarCount,
+            visibleBarCount: Int = MXReelsWaveform.defaultVisibleBars
         ) {
             self.size = size
             self.fps = max(1, fps)
             self.title = title
             self.includeTitle = includeTitle
+            self.includeWaveform = includeWaveform
+            self.waveformBarCount = max(16, waveformBarCount)
+            self.visibleBarCount = max(8, visibleBarCount)
         }
     }
 
@@ -84,6 +92,15 @@ public enum StudioReelsVideoExporter {
         let frames = MXReelsVideoGeometry.frameCount(durationSeconds: duration, fps: options.fps)
         let fps = options.fps
         let size = options.size
+
+        let waveformPeaks: [Float]
+        if options.includeWaveform {
+            let mono = try readMonoPCM(from: audioURL)
+            let raw = MXReelsWaveform.peaks(mono: mono, barCount: options.waveformBarCount)
+            waveformPeaks = MXReelsWaveform.normalizedPeaks(raw)
+        } else {
+            waveformPeaks = []
+        }
 
         let writer = try AVAssetWriter(outputURL: outURL, fileType: .mp4)
 
@@ -153,20 +170,25 @@ public enum StudioReelsVideoExporter {
         audioReader.startReading()
         writer.startSession(atSourceTime: .zero)
 
-        let pixelBuffer = try makeTitleFrame(
-            size: size,
-            title: options.includeTitle ? options.title : ""
-        )
-
         let timescale: CMTimeScale = 600
         for frameIndex in 0..<frames {
             while !videoInput.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
-            let pts = CMTime(
-                seconds: MXReelsVideoGeometry.presentationTime(frame: frameIndex, fps: fps),
-                preferredTimescale: timescale
+            let presentationSeconds = MXReelsVideoGeometry.presentationTime(frame: frameIndex, fps: fps)
+            let progress = MXReelsWaveform.playheadProgress(
+                presentationSeconds: presentationSeconds,
+                durationSeconds: duration
             )
+            let pixelBuffer = try makeFrame(
+                size: size,
+                title: options.includeTitle ? options.title : "",
+                peaks: waveformPeaks,
+                playheadProgress: progress,
+                includeWaveform: options.includeWaveform,
+                visibleBarCount: options.visibleBarCount
+            )
+            let pts = CMTime(seconds: presentationSeconds, preferredTimescale: timescale)
             if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
                 throw VideoError.writerFailed(writer.error?.localizedDescription ?? "Failed appending video frame")
             }
@@ -208,11 +230,44 @@ public enum StudioReelsVideoExporter {
         )
     }
 
+    // MARK: - PCM decode
+
+    private static func readMonoPCM(from url: URL) throws -> [Float] {
+        let file = try AVAudioFile(forReading: url)
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 0 else { return [] }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else {
+            return []
+        }
+        try file.read(into: buffer)
+        guard let data = buffer.floatChannelData else { return [] }
+        let channels = Int(buffer.format.channelCount)
+        let count = Int(buffer.frameLength)
+        guard count > 0 else { return [] }
+        if channels == 1 {
+            return Array(UnsafeBufferPointer(start: data[0], count: count))
+        }
+        var mono = [Float](repeating: 0, count: count)
+        for ch in 0..<channels {
+            let channel = data[ch]
+            for i in 0..<count {
+                mono[i] += channel[i]
+            }
+        }
+        let scale = 1 / Float(channels)
+        for i in 0..<count { mono[i] *= scale }
+        return mono
+    }
+
     // MARK: - Frame
 
-    private static func makeTitleFrame(
+    private static func makeFrame(
         size: MXReelsVideoGeometry.Size,
-        title: String
+        title: String,
+        peaks: [Float],
+        playheadProgress: Double,
+        includeWaveform: Bool,
+        visibleBarCount: Int
     ) throws -> CVPixelBuffer {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
@@ -254,30 +309,63 @@ public enum StudioReelsVideoExporter {
             )
 
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 42, weight: .bold),
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: paragraph,
-            ]
-            let ns = trimmed as NSString
-            let bounding = ns.boundingRect(
-                with: CGSize(width: maxWidth, height: 400),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: attrs,
-                context: nil
+            if !trimmed.isEmpty {
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 42, weight: .bold),
+                    .foregroundColor: UIColor.white,
+                    .paragraphStyle: paragraph,
+                ]
+                let ns = trimmed as NSString
+                let bounding = ns.boundingRect(
+                    with: CGSize(width: maxWidth, height: 400),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: attrs,
+                    context: nil
+                )
+                let textRect = CGRect(
+                    x: 40,
+                    y: CGFloat(size.height) * 0.42 - bounding.height * 0.5,
+                    width: maxWidth,
+                    height: ceil(bounding.height)
+                )
+                ns.draw(in: textRect, withAttributes: attrs)
+            }
+
+            guard includeWaveform, !peaks.isEmpty else { return }
+
+            let trackY = CGFloat(size.height) * 0.62
+            let trackH = CGFloat(size.height) * 0.16
+            let margin: CGFloat = 48
+            let trackW = CGFloat(size.width) - margin * 2
+            let center = MXReelsWaveform.centerBar(progress: playheadProgress, totalBars: peaks.count)
+            let range = MXReelsWaveform.visibleBarRange(
+                totalBars: peaks.count,
+                visibleBars: visibleBarCount,
+                centerBar: center
             )
-            let textRect = CGRect(
-                x: 40,
-                y: CGFloat(size.height) * 0.42 - bounding.height * 0.5,
-                width: maxWidth,
-                height: ceil(bounding.height)
-            )
-            ns.draw(in: textRect, withAttributes: attrs)
+            let layout = MXReelsWaveform.barLayout(peaks: peaks, visibleRange: range, maxHeight: 1)
+            let barW = max(2, trackW / CGFloat(max(1, layout.count)))
+            let playheadX = margin + CGFloat(MXReelsWaveform.playheadX(progress: playheadProgress)) * trackW
+
+            for bar in layout {
+                let x = margin + CGFloat(bar.x) * trackW - barW * 0.5
+                let h = CGFloat(bar.height) * trackH
+                let y = trackY + (trackH - h) * 0.5
+                let played = x + barW * 0.5 <= playheadX
+                let alpha: CGFloat = played ? 0.92 : 0.38
+                cg.setFillColor(UIColor.white.withAlphaComponent(alpha).cgColor)
+                cg.fill(CGRect(x: x, y: y, width: barW * 0.85, height: max(2, h)))
+            }
+
+            cg.setStrokeColor(UIColor.white.withAlphaComponent(0.95).cgColor)
+            cg.setLineWidth(2)
+            cg.move(to: CGPoint(x: playheadX, y: trackY - 4))
+            cg.addLine(to: CGPoint(x: playheadX, y: trackY + trackH + 4))
+            cg.strokePath()
         }
 
         guard let cgImage = image.cgImage else {
-            throw VideoError.writerFailed("Could not render title frame")
+            throw VideoError.writerFailed("Could not render frame")
         }
         var buffer: CVPixelBuffer?
         let attrs: [CFString: Any] = [

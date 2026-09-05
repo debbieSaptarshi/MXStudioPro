@@ -6,7 +6,7 @@ Add track → Record audio → Clip on timeline → Alter → Add another track 
 
 Social / AI / Learn stay out of the critical path until the DAW loop is demoable on a real phone.
 
-**Current focus:** Month 21 (W81–84) — award-app SOTA: aux reverb bus ← W81, track pan lane, take X-fade / freeze, Reels waveform or formant pitch.
+**Current focus:** Month 21 (W81–84) — award-app SOTA: aux reverb bus ✅, track pan lane ✅, take X-fade / freeze ✅, Reels animated waveform ✅.
 
 ---
 
@@ -94,6 +94,10 @@ Social / AI / Learn stay out of the critical path until the DAW loop is demoable
 | **78** | Video + audio Reels export lite | **Done (MVP)** ✅ |
 | **79** | MXPacks bundled catalog + install path | **Done (MVP)** ✅ |
 | **80** | Figma Create hub + landscape second pass | **Done (MVP)** ✅ |
+| **81** | Audio→aux reverb bus | **Done (MVP)** ✅ |
+| **82** | Track pan automation lane | **Done (MVP)** ✅ |
+| **83** | Take-lane crossfade dial / freeze track | **Done (MVP)** ✅ |
+| **84** | Animated Reels waveform video | **Done (MVP)** ✅ |
 
 ### Figma anchors (shipped / in use)
 
@@ -1002,67 +1006,78 @@ Improve what already ships to SOTA bars from BandLab, GarageBand, Cubasis, CapCu
 - **Drums:** SFZ kit choke groups; nested takes × part columns; pad velocity curves
 - **Step seq:** Swing per step grid ✅ W61; pattern slots save/recall ✅ W61; SFZ kit choke later; live MIDI out from steps
 - **Piano roll:** Multi-select transpose ✅ W62; scale lock ✅ W62; draw mode ✅ W68; chord paint / velocity-while-draw
-- **Automation:** Bezier / curved automation; relative vs absolute clip gain ✅ W77; track pan automation lane ← W82
-- **Mix:** Sidechain lite ✅ W63 + bounce parity ✅ W75; shared reverb send visual ✅ W63; K-weighted LUFS ✅ W76; audio→aux reverb bus ← W81; compressor makeup / sidechain listen
-- **Arrange:** Snap/grid SOTA ✅ W64–67; clip gain automation ✅ W77; take-lane crossfade dial ← W83; freeze/bounce-in-place track ← W83
-- **Export:** Loudness report ✅ W71/W76; video + audio Reels ✅ W78; stem loudness cards; AAX/WAV 24-bit option; animated waveform video ← W84 candidate
-- **Wow:** Pitch correct ✅ W69; time-stretch ✅ W70; harmonies ✅ W73; beat browser ✅ W74; formant-aware pitch ← W84 candidate; warp markers
+- **Automation:** Bezier / curved automation; relative vs absolute clip gain ✅ W77; track pan automation lane ✅ W82
+- **Mix:** Sidechain lite ✅ W63 + bounce parity ✅ W75; shared reverb send visual ✅ W63; K-weighted LUFS ✅ W76; audio→aux reverb bus ✅ W81; compressor makeup / sidechain listen
+- **Arrange:** Snap/grid SOTA ✅ W64–67; clip gain automation ✅ W77; take-lane crossfade dial ✅ W83; freeze/bounce-in-place track ✅ W83
+- **Export:** Loudness report ✅ W71/W76; video + audio Reels ✅ W78; stem loudness cards; AAX/WAV 24-bit option; animated waveform video ✅ W84
+- **Wow:** Pitch correct ✅ W69; time-stretch ✅ W70; harmonies ✅ W73; beat browser ✅ W74; formant-aware pitch ← Month 22; warp markers
 - **Social/AI:** Cloud auth sync stub ✅ W72; real model API for AI compose; live Discover catalog; real cloud backend
 - **Packs:** Procedural beats ✅ W74; MXPacks bundled catalog + install ✅ W79; licensed one-shot / download packs
 - **Figma parity:** Create hub + landscape 812×375 second pass ✅ W80; After Record chrome re-audit vs `95:85026`
 - **SOTA polish candidates:** SFZ kit choke; nested takes×parts; Bezier automation; offline render progress HUD; Haptic metronome accents
 
-## Month 21 — Award-app SOTA *(Weeks 81–84)* **Planned**
+## Month 21 — Award-app SOTA *(Weeks 81–84)* ✅ Complete
 
 Raise shipped features to award-app bars (BandLab sends, Logic pan lanes, GarageBand freeze, CapCut motion).
 
 | Week | Focus | Status | Reference |
 |------|--------|--------|-----------|
-| **81** | Audio→aux reverb bus | **Planned** | BandLab / Logic send bus |
-| **82** | Track pan automation lane | **Planned** | Logic / Ableton |
-| **83** | Take-lane crossfade dial / freeze track | **Planned** | Logic comps / GarageBand freeze |
-| **84** | Animated Reels waveform video **or** formant-aware pitch lite | **Planned** | CapCut / Melodyne lite |
+| **81** | Audio→aux reverb bus | **Done (MVP)** ✅ | BandLab / Logic send bus |
+| **82** | Track pan automation lane | **Done (MVP)** ✅ | Logic / Ableton |
+| **83** | Take-lane crossfade dial / freeze track | **Done (MVP)** ✅ | Logic comps / GarageBand freeze |
+| **84** | Animated Reels waveform video | **Done (MVP)** ✅ | CapCut / Instagram |
 
-### Week 81 — Audio→aux reverb bus *(planned)*
-
-**Done when**
-- [ ] Per-track send level to shared reverb aux (beyond W63 visual)
-- [ ] Aux return in mixer; bounce includes wet send path
-- [ ] Unit tests for send → aux routing math
-
-### Week 82 — Track pan automation lane *(planned)*
+### Week 81 — Audio→aux reverb bus ✅
 
 **Done when**
-- [ ] Arrange lane for track pan (−1…1) beside volume
-- [ ] Live + bounce read pan automation
-- [ ] Landscape-safe chrome (reuse W80 compact picker patterns)
+- [x] Per-track send level to shared reverb aux (beyond W63 visual)
+- [x] Aux return in mixer; bounce includes wet send path
+- [x] Unit tests for send → aux routing math (`MXAuxSend`)
 
-### Week 83 — Take-lane crossfade dial / freeze track *(planned)*
+**Week 81 notes:** `MXAuxSend` pure math; `MXGraph` post-fader send-gain nodes; `StudioBounceExporter.mixAuxReturn`; mixer Aux return slider.
+
+### Week 82 — Track pan automation lane ✅
 
 **Done when**
-- [ ] Comp crossfade length dial on playlist takes
-- [ ] Freeze / bounce-in-place track → audio clip (CPU relief)
-- [ ] Clear unfreeze / replace path
+- [x] Arrange lane for track pan (−1…1) beside volume
+- [x] Live + bounce read pan automation (`panAtBeat` + `MXPanAutomation`)
+- [x] Landscape-safe chrome (Trk / Pan / Gain / C Pan compact picker)
 
-### Week 84 — Animated Reels waveform **or** formant pitch *(planned)*
+**Week 82 notes:** `MXSessionTrack.panAutomation`; automation mode **Track Pan**; empty curve falls back to static fader.
 
-**Pick one primary; park the other**
-- [ ] **A:** Reels MP4 with animated waveform / playhead motion (W78 still-frame → motion)
-- [ ] **B:** Formant-aware pitch lite on vocal clips (W69 pitch correct upgrade)
+### Week 83 — Take-lane crossfade dial / freeze track ✅
 
-**SOTA ideas for existing features (Month 21+)** — what would make shipped work award-winning:
+**Done when**
+- [x] Comp crossfade length dial on playlist takes (`MXProject.compCrossfadeSeconds` 0…200 ms)
+- [x] Freeze / bounce-in-place track → audio clip (`StudioBounceExporter.bounceTrack`)
+- [x] Clear unfreeze / replace path (`frozenClipsBackup` + header menu)
+
+**Week 83 notes:** Crossfade applies to **new punches only**; freeze is audio tracks with active WAV clips; snowflake badge + ellipsis menu.
+
+### Week 84 — Animated Reels waveform ✅
+
+**Done when**
+- [x] Reels MP4 with animated waveform + playhead motion (`MXReelsWaveform` + per-frame `makeFrame`)
+- [x] Pure helpers unit-tested on Linux CI
+- [x] Week 78 still-frame path preserved via `includeWaveform: false`
+
+**Week 84 notes:** Scrolling bar window + playhead line synced to audio; formant pitch (84B) parked for Month 22.
+
+**SOTA ideas for existing features (Month 22+)** — what would make shipped work award-winning:
 - **Create hub:** live Sampler/Packs tile; personalized “Continue” row; motion on hero AI card
 - **Landscape Studio:** GarageBand Quick density — pinch-zoom inertia, lane scrub, one-thumb transport
 - **Automation:** Bezier curves; on-clip gain overlay; track pan ✅ W82 target
 - **Reverb/FX:** real aux bus ✅ W81; sidechain listen; insert drag-reorder
 - **Takes:** crossfade dial ✅ W83; nested takes×drum parts; freeze ✅ W83
-- **Export/Reels:** animated waveform ✅ W84A; stem loudness cards; 24-bit WAV
-- **Pitch/time:** formant preserve ✅ W84B; warp markers; harmony stack polish
+- **Export/Reels:** animated waveform ✅ W84; stem loudness cards; 24-bit WAV
+- **Pitch/time:** formant preserve ← Month 22; warp markers; harmony stack polish
 
-**SOTA next (after Month 21)**
-- Bezier automation; SFZ kit choke; licensed pack downloads
-- Warp markers; offline render progress HUD; haptic metronome accents
-- Real AI model API; live Discover catalog
+**SOTA next (Month 22)**
+- W85 Formant-aware pitch lite (W69 upgrade)
+- W86 Bezier automation curves
+- W87 MIDI/synth freeze parity; SFZ kit choke
+- W88 Stem loudness cards + 24-bit WAV export
+- Licensed pack downloads; real AI model API; live Discover catalog
 
 ## Month 18 implementation notes
 
@@ -1236,7 +1251,8 @@ W1–4 Engine + project + record → clip     ← done (MVP)
                                   → W65–W68 Month 17 snap SOTA + piano draw ✅
                                     → W73–W76 Month 19 ✅
                                       → W77–W80 Month 20 ✅
-                                        → W81–W84 Month 21 ← next
+                                        → W81–W84 Month 21 ✅
+                                          → W85+ Month 22 ← next
 ```
 
 If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, collab depth, pixel polish instead.
@@ -1268,7 +1284,8 @@ If slipped: **never cut W5–8 or W11–12** — cut Live/Looper, full Learn, co
 | 69–72 | Pitch correction / time-stretch / LUFS report / cloud auth spine *(done)* |
 | 73–76 | Harmonies ✅ / beat browser ✅ / sidechain bounce ✅ / K-weighted LUFS ✅ |
 | 77–80 | Clip gain Rel/Abs ✅ / Reels A+V ✅ / MXPacks ✅ / Figma Create + landscape ✅ |
-| 81–84 | Aux reverb bus / track pan lane / take X-fade·freeze / Reels waveform **or** formant pitch |
+| 81–84 | Aux reverb bus ✅ / track pan lane ✅ / take X-fade·freeze ✅ / Reels waveform ✅ |
+| 85+ | Formant pitch / Bezier automation / stem loudness / SFZ choke |
 
 ---
 

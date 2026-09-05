@@ -807,7 +807,8 @@ public final class StudioSessionController {
                 sibling: source,
                 punchStartBeat: punchStart,
                 punchEndBeat: punchEnd,
-                secondsBetween: secondsBetween
+                secondsBetween: secondsBetween,
+                crossfadeSeconds: project.compCrossfadeSeconds
             )
 
             if let before = result.before {
@@ -997,7 +998,7 @@ public final class StudioSessionController {
     }
 
     public func armTrack(id: UUID) {
-        guard project.tracks.contains(where: { $0.id == id }) else { return }
+        guard let track = project.tracks.first(where: { $0.id == id }), !track.isFrozen else { return }
         for i in project.tracks.indices {
             project.tracks[i].isArmed = (project.tracks[i].id == id)
         }
@@ -1478,7 +1479,10 @@ public final class StudioSessionController {
             let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
             let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
             player.volume = track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * auto
-            player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
+            player.pan = MXPanAutomation.combined(
+                trackPan: track.panAtBeat(playheadBeat),
+                clipOffset: panOffset
+            )
         }
     }
 
@@ -3244,7 +3248,10 @@ public final class StudioSessionController {
                 let auto = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
                 let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
                 player.volume = track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * auto
-                player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
+                player.pan = MXPanAutomation.combined(
+                    trackPan: track.panAtBeat(playheadBeat),
+                    clipOffset: panOffset
+                )
 
                 let clipStart = transport.tempoMap.sample(forBeat: clip.startBeat, sampleRate: transport.sampleRate)
                 let clipEnd = transport.tempoMap.sample(
@@ -3685,7 +3692,10 @@ public final class StudioSessionController {
             player.volume = audible
                 ? track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * autoGain
                 : 0
-            player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
+            player.pan = MXPanAutomation.combined(
+                trackPan: track.panAtBeat(playheadBeat),
+                clipOffset: panOffset
+            )
         }
         // Solo/mute changes should refresh all tracks' audible state
         if anySolo || track.isMuted {
@@ -3698,7 +3708,10 @@ public final class StudioSessionController {
                         : 0
                     if let player = clipPlayers[clip.id] {
                         let panOffset = clip.panAutomationOffset(atProjectBeat: playheadBeat)
-                        player.pan = MXPanAutomation.combined(trackPan: other.pan, clipOffset: panOffset)
+                        player.pan = MXPanAutomation.combined(
+                            trackPan: other.panAtBeat(playheadBeat),
+                            clipOffset: panOffset
+                        )
                     }
                 }
             }
@@ -3716,7 +3729,7 @@ public final class StudioSessionController {
             let autoGain = MXVolumeAutomation.value(atBeat: playheadBeat, points: track.volumeAutomation)
             let duck = sidechainDuckGain(for: track, kickTriggers: kicks)
             chain.volume = audible ? track.volume * autoGain * duck : 0
-            chain.pan = track.pan
+            chain.pan = track.panAtBeat(playheadBeat)
             chain.isMuted = !audible
         }
     }
@@ -3786,7 +3799,10 @@ public final class StudioSessionController {
                 player.volume = audible
                     ? track.volume * clip.effectiveGain(atProjectBeat: playheadBeat) * autoGain * duck
                     : 0
-                player.pan = MXPanAutomation.combined(trackPan: track.pan, clipOffset: panOffset)
+                player.pan = MXPanAutomation.combined(
+                    trackPan: track.panAtBeat(playheadBeat),
+                    clipOffset: panOffset
+                )
             }
             if track.kind == .midi, let chain = instrumentChains[track.id] {
                 chain.volume = audible ? track.volume * autoGain * duck : 0
@@ -3841,6 +3857,142 @@ public final class StudioSessionController {
             MXAutomationPoint(beat: 4, value: 1),
         ]
         persistSoon()
+    }
+
+    // MARK: - Track pan automation (Week 82)
+
+    public func upsertPanAutomation(trackID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].panAutomation = MXPanAutomation.upserting(
+            project.tracks[index].panAutomation,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func movePanAutomationPoint(trackID: UUID, pointID: UUID, beat: Double, value: Float) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].panAutomation = MXPanAutomation.moving(
+            project.tracks[index].panAutomation,
+            id: pointID,
+            beat: beat,
+            value: value
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    public func removePanAutomationPoint(trackID: UUID, pointID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        pushUndoSnapshot()
+        project.tracks[index].panAutomation = MXPanAutomation.removing(
+            project.tracks[index].panAutomation,
+            id: pointID
+        )
+        persistSoon()
+        applyVolumeAutomationAtPlayhead()
+    }
+
+    /// Seed center hold curve when opening an empty track pan lane.
+    public func ensureDefaultPanAutomation(trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].panAutomation.isEmpty else { return }
+        pushUndoSnapshot()
+        let center = project.tracks[index].pan
+        project.tracks[index].panAutomation = [
+            MXAutomationPoint(beat: 0, value: center),
+            MXAutomationPoint(beat: 4, value: center),
+        ]
+        persistSoon()
+    }
+
+    // MARK: - Comp crossfade + freeze (Week 83)
+
+    /// Punch comp crossfade length (0…200 ms). Applies to new punches only.
+    public func setCompCrossfadeSeconds(_ seconds: Double) {
+        let clamped = MXProject.clampCompCrossfade(seconds)
+        guard abs(clamped - project.compCrossfadeSeconds) > 1e-6 else { return }
+        pushUndoSnapshot()
+        project.compCrossfadeSeconds = clamped
+        persistSoon()
+    }
+
+    /// Bounce-in-place: render track offline → single frozen clip (GarageBand freeze lite).
+    public func freezeTrack(trackID: UUID) throws {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        let track = project.tracks[index]
+        guard track.kind == .audio, !track.isFrozen else { return }
+        guard track.clips.contains(where: { $0.isActive && $0.audioFileName != nil }) else { return }
+
+        let audioDir = MXProjectStore.shared.audioDirectory(for: project.id)
+        let bounced = try StudioBounceExporter.bounceTrack(
+            project: project,
+            trackID: trackID,
+            audioDirectory: audioDir,
+            highPassEnabled: isHighPassEnabled
+        )
+
+        let destName = "freeze_\(trackID.uuidString.prefix(8))_\(Int(Date().timeIntervalSince1970)).wav"
+        let destURL = audioDir.appendingPathComponent(destName)
+        try StudioBounceExporter.writeWAV(
+            left: bounced.left,
+            right: bounced.right,
+            sampleRate: project.sampleRate > 0 ? project.sampleRate : 48_000,
+            to: destURL
+        )
+
+        pushUndoSnapshot()
+        var startBeat = Double.greatestFiniteMagnitude
+        for clip in track.clips where clip.isActive {
+            startBeat = min(startBeat, clip.startBeat)
+        }
+        if !startBeat.isFinite { startBeat = 0 }
+
+        for clip in project.tracks[index].clips {
+            detachPlayer(for: clip.id)
+        }
+
+        project.tracks[index].frozenClipsBackup = project.tracks[index].clips
+        project.tracks[index].isFrozen = true
+        project.tracks[index].isArmed = false
+
+        let frozenClip = MXClip(
+            trackID: trackID,
+            name: "\(track.name) (Frozen)",
+            startBeat: startBeat,
+            lengthBeats: max(0.25, bounced.endBeat - startBeat),
+            audioFileName: destName,
+            sourceOffsetSeconds: 0,
+            sourceDurationSeconds: bounced.durationSeconds
+        )
+        project.tracks[index].clips = [frozenClip]
+        attachPlayer(for: frozenClip)
+        persistNow()
+    }
+
+    /// Restore pre-freeze clips and remove the frozen bed.
+    public func unfreezeTrack(trackID: UUID) {
+        guard let index = project.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard project.tracks[index].isFrozen, let backup = project.tracks[index].frozenClipsBackup else { return }
+
+        pushUndoSnapshot()
+        for clip in project.tracks[index].clips {
+            detachPlayer(for: clip.id)
+        }
+        project.tracks[index].clips = backup
+        project.tracks[index].frozenClipsBackup = nil
+        project.tracks[index].isFrozen = false
+        for clip in backup {
+            attachPlayer(for: clip)
+        }
+        persistNow()
+        if isPlaying, let sample = transport?.currentSample {
+            scheduleClipPlayers(fromSample: sample)
+        }
     }
 
     // MARK: - Clip-relative automation (Week 54)
