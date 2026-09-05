@@ -121,4 +121,16 @@ final class MXCompRegionSplitTests: XCTestCase {
         XCTAssertNil(result.after)
         XCTAssertFalse(result.deactivateOriginal)
     }
+
+    func testCustomCrossfadeSeconds() {
+        let result = MXCompRegionSplit.split(
+            sibling: longTake,
+            punchStartBeat: 2,
+            punchEndBeat: 4,
+            secondsBetween: secondsBetween,
+            crossfadeSeconds: 0.05
+        )
+        XCTAssertEqual(result.before?.fadeOutSeconds ?? -1, 0.05, accuracy: 1e-9)
+        XCTAssertEqual(result.punchFadeInSeconds, 0.05, accuracy: 1e-9)
+    }
 }

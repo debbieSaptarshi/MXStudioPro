@@ -357,6 +357,84 @@ public enum StudioBounceExporter {
         return StemsResult(stems: stems, loudnessMode: appliedMode)
     }
 
+    /// Offline mix for a single track (Week 83 freeze / bounce-in-place).
+    public struct TrackBounceResult: Sendable {
+        public var left: [Float]
+        public var right: [Float]
+        public var durationSeconds: Double
+        public var endBeat: Double
+    }
+
+    /// Render one track's active clips + FX + aux send into stereo buffers (no normalize).
+    public static func bounceTrack(
+        project: MXProject,
+        trackID: UUID,
+        audioDirectory: URL,
+        highPassEnabled: Bool = true
+    ) throws -> TrackBounceResult {
+        guard let track = project.tracks.first(where: { $0.id == trackID }) else {
+            throw BounceError.noAudio
+        }
+        let sampleRate = project.sampleRate > 0 ? project.sampleRate : 48_000
+        let bpm = max(project.bpm, 1)
+
+        var endBeat: Double = 0
+        var jobs: [(clip: MXClip, url: URL)] = []
+        var fxTailSeconds: Double = 0.25
+        for clip in track.clips {
+            guard clip.isActive else { continue }
+            guard let name = clip.audioFileName else { continue }
+            let url = audioDirectory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            jobs.append((clip, url))
+            endBeat = max(endBeat, clip.startBeat + clip.lengthBeats)
+            fxTailSeconds = max(fxTailSeconds, mixClipFXTailSeconds(track: track))
+        }
+        guard !jobs.isEmpty, endBeat > 0 else { throw BounceError.noAudio }
+
+        let totalSeconds = endBeat * 60.0 / bpm + fxTailSeconds
+        let frameCount = max(1, Int((totalSeconds * sampleRate).rounded(.up)))
+        var left = [Float](repeating: 0, count: frameCount)
+        var right = [Float](repeating: 0, count: frameCount)
+        var auxLeft = [Float](repeating: 0, count: frameCount)
+        var auxRight = [Float](repeating: 0, count: frameCount)
+        let kickTriggers = sidechainKickTriggers(project: project)
+
+        for job in jobs {
+            try mixClip(
+                url: job.url,
+                clip: job.clip,
+                track: track,
+                bpm: bpm,
+                sampleRate: sampleRate,
+                highPassEnabled: highPassEnabled,
+                kickTriggers: kickTriggers,
+                intoLeft: &left,
+                intoRight: &right,
+                intoAuxLeft: &auxLeft,
+                intoAuxRight: &auxRight
+            )
+        }
+
+        if MXAuxSend.isActive(sendPercent: track.reverbSend) || buffersHaveEnergy(auxLeft, auxRight) {
+            mixAuxReturn(
+                auxLeft: auxLeft,
+                auxRight: auxRight,
+                returnPercent: project.auxReverbReturn,
+                sampleRate: sampleRate,
+                intoLeft: &left,
+                intoRight: &right
+            )
+        }
+
+        return TrackBounceResult(
+            left: left,
+            right: right,
+            durationSeconds: totalSeconds,
+            endBeat: endBeat
+        )
+    }
+
     // MARK: - Mix
 
     private static func mixClip(
@@ -390,8 +468,8 @@ public enum StudioBounceExporter {
         guard framesToRead > 0, let data = buffer.floatChannelData else { return }
 
         let destStart = Int((clip.startBeat * 60.0 / bpm * sampleRate).rounded())
-        let trackPan = track.pan
-        let hasTrackAutomation = !track.volumeAutomation.isEmpty
+        let hasTrackVolumeAutomation = !track.volumeAutomation.isEmpty
+        let hasTrackPanAutomation = !track.panAutomation.isEmpty
         let hasClipPanAutomation = !clip.panAutomation.isEmpty
         let sidechainOn = track.sidechainEnabled && !kickTriggers.isEmpty
         let sidechainAmount = Double(track.sidechainAmount) / 100
@@ -507,13 +585,16 @@ public enum StudioBounceExporter {
             let di = destStart + i
             guard di >= 0, di < left.count else { continue }
             let beat = Double(di) / max(sampleRate, 1) * bpm / 60.0
-            let trackAuto = hasTrackAutomation
+            let trackAuto = hasTrackVolumeAutomation
                 ? MXVolumeAutomation.value(atBeat: beat, points: track.volumeAutomation)
                 : MXVolumeAutomation.unity
             let clipGain = clip.effectiveGain(atProjectBeat: beat)
             let panOffset = hasClipPanAutomation
                 ? clip.panAutomationOffset(atProjectBeat: beat)
                 : MXPanAutomation.center
+            let trackPan = hasTrackPanAutomation
+                ? MXPanAutomation.value(atBeat: beat, points: track.panAutomation)
+                : track.pan
             let pan = MXPanAutomation.combined(trackPan: trackPan, clipOffset: panOffset)
             let duck: Float
             if sidechainOn {
