@@ -103,8 +103,10 @@ public struct AIComposeView: View {
 
     private var composeForm: some View {
         VStack(alignment: .leading, spacing: 20) {
+            apiKeySection
             promptSection
             genreSection
+            durationSection
             instrumentalRow
 
             if service.phase == .failed, let message = service.errorMessage {
@@ -122,6 +124,55 @@ public struct AIComposeView: View {
                 expands: true
             ) {
                 Task { await service.generate() }
+            }
+        }
+    }
+
+    private var apiKeySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ELEVENLABS API KEY")
+                .font(MXFont.mediumButton())
+                .foregroundStyle(MXColor.grey)
+
+            SecureField("sk_…", text: $service.apiKeyDraft)
+                .font(MXFont.body2())
+                .foregroundStyle(MXColor.white)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(MXColor.black)
+                )
+
+            Text("Get a key at elevenlabs.io. Stored on device only.")
+                .font(MXFont.caption())
+                .foregroundStyle(MXColor.grey)
+        }
+    }
+
+    private var durationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LENGTH")
+                .font(MXFont.mediumButton())
+                .foregroundStyle(MXColor.grey)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(MXAIComposeService.durationOptions, id: \.self) { seconds in
+                        Button {
+                            service.targetDurationSeconds = seconds
+                        } label: {
+                            MXFilterChip(
+                                title: formatDuration(seconds),
+                                isSelected: service.targetDurationSeconds == seconds
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
             }
         }
     }
@@ -281,7 +332,7 @@ public struct AIComposeView: View {
                     .tint(MXColor.accent)
                     .scaleEffect(1.2)
 
-                Text("Generating your track…")
+                Text("Generating with ElevenLabs…")
                     .font(MXFont.body2())
                     .foregroundStyle(MXColor.white)
             }

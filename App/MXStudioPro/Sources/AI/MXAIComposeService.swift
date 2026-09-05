@@ -7,6 +7,8 @@ public struct AIComposeResult: Identifiable, Equatable {
     public let durationSeconds: Int
     public let genres: [String]
     public let instrumental: Bool
+    /// Staged MP3 in `Documents/AICompose/` until imported into a project.
+    public let stagedFileName: String
 }
 
 enum AIComposePhase: Equatable {
@@ -20,10 +22,13 @@ enum AIComposePhase: Equatable {
 @Observable
 final class MXAIComposeService {
     static let genres = ["Pop", "Hip-Hop", "R&B", "Rock", "Electronic", "Lo-Fi", "Acoustic", "Cinematic"]
+    static let durationOptions = [15, 30, 60, 90, 120]
 
     var prompt: String = ""
     var selectedGenres: Set<String> = []
     var instrumental: Bool = false
+    var targetDurationSeconds: Int = 30
+    var apiKeyDraft: String = MXAIComposeCredentials.apiKey ?? ""
     var phase: AIComposePhase = .idle
     var result: AIComposeResult?
     var errorMessage: String?
@@ -32,8 +37,16 @@ final class MXAIComposeService {
         prompt.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var trimmedAPIKey: String {
+        apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var hasAPIKey: Bool {
+        !trimmedAPIKey.isEmpty || MXAIComposeCredentials.hasAPIKey
+    }
+
     var canGenerate: Bool {
-        !trimmedPrompt.isEmpty && phase != .generating
+        hasAPIKey && !trimmedPrompt.isEmpty && phase != .generating
     }
 
     func toggleGenre(_ genre: String) {
@@ -44,27 +57,52 @@ final class MXAIComposeService {
         }
     }
 
+    func saveAPIKey() {
+        guard !trimmedAPIKey.isEmpty else { return }
+        MXAIComposeCredentials.setAPIKey(trimmedAPIKey)
+    }
+
     func generate() async {
-        guard canGenerate else { return }
+        guard canGenerate else {
+            if !hasAPIKey {
+                errorMessage = MXElevenLabsMusicClient.ClientError.missingAPIKey.localizedDescription
+                phase = .failed
+            }
+            return
+        }
 
         phase = .generating
         errorMessage = nil
         result = nil
+        saveAPIKey()
 
         do {
-            try await Task.sleep(for: .seconds(2.5))
             try Task.checkCancellation()
 
-            let snippet = String(trimmedPrompt.prefix(32))
-            let genreLabel = selectedGenres.sorted().first ?? "Original"
-            let title = snippet.isEmpty ? "Untitled \(genreLabel)" : "\(snippet) — \(genreLabel)"
+            let composedPrompt = buildPrompt()
+            let lengthMs = clampedMusicLengthMs(targetDurationSeconds)
+            let audioData = try await MXElevenLabsMusicClient.compose(
+                .init(
+                    prompt: composedPrompt,
+                    musicLengthMs: lengthMs,
+                    forceInstrumental: instrumental
+                ),
+                apiKey: trimmedAPIKey.isEmpty ? MXAIComposeCredentials.apiKey : trimmedAPIKey
+            )
+            try Task.checkCancellation()
+
+            let composeID = UUID()
+            let staged = try MXAIAudioFileWriter.writeStagedMP3(data: audioData, id: composeID)
+            let title = buildTitle(from: composedPrompt)
+            let duration = max(1, Int(staged.durationSeconds.rounded()))
 
             result = AIComposeResult(
-                id: UUID(),
+                id: composeID,
                 title: title,
-                durationSeconds: 32,
+                durationSeconds: duration,
                 genres: selectedGenres.sorted(),
-                instrumental: instrumental
+                instrumental: instrumental,
+                stagedFileName: staged.fileName
             )
             phase = .completed
         } catch is CancellationError {
@@ -83,8 +121,27 @@ final class MXAIComposeService {
         prompt = ""
         selectedGenres = []
         instrumental = false
+        targetDurationSeconds = 30
         phase = .idle
         result = nil
         errorMessage = nil
+    }
+
+    private func buildPrompt() -> String {
+        var parts: [String] = [trimmedPrompt]
+        if !selectedGenres.isEmpty {
+            parts.append("Genre: \(selectedGenres.sorted().joined(separator: ", "))")
+        }
+        return parts.joined(separator: ". ")
+    }
+
+    private func buildTitle(from composedPrompt: String) -> String {
+        let snippet = String(composedPrompt.prefix(32))
+        let genreLabel = selectedGenres.sorted().first ?? "Original"
+        return snippet.isEmpty ? "Untitled \(genreLabel)" : "\(snippet) — \(genreLabel)"
+    }
+
+    private func clampedMusicLengthMs(_ seconds: Int) -> Int {
+        min(max(seconds, 3), 600) * 1_000
     }
 }

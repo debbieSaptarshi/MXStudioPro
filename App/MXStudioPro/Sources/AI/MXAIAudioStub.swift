@@ -1,6 +1,65 @@
+import AVFoundation
 import Foundation
 
-/// Offline placeholder audio for AI compose until real generation ships.
+/// Writes ElevenLabs-generated audio into the AI compose staging folder and
+/// copies it into a project's `Audio/` directory on import.
+enum MXAIAudioFileWriter {
+    enum WriteError: Error, LocalizedError {
+        case stagingMissing(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .stagingMissing(let name):
+                return "Generated audio file is missing: \(name)"
+            }
+        }
+    }
+
+    static var stagingDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("AICompose", isDirectory: true)
+    }
+
+    /// Writes MP3 bytes to `Documents/AICompose/` and returns the staged file name.
+    @discardableResult
+    static func writeStagedMP3(data: Data, id: UUID = UUID()) throws -> (fileName: String, durationSeconds: Double) {
+        let fileName = "ai_\(id.uuidString.prefix(8)).mp3"
+        let url = stagingDirectory.appendingPathComponent(fileName)
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        try data.write(to: url, options: [.atomic])
+        return (fileName, probeDuration(url: url))
+    }
+
+    /// Copies a staged file into a project's `Audio/` folder for Studio import.
+    static func copyStagedFile(_ stagedFileName: String, to projectAudioDir: URL) throws -> (fileName: String, durationSeconds: Double) {
+        let source = stagingDirectory.appendingPathComponent(stagedFileName)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw WriteError.stagingMissing(stagedFileName)
+        }
+
+        try FileManager.default.createDirectory(at: projectAudioDir, withIntermediateDirectories: true)
+        let ext = source.pathExtension.isEmpty ? "mp3" : source.pathExtension
+        let destName = "ai_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).\(ext)"
+        let destURL = projectAudioDir.appendingPathComponent(destName)
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try FileManager.default.removeItem(at: destURL)
+        }
+        try FileManager.default.copyItem(at: source, to: destURL)
+        return (destName, probeDuration(url: destURL))
+    }
+
+    static func probeDuration(url: URL) -> Double {
+        let asset = AVURLAsset(url: url)
+        let seconds = CMTimeGetSeconds(asset.duration)
+        guard seconds.isFinite, seconds > 0.05 else { return 30 }
+        return seconds
+    }
+}
+
+/// Offline placeholder audio for Discover cards and demo templates.
 enum MXAIAudioStub {
     /// Writes a short stereo PCM WAV (two soft sine tones, low amplitude).
     static func writeStubWAV(
